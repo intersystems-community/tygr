@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - { name: default, flags: "" }
+          - { name: no-features, flags: "--no-default-features" }
+          - { name: all-features, flags: "--all-features" }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy (${{ matrix.features.name }})
+        run: cargo clippy --all-targets ${{ matrix.features.flags }} -- -D warnings
+
+      - name: Test (${{ matrix.features.name }})
+        run: cargo test --all-targets ${{ matrix.features.flags }}
+
+      - name: Doc tests (${{ matrix.features.name }})
+        run: cargo test --doc ${{ matrix.features.flags }}
+
+      - name: Docs (${{ matrix.features.name }})
+        run: cargo doc --no-deps ${{ matrix.features.flags }}

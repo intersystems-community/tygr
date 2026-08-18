@@ -1,0 +1,22 @@
+[package]
+name = "tygr"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+either = "1.15.0"
+tygr-derive = { path = "tygr-derive" }
+
+[features]
+default = ["trace"]
+trace = ["trace_pos", "trace_attempts", "tygr-derive/trace"]
+trace_pos = ["trace_any", "tygr-derive/trace_pos"]
+trace_attempts = ["trace_pos", "context"]
+trace_any = ["history"]
+history = []
+context = []
+
+[[bench]]
+name = "json_optimized"
+harness = false

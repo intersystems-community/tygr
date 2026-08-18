@@ -1,0 +1,22 @@
+[package]
+name = "tygr-derive"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
+either = "1.15.0"
+
+[features]
+default = []
+trace = ["trace_pos", "trace_attempts"]
+trace_pos = []
+trace_attempts = ["trace_pos"]
+lower_bnf_name = []
+upper_bnf_name = []
