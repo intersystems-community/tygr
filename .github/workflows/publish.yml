@@ -1,0 +1,37 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify tag matches Cargo.toml versions
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          for manifest in Cargo.toml tygr-derive/Cargo.toml; do
+            cargo_version="$(grep -m1 '^version' "$manifest" | sed -E 's/version *= *"([^"]+)"/\1/')"
+            if [ "$tag_version" != "$cargo_version" ]; then
+              echo "Tag $GITHUB_REF_NAME does not match $manifest version $cargo_version"
+              exit 1
+            fi
+          done
+
+      - name: Test
+        run: cargo test --all-features
+
+      - name: Publish tygr-derive
+        working-directory: tygr-derive
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io index
+        run: sleep 20
+
+      - name: Publish tygr
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
