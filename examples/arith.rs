@@ -85,12 +85,12 @@ mod tests {
         assert_eq!(
             bnf,
             "\
-expr = expr1 { op1 expr1 } ;
-op1 = \"+\" | \"-\" ;
-expr1 = expr2 { op2 expr2 } ;
-op2 = \"*\" | \"/\" ;
-expr2 = \"(\" expr \")\" | int ;
-int = 'digit' { 'digit' } ;"
+Expr = Expr1 { Op1 Expr1 } ;
+Op1 = \"+\" | \"-\" ;
+Expr1 = Expr2 { Op2 Expr2 } ;
+Op2 = \"*\" | \"/\" ;
+Expr2 = \"(\" Expr \")\" | Int ;
+Int = 'digit' { 'digit' } ;"
         );
     }
 }

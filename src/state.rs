@@ -316,7 +316,7 @@ impl Display for Error {
                      }| {
                         if let Some((node, pos)) = context.last() {
                             if *pos == self.pos {
-                                format!("{node}")
+                                node.to_string()
                             } else {
                                 format!("{expectation}")
                             }

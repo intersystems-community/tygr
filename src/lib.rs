@@ -62,7 +62,7 @@ pub use state::*;
 // types (in the type namespace); the macros of the same name below live in
 // the macro namespace, so there's no conflict.
 #[doc(hidden)]
-pub use char::{CharThen, CharCIThen, StringEq, StringEqCI};
+pub use char::{CharCIThen, CharThen, StringEq, StringEqCI};
 
 /// Derive `Grammar` (and `GrammarRule`) for a struct or enum.
 ///

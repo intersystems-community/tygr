@@ -383,6 +383,12 @@ impl<T> Clone for StringEq<T> {
 
 impl<T> Copy for StringEq<T> {}
 
+impl<T> Default for StringEq<T> {
+    fn default() -> Self {
+        StringEq(PhantomData)
+    }
+}
+
 impl<T> PartialEq for StringEq<T> {
     fn eq(&self, _other: &Self) -> bool {
         true
@@ -428,6 +434,12 @@ impl<T> fmt::Debug for StringEqCI<T> {
 impl<T> Clone for StringEqCI<T> {
     fn clone(&self) -> Self {
         StringEqCI(self.0.clone(), PhantomData)
+    }
+}
+
+impl<T: Token> Default for StringEqCI<T> {
+    fn default() -> Self {
+        StringEqCI(T::expectation(), PhantomData)
     }
 }
 

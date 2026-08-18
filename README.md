@@ -7,12 +7,12 @@ Define your grammar once as Rust types and get **parser**, **printer**, and **pr
 Given this EBNF:
 
 ```
-expr  = expr1 { op1 expr1 } ;
-op1   = "+" | "-" ;
-expr1 = expr2 { op2 expr2 } ;
-op2   = "*" | "/" ;
-expr2 = "(" expr ")" | int ;
-int   = 'digit' { 'digit' } ;
+Expr  = Expr1 { Op1 Expr1 } ;
+Op1   = "+" | "-" ;
+Expr1 = Expr2 { Op2 Expr2 } ;
+Op2   = "*" | "/" ;
+Expr2 = "(" Expr ")" | Int ;
+Int   = 'digit' { 'digit' } ;
 ```
 
 Write it once in Rust:
@@ -63,12 +63,12 @@ let e = Expr::parse("1 + 2 * 3").unwrap();  // parse
 assert_eq!(e.print(), "1 + 2 * 3");         // round-trip print
 assert_eq!(bnf_rules![Expr, Op1, Expr1, Op2, Expr2, Int].to_string(),
             "\
-expr = expr1 { op1 expr1 } ;
-op1 = \"+\" | \"-\" ;
-expr1 = expr2 { op2 expr2 } ;
-op2 = \"*\" | \"/\" ;
-expr2 = \"(\" expr \")\" | int ;
-int = 'digit' { 'digit' } ;"
+Expr = Expr1 { Op1 Expr1 } ;
+Op1 = \"+\" | \"-\" ;
+Expr1 = Expr2 { Op2 Expr2 } ;
+Op2 = \"*\" | \"/\" ;
+Expr2 = \"(\" Expr \")\" | Int ;
+Int = 'digit' { 'digit' } ;"
         );
 ```
 
