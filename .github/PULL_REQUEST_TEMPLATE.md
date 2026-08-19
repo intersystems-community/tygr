@@ -7,7 +7,7 @@ Fixes #
 <!-- Bulleted, verb-led (Added/Fixed/Renamed/Removed/...), like CHANGELOG.md entries -->
 -
 
-## Test plan
+## Test Plan
 
 -
 
