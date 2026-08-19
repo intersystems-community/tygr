@@ -178,16 +178,14 @@ fn impl_grammar(input: &DeriveInput) -> syn::Result<TokenStream2> {
     } = grammar_attr(input)?;
     let name = name.unwrap_or_else(|| {
         let ident = ident.to_string();
-        #[cfg(feature = "lower_bnf_name")]
+        #[cfg(all(feature = "lower_bnf_name", not(feature = "upper_bnf_name")))]
         let ident = ident.to_ascii_lowercase();
-        #[cfg(feature = "upper_bnf_name")]
+        #[cfg(all(feature = "upper_bnf_name", not(feature = "lower_bnf_name")))]
         let ident = ident.to_ascii_uppercase();
         ident
     });
     match &input.data {
-        Data::Struct(data) => {
-            impl_struct(ident, generics, name, hidden, inline, validated, data)
-        }
+        Data::Struct(data) => impl_struct(ident, generics, name, hidden, inline, validated, data),
         Data::Enum(data) => impl_enum(ident, generics, name, hidden, inline, validated, data),
         Data::Union(_) => Err(syn::Error::new_spanned(
             ident,
@@ -377,12 +375,7 @@ fn fail_at(fields: &ProcessedFields) -> TokenStream2 {
     }
 }
 
-fn bnf_ref(
-    grammar_name: &str,
-    hidden: bool,
-    to_bnf: TokenStream2,
-    inline: bool,
-) -> TokenStream2 {
+fn bnf_ref(grammar_name: &str, hidden: bool, to_bnf: TokenStream2, inline: bool) -> TokenStream2 {
     if hidden {
         quote! { ::tygr::bnf::Expr::empty() }
     } else if inline {
@@ -619,10 +612,7 @@ fn impl_enum(
     // every variant is (`&`, not `&&`, so all still get called for their side effects).
     let fail_at_variants_body = {
         let mut variants = each_fail_at.iter();
-        let first = variants
-            .next()
-            .cloned()
-            .unwrap_or_else(|| quote! { false });
+        let first = variants.next().cloned().unwrap_or_else(|| quote! { false });
         variants.fold(first, |acc, next| quote! { (#acc) & (#next) })
     };
     let to_bnf = quote! { ::tygr::bnf::Expr::alternation(vec![ #(#each_to_bnf),* ]) };
@@ -700,8 +690,16 @@ fn impl_enum(
             table
         }}
     };
-    let parse_table = build_table(&parse_fn_ty, &case_fns, &quote! { <#self_ty>::parse_case_miss });
-    let scan_table = build_table(&scan_fn_ty, &scan_fns, &quote! { <#self_ty>::scan_case_miss });
+    let parse_table = build_table(
+        &parse_fn_ty,
+        &case_fns,
+        &quote! { <#self_ty>::parse_case_miss },
+    );
+    let scan_table = build_table(
+        &scan_fn_ty,
+        &scan_fns,
+        &quote! { <#self_ty>::scan_case_miss },
+    );
     const DISPATCH_THRESHOLD: usize = 4;
     let (dispatch_body, scan_dispatch_body, case_impls) = if n >= DISPATCH_THRESHOLD {
         (
@@ -753,10 +751,7 @@ fn impl_enum(
     };
     let parse_body = with_node(inline, dispatch_body);
     let scan_body = with_node(inline, scan_dispatch_body);
-    let fail_at = with_node(
-        inline,
-        quote! { Self::fail_at_variants(pos, state) },
-    );
+    let fail_at = with_node(inline, quote! { Self::fail_at_variants(pos, state) });
     let first = {
         let mut the_first = quote! { ::tygr::EmptyByteSet };
         for first in each_first {

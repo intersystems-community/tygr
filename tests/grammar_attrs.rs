@@ -48,7 +48,10 @@ struct UsesInlined(Inlined, Digits);
 #[test]
 fn inline_splices_fields_instead_of_referencing_by_rule() {
     assert_eq!(Inlined::bnf_rule(), "Inlined = \"a\" \"b\" ;");
-    assert_eq!(UsesInlined::bnf_rule(), "UsesInlined = \"a\" \"b\" Digits ;");
+    assert_eq!(
+        UsesInlined::bnf_rule(),
+        "UsesInlined = \"a\" \"b\" Digits ;"
+    );
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]

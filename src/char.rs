@@ -134,7 +134,10 @@ impl<M: CharClass> Grammar for CharOf<M> {
         Expr::CharOf(M::name().to_string())
     }
 
-    fn fail_at(#[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: State) -> bool {
+    fn fail_at(
+        #[allow(unused_variables)] pos: usize,
+        #[allow(unused_variables, unused_mut)] mut state: State,
+    ) -> bool {
         #[cfg(feature = "trace_pos")]
         state.expect(
             pos,
@@ -384,7 +387,10 @@ impl<T: Token> Grammar for StringEq<T> {
         Expr::StringEq(T::expectation())
     }
 
-    fn fail_at(#[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: State) -> bool {
+    fn fail_at(
+        #[allow(unused_variables)] pos: usize,
+        #[allow(unused_variables, unused_mut)] mut state: State,
+    ) -> bool {
         #[cfg(feature = "trace_pos")]
         state.expect(
             pos,
@@ -452,7 +458,10 @@ impl<T: Token> Grammar for StringEqCI<T> {
         Expr::StringEqCI(T::expectation())
     }
 
-    fn fail_at(#[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: State) -> bool {
+    fn fail_at(
+        #[allow(unused_variables)] pos: usize,
+        #[allow(unused_variables, unused_mut)] mut state: State,
+    ) -> bool {
         #[cfg(feature = "trace_pos")]
         state.expect(
             pos,
