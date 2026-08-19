@@ -1,10 +1,14 @@
-// Offset-Line-Character (OLC)
+//! Offset-Line-Character (OLC): converts between byte offsets (as reported by
+//! [`Error::pos`](crate::Error::pos)) and `(line, character)` positions.
 
+/// Converts between byte offsets and `(line, character)` positions in a fixed
+/// input string.
 pub struct OLC {
     map: Vec<usize>,
 }
 
 impl OLC {
+    /// Index `input`'s line boundaries, for later offset/line-character conversions.
     pub fn new(input: &str) -> Self {
         let mut map = vec![];
         for (i, ch) in input.char_indices() {
@@ -15,6 +19,7 @@ impl OLC {
         Self { map }
     }
 
+    /// Convert a byte offset into a zero-indexed `(line, character)` pair.
     pub fn offset_to_line_character(&self, offset: usize) -> (usize, usize) {
         let line = self.map.partition_point(|&line_start| line_start <= offset);
         if line == 0 {
@@ -24,6 +29,7 @@ impl OLC {
         }
     }
 
+    /// Convert a zero-indexed `(line, character)` pair into a byte offset.
     pub fn line_character_to_offset(&self, (line, character): (usize, usize)) -> usize {
         if line == 0 {
             character

@@ -2,8 +2,6 @@
 //!
 //! This module provides an AST for BNF expressions that can be built, optimized,
 //! and then formatted. This allows us to:
-//! - Merge consecutive `Lit` tokens into multi-character strings
-//! - Combine case-insensitive literal sequences
 //! - Simplify repetition patterns based on hidden elements
 //! - Detect and simplify enum-as-option patterns
 
@@ -13,16 +11,24 @@ use std::fmt;
 /// All instances are maintained in optimized form.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
-    Literal(String),
-    LiteralCI(String),
+    /// A case-sensitive literal, formatted as `"text"`.
+    StringEq(String),
+    /// A case-insensitive literal, formatted as `"text"i`.
+    StringEqCI(String),
+    /// A reference to another named rule.
     RuleRef(String),
+    /// A character class, formatted as `'label'`.
     CharOf(String),
+    /// Concatenation: `A B C`.
     Sequence(Vec<Expr>),
+    /// Alternation: `A | B | C`.
     Alternation(Vec<Expr>),
+    /// Zero or more repetitions: `{ A }`.
     Repetition(Box<Expr>),
+    /// Zero or one: `[ A ]`.
     Optional(Box<Expr>),
+    /// Negative lookahead: `!A`.
     NotFollowedBy(Box<Expr>),
-    Empty,
 }
 
 /// Binding tightness, from loosest to tightest.
@@ -34,7 +40,19 @@ enum Prec {
 }
 
 impl Expr {
-    /// Create a sequence, automatically flattening and merging consecutive literals.
+    /// Matches nothing; omitted from formatted output. Represented as an
+    /// empty [`Sequence`](Expr::Sequence) rather than its own variant, since
+    /// `format_list` already renders one as nothing.
+    pub fn empty() -> Expr {
+        Expr::Sequence(vec![])
+    }
+
+    /// Is this an empty [`Sequence`](Expr::Sequence) (see [`Expr::empty`])?
+    fn is_empty(&self) -> bool {
+        matches!(self, Expr::Sequence(exprs) if exprs.is_empty())
+    }
+
+    /// Create a sequence, automatically flattening nested sequences.
     pub fn sequence(mut exprs: Vec<Expr>) -> Expr {
         // flatten nested sequences
         exprs = exprs
@@ -44,8 +62,6 @@ impl Expr {
                 _ => vec![expr],
             })
             .collect();
-        // Merge consecutive literals
-        exprs = Self::merge_literals(exprs);
         match exprs.len() {
             1 => exprs.into_iter().next().unwrap(),
             _ => Expr::Sequence(exprs),
@@ -68,31 +84,13 @@ impl Expr {
         }
     }
 
-    /// Merge consecutive Literal and LiteralCI tokens in a sequence.
-    fn merge_literals(exprs: Vec<Expr>) -> Vec<Expr> {
-        let mut result = Vec::new();
-
-        for expr in exprs {
-            match (result.last_mut(), expr) {
-                (Some(Expr::Literal(last)), Expr::Literal(s)) => {
-                    last.push_str(&s);
-                }
-                (Some(Expr::LiteralCI(last)), Expr::LiteralCI(s)) => {
-                    last.push_str(&s);
-                }
-                (_, expr) => {
-                    result.push(expr);
-                }
-            }
-        }
-        result
-    }
-
+    /// Create a repetition, dropping any hidden (`Empty`) elements first.
     pub fn repetition(expr: Expr) -> Expr {
         let expr = expr.remove_empties();
         Expr::Repetition(Box::new(expr))
     }
 
+    /// Create an optional, dropping any hidden (`Empty`) elements first.
     pub fn optional(expr: Expr) -> Expr {
         let expr = expr.remove_empties();
         Expr::Optional(Box::new(expr))
@@ -105,6 +103,7 @@ impl Expr {
 
     fn prec(&self) -> Prec {
         match self {
+            _ if self.is_empty() => Prec::Atom,
             Expr::Alternation(_) => Prec::Alternation,
             Expr::Sequence(_) => Prec::Sequence,
             _ => Prec::Atom,
@@ -118,9 +117,8 @@ impl Expr {
             write!(f, "( ")?;
         }
         match self {
-            Expr::Empty => Ok(()),
-            Expr::Literal(s) => write!(f, "\"{}\"", escape_string(s)),
-            Expr::LiteralCI(s) => write!(f, "\"{}\"i", escape_string(s)),
+            Expr::StringEq(s) => write!(f, "\"{}\"", escape_string(s)),
+            Expr::StringEqCI(s) => write!(f, "\"{}\"i", escape_string(s)),
             Expr::RuleRef(name) => write!(f, "{name}"),
             Expr::CharOf(name) => write!(f, "'{}'", escape_char_class(name)),
             Expr::Sequence(exprs) => Self::format_list(exprs, " ", Prec::Sequence, f),
@@ -154,7 +152,7 @@ impl Expr {
     ) -> fmt::Result {
         let mut first = true;
         for expr in exprs {
-            if *expr != Expr::Empty {
+            if !expr.is_empty() {
                 if !first {
                     write!(f, "{sep}")?;
                 }
@@ -167,9 +165,9 @@ impl Expr {
 
     fn remove_empties(self) -> Expr {
         if let Expr::Sequence(mut exprs) = self {
-            exprs.retain(|expr| *expr != Expr::Empty);
+            exprs.retain(|expr| !expr.is_empty());
             match exprs.len() {
-                0 => Expr::Empty,
+                0 => Expr::empty(),
                 1 => exprs.pop().unwrap(),
                 _ => Expr::Sequence(exprs),
             }

@@ -2,9 +2,9 @@
 //!
 //! - [`CharClass`] — trait for character predicates
 //! - [`CharOf<M>`] — match one character
-//! - [`StringOf<M>`] — match zero or more characters
-//! - [`StringOf1<M>`] — match one or more characters
-//! - [`StringEq<T>`] — match a literal token described by the type-level chain `T`
+//! - [`StringOf<C>`] — match zero or more characters
+//! - [`StringOf1<C>`] — match one or more characters
+//! - [`StringEq<T>`] — match a literal token described by a type-level chain
 
 use std::char;
 use std::fmt;
@@ -48,20 +48,7 @@ pub trait CharClass: 'static {
     fn name() -> &'static str;
 }
 
-#[doc(hidden)]
-pub struct AnyChar;
-
-impl CharClass for AnyChar {
-    fn matches(_: char) -> bool {
-        true
-    }
-
-    fn name() -> &'static str {
-        "any"
-    }
-}
-
-/// Matches exactly one character satisfying `M`.
+/// Matches exactly one character satisfying a character class.
 pub struct CharOf<M: CharClass>(pub char, PhantomData<M>);
 
 impl<M: CharClass> Clone for CharOf<M> {
@@ -85,10 +72,12 @@ impl<M: CharClass> fmt::Debug for CharOf<M> {
 }
 
 impl<M: CharClass> CharOf<M> {
+    /// Construct a `CharOf` from an already-known character.
     pub fn new(ch: char) -> Self {
         CharOf(ch, PhantomData)
     }
 
+    /// The matched character.
     pub fn value(&self) -> char {
         self.0
     }
@@ -144,9 +133,19 @@ impl<M: CharClass> Grammar for CharOf<M> {
     fn to_bnf() -> Expr {
         Expr::CharOf(M::name().to_string())
     }
+
+    fn fail_at(#[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: State) -> bool {
+        #[cfg(feature = "trace_pos")]
+        state.expect(
+            pos,
+            #[cfg(feature = "trace_one_node")]
+            Expectation::CharClass(M::name()),
+        );
+        true
+    }
 }
 
-/// Matches **zero or more** characters satisfying `M`, collected into a `String`.
+/// Matches *zero or more* characters satisfying a character class, collected into a `String`.
 ///
 /// ```
 /// # use tygr::*;
@@ -174,9 +173,13 @@ impl<C: CharClass> Grammar for StringOf<C> {
     fn to_bnf() -> Expr {
         Raw::<Vec<CharOf<C>>>::to_bnf()
     }
+
+    fn fail_at(pos: usize, state: State) -> bool {
+        Raw::<Vec<CharOf<C>>>::fail_at(pos, state)
+    }
 }
 
-/// Matches **one or more** characters satisfying `M`, collected into a `String`.
+/// Matches *one or more* characters satisfying a character class, collected into a `String`.
 ///
 /// ```
 /// # use tygr::*;
@@ -204,6 +207,10 @@ impl<C: CharClass> Grammar for StringOf1<C> {
 
     fn to_bnf() -> Expr {
         Raw::<(CharOf<C>, Vec<CharOf<C>>)>::to_bnf()
+    }
+
+    fn fail_at(pos: usize, state: State) -> bool {
+        Raw::<(CharOf<C>, Vec<CharOf<C>>)>::fail_at(pos, state)
     }
 }
 
@@ -287,7 +294,8 @@ impl Token for () {
     fn add_expectation(_: &mut String) {}
 }
 
-/// Matches literal char `CH`, then `T`. `StringEq!("…")` expands to a chain of these.
+/// Matches one literal character, then continues to the rest of the chain.
+/// `StringEq!("…")` expands to a chain of these.
 pub struct CharThen<const CH: char, T>(PhantomData<T>);
 
 impl<const CH: char, T: Token> Token for CharThen<CH, T> {
@@ -373,7 +381,17 @@ impl<T: Token> Grammar for StringEq<T> {
     }
 
     fn to_bnf() -> Expr {
-        Expr::Literal(T::expectation())
+        Expr::StringEq(T::expectation())
+    }
+
+    fn fail_at(#[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: State) -> bool {
+        #[cfg(feature = "trace_pos")]
+        state.expect(
+            pos,
+            #[cfg(feature = "trace_one_node")]
+            Expectation::StringEq(T::expectation()),
+        );
+        true
     }
 }
 
@@ -431,7 +449,17 @@ impl<T: Token> Grammar for StringEqCI<T> {
     }
 
     fn to_bnf() -> Expr {
-        Expr::LiteralCI(T::expectation())
+        Expr::StringEqCI(T::expectation())
+    }
+
+    fn fail_at(#[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: State) -> bool {
+        #[cfg(feature = "trace_pos")]
+        state.expect(
+            pos,
+            #[cfg(feature = "trace_one_node")]
+            Expectation::StringEqCI(T::expectation()),
+        );
+        true
     }
 }
 

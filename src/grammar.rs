@@ -21,7 +21,6 @@
 //! | `Box<T>`        | indirection (for recursive grammars) |
 //! | `Hidden<T>`     | parsed & printed, but omitted from BNF |
 
-use crate::char::{AnyChar, CharOf};
 #[cfg(feature = "trace_one_node")]
 use crate::state::Context;
 #[cfg(feature = "trace_pos")]
@@ -29,8 +28,6 @@ use crate::state::History;
 use crate::state::make_error;
 use crate::{Error, IntoInner, State, bnf::Expr};
 use either::Either::Left;
-#[cfg(feature = "trace")]
-use std::any::TypeId;
 use std::fmt;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
@@ -184,10 +181,8 @@ impl<A: ByteSet, B: ByteSet> First for UnionSet<A, B> {
     const CONTAINS_NIL: bool = false;
 }
 
-#[doc(hidden)]
-pub type CharFirst<const C: char> = AddChar<EmptyByteSet, C>;
-#[doc(hidden)]
-pub type CharFirstCI<const C: char> = AddCharCI<EmptyByteSet, C>;
+pub(crate) type CharFirst<const C: char> = AddChar<EmptyByteSet, C>;
+pub(crate) type CharFirstCI<const C: char> = AddCharCI<EmptyByteSet, C>;
 
 #[doc(hidden)]
 pub struct OptionalFirst<B: ByteSet>(PhantomData<B>);
@@ -210,19 +205,17 @@ impl<B: ByteSet> First for OptionalFirst<B> {
     const CONTAINS_NIL: bool = true;
 }
 
-#[doc(hidden)]
-pub type EmptyFirst = OptionalFirst<EmptyByteSet>;
-#[doc(hidden)]
-pub type AnyThingFirst = OptionalFirst<AnyCharFirst>;
+pub(crate) type EmptyFirst = OptionalFirst<EmptyByteSet>;
 
+/// Parse, print, and describe (as BNF) a grammar element.
+///
+/// Implement this by hand only for leaf/wrapper types; for `struct`s and
+/// `enum`s, `#[derive(Grammar)]` generates it (see the crate-level docs).
 pub trait Grammar: Sized + 'static {
+    /// The set of bytes (and whether empty input is valid) this grammar could start with.
     type First: First;
 
-    #[cfg(feature = "trace")]
-    fn type_id() -> TypeId {
-        TypeId::of::<Self>()
-    }
-
+    /// Parse the entire `input` as `Self`, failing if any input is left unconsumed.
     fn parse(input: &str) -> Result<Self, Error> {
         #[cfg(feature = "trace_pos")]
         let mut history = History::new();
@@ -246,6 +239,8 @@ pub trait Grammar: Sized + 'static {
         }
     }
 
+    /// Like [`parse`](Self::parse), but only checks that `input` is well-formed
+    /// and discards the parsed value.
     fn scan(input: &str) -> Result<(), Error> {
         #[cfg(feature = "trace_pos")]
         let mut history = History::new();
@@ -269,14 +264,34 @@ pub trait Grammar: Sized + 'static {
         }
     }
 
+    /// Attempt to parse `Self` starting at `pos`, returning the value and the
+    /// position just past it, or `None` on failure.
     fn parse_at(input: &str, pos: usize, state: State) -> Option<(Self, usize)>;
 
+    /// Like [`parse_at`](Self::parse_at), but only checks well-formedness and
+    /// returns the end position.
     fn scan_at(input: &str, pos: usize, state: State) -> Option<usize>;
 
+    /// Serialize `self` back to text, appending to `buf`.
     fn print_to(&self, buf: &mut String);
 
+    /// Describe this grammar as a BNF/EBNF expression, for use in a
+    /// referencing rule's own definition.
     fn to_bnf() -> Expr;
 
+    /// Record what this grammar would have expected at `pos`, without
+    /// attempting to actually parse — used when a caller already knows (e.g.
+    /// via `First`) that this alternative cannot match here, but still wants
+    /// it traced.
+    ///
+    /// Returns whether this grammar is *required* at `pos` (`Self::First`
+    /// doesn't contain nil). Sequential composition (`A::fail_at(..) ||
+    /// B::fail_at(..)`) can stop once a required element reports itself,
+    /// since real parsing would never reach anything after it either;
+    /// nullable elements return `false` so the chain keeps going.
+    fn fail_at(pos: usize, state: State) -> bool;
+
+    /// Serialize `self` to a new `String`; see [`print_to`](Self::print_to).
     fn print(&self) -> String {
         let mut buf = String::new();
         self.print_to(&mut buf);
@@ -284,11 +299,18 @@ pub trait Grammar: Sized + 'static {
     }
 }
 
+/// A [`Grammar`] with a name and top-level BNF definition, so it can appear as
+/// its own rule (e.g. in [`bnf_rules!`](crate::bnf_rules)) rather than only
+/// inline in some other rule's definition.
 pub trait GrammarRule: Grammar {
+    /// The rule's name in BNF output; defaults to the type name.
     const NAME: &'static str;
 
+    /// This rule's own definition, as opposed to [`to_bnf`](Grammar::to_bnf),
+    /// which is how *other* rules refer to it.
     fn to_bnf_def() -> Expr;
 
+    /// Format this rule as a complete BNF line: `NAME = <definition> ;`.
     fn bnf_rule() -> String {
         let mut s = String::new();
         s.push_str(Self::NAME);
@@ -302,7 +324,7 @@ pub trait GrammarRule: Grammar {
 
 /// Wrapper that hides a grammar element from BNF output.
 ///
-/// `Hidden<T>` parses and prints like `T`, but is omitted from BNF.
+/// Parses and prints just like the wrapped grammar, but is omitted from BNF.
 /// Useful for structural elements like whitespace.
 ///
 /// ```
@@ -345,8 +367,8 @@ impl<T> IntoInner<T> for Hidden<T> {
 
 // ── Raw<T>  →  parse via T, store only the matched string ───────────────────
 
-/// Wrapper that parses using `T`'s grammar but keeps only the raw matched
-/// text as a `String`.
+/// Wrapper that parses using the wrapped grammar but keeps only the raw
+/// matched text as a `String`.
 ///
 /// This is useful for grammar elements where the *structure* matters for
 /// parsing (e.g. `Ws` defined as `StringOf<IsSpace>`), but consumers
@@ -377,6 +399,7 @@ impl<T> Raw<T> {
         Raw(s.into(), PhantomData)
     }
 
+    /// The matched text.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -403,6 +426,10 @@ impl<T: Grammar> Grammar for Raw<T> {
 
     fn to_bnf() -> Expr {
         T::to_bnf()
+    }
+
+    fn fail_at(pos: usize, state: State) -> bool {
+        T::fail_at(pos, state)
     }
 }
 
@@ -493,6 +520,11 @@ impl<T: Grammar> Grammar for Option<T> {
     fn to_bnf() -> Expr {
         Expr::optional(T::to_bnf())
     }
+
+    fn fail_at(pos: usize, state: State) -> bool {
+        T::fail_at(pos, state);
+        false
+    }
 }
 
 impl<T: Grammar> Grammar for Vec<T> {
@@ -531,6 +563,11 @@ impl<T: Grammar> Grammar for Vec<T> {
     fn to_bnf() -> Expr {
         Expr::repetition(T::to_bnf())
     }
+
+    fn fail_at(pos: usize, state: State) -> bool {
+        T::fail_at(pos, state);
+        false
+    }
 }
 
 impl<T: Grammar> Grammar for Box<T> {
@@ -552,6 +589,10 @@ impl<T: Grammar> Grammar for Box<T> {
     fn to_bnf() -> Expr {
         T::to_bnf()
     }
+
+    fn fail_at(pos: usize, state: State) -> bool {
+        T::fail_at(pos, state)
+    }
 }
 
 impl Grammar for () {
@@ -570,7 +611,11 @@ impl Grammar for () {
     fn print_to(&self, _buf: &mut String) {}
 
     fn to_bnf() -> Expr {
-        Expr::Empty
+        Expr::empty()
+    }
+
+    fn fail_at(_pos: usize, _state: State) -> bool {
+        false
     }
 }
 
@@ -627,6 +672,10 @@ macro_rules! impl_grammar_tuple {
             fn to_bnf() -> Expr {
                 Expr::sequence(vec![$(<$T>::to_bnf()),+])
             }
+
+            fn fail_at(pos: usize, #[allow(unused_mut)] mut state: State) -> bool {
+                $( <$T>::fail_at(pos, state.reborrow()) || )+ false
+            }
         }
     };
 }
@@ -669,17 +718,17 @@ impl<A: Grammar, B: Grammar> Grammar for either::Either<A, B> {
     fn to_bnf() -> Expr {
         Expr::alternation(vec![A::to_bnf(), B::to_bnf()])
     }
+
+    fn fail_at(pos: usize, mut state: State) -> bool {
+        let a = A::fail_at(pos, state.reborrow());
+        let b = B::fail_at(pos, state);
+        a && b
+    }
 }
 
-/// Consumes everything up to **and including** the next match of `T`, capturing
-/// the matched text as a `String`. Fails if `T` never matches before end of input.
-///
-/// A newtype over the PEG idiom `( !T . )* T`: skip any character while `T` does
-/// not match here, then consume `T`.
-pub type StringEndsWith<T> = Raw<(Vec<(NotFollowedBy<T>, CharOf<AnyChar>)>, T)>;
-
 /// Zero-width negative lookahead: matches the empty string, but only when the
-/// following input does **not** match `G`. Consumes nothing and prints nothing.
+/// following input does *not* match the wrapped grammar. Consumes nothing
+/// and prints nothing.
 ///
 /// ```
 /// # use tygr::*;
@@ -714,6 +763,10 @@ impl<G: Grammar> Grammar for NotFollowedBy<G> {
 
     fn to_bnf() -> Expr {
         Expr::NotFollowedBy(Box::new(G::to_bnf()))
+    }
+
+    fn fail_at(_pos: usize, _state: State) -> bool {
+        false
     }
 }
 
@@ -752,10 +805,13 @@ impl<G> std::hash::Hash for NotFollowedBy<G> {
     fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
 }
 
+/// Wrapper that records the `[start, end)` input span its ranged value was parsed from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Range<T> {
+    /// Byte offset where the ranged value started matching.
     pub start: usize,
     ranged: T,
+    /// Byte offset just past where the ranged value finished matching.
     pub end: usize,
 }
 
@@ -773,10 +829,12 @@ impl<T> Deref for Range<T> {
 }
 
 impl<T> Range<T> {
+    /// Construct a `Range` from an already-known span.
     pub fn new(start: usize, ranged: T, end: usize) -> Self {
         Range { start, ranged, end }
     }
 
+    /// Apply `f` to the ranged value, keeping the same span.
     pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Range<U> {
         Range {
             start: self.start,
@@ -785,6 +843,7 @@ impl<T> Range<T> {
         }
     }
 
+    /// Borrow the ranged value, keeping the same span.
     pub fn as_ref(&self) -> Range<&T> {
         Range {
             start: self.start,
@@ -795,6 +854,7 @@ impl<T> Range<T> {
 }
 
 impl<T> Range<Option<T>> {
+    /// Swap `Range<Option<T>>` for `Option<Range<T>>`.
     pub fn transpose(self) -> Option<Range<T>> {
         match self.ranged {
             Some(it) => Some(Range {
@@ -808,6 +868,7 @@ impl<T> Range<Option<T>> {
 }
 
 impl<T, E> Range<Result<T, E>> {
+    /// Swap `Range<Result<T, E>>` for `Result<Range<T>, E>`.
     pub fn transpose(self) -> Result<Range<T>, E> {
         match self.ranged {
             Ok(it) => Ok(Range {
@@ -851,8 +912,13 @@ impl<T: Grammar> Grammar for Range<T> {
     fn to_bnf() -> Expr {
         T::to_bnf()
     }
+
+    fn fail_at(pos: usize, state: State) -> bool {
+        T::fail_at(pos, state)
+    }
 }
 
+/// Like `Vec`, but matches *one or more* items rather than zero or more.
 pub struct Vec1<T>(Vec<T>);
 
 impl<T> Deref for Vec1<T> {
@@ -891,8 +957,14 @@ impl<T: Grammar> Grammar for Vec1<T> {
     fn to_bnf() -> Expr {
         Expr::sequence(vec![T::to_bnf(), <Vec<T>>::to_bnf()])
     }
+
+    fn fail_at(pos: usize, mut state: State) -> bool {
+        T::fail_at(pos, state.reborrow()) || <Vec<T>>::fail_at(pos, state)
+    }
 }
 
+/// Consumes and discards input matching `T`, storing nothing. Prints nothing
+/// back, since there's no value left to print.
 impl<T: Grammar> Grammar for PhantomData<T> {
     type First = T::First;
 
@@ -907,12 +979,14 @@ impl<T: Grammar> Grammar for PhantomData<T> {
         T::scan_at(input, pos, state)
     }
 
-    fn print_to(&self, _buf: &mut String) {
-        panic!("Can't print PhantomData")
-    }
+    fn print_to(&self, _buf: &mut String) {}
 
     fn to_bnf() -> Expr {
         T::to_bnf()
+    }
+
+    fn fail_at(pos: usize, state: State) -> bool {
+        T::fail_at(pos, state)
     }
 }
 
@@ -926,6 +1000,9 @@ impl<T: Grammar> Grammar for PhantomData<T> {
 /// Implementations typically reconstruct the source grammar and delegate, or
 /// write the canonical text directly.
 pub trait GrammarFrom {
+    /// The grammar actually parsed; `Self` is built from it after the fact.
     type Source: Grammar;
+
+    /// Serialize `self` back to text (see [`Grammar::print_to`]).
     fn print_to(&self, buf: &mut String);
 }
