@@ -1,80 +1,17 @@
-# 🐯 tygr: TYpes into Grammar Routines
+# 🐯 tygr: TYpes Into Grammar Routines
 
 Define your grammar once as Rust types and get **parser**, **printer**, and **presentation in EBNF** for free.
 
-## Example
+## Get Started
 
-Given this EBNF:
+Start with the crate documentation on [docs.rs](https://docs.rs/tygr), which
+contains a complete arithmetic grammar with parsing, printing, and EBNF generation.
 
-```
-Expr  = Expr1 { Op1 Expr1 } ;
-Op1   = "+" | "-" ;
-Expr1 = Expr2 { Op2 Expr2 } ;
-Op2   = "*" | "/" ;
-Expr2 = "(" Expr ")" | Int ;
-Int   = 'digit' { 'digit' } ;
-```
+See the crate documentation for the complete API, grammar concepts, and feature
+flags.
 
-Write it once in Rust:
+For runnable examples, see:
 
-```rust
-use tygr::*;
-
-#[derive(Grammar, Debug, PartialEq, Eq)]
-pub struct Expr(pub Expr1, pub Vec<(Wrap<Ws, Op1, Ws>, Expr1)>);
-
-#[derive(Grammar, Debug, PartialEq, Eq)]
-pub enum Op1 {
-    Add(StringEq!("+")),
-    Sub(StringEq!("-")),
-}
-
-#[derive(Grammar, Debug, PartialEq, Eq)]
-pub struct Expr1(pub Expr2, pub Vec<(Wrap<Ws, Op2, Ws>, Expr2)>);
-
-#[derive(Grammar, Debug, PartialEq, Eq)]
-pub enum Op2 {
-    Mul(StringEq!("*")),
-    Div(StringEq!("/")),
-}
-
-#[derive(Grammar, Debug, PartialEq, Eq)]
-pub enum Expr2 {
-    Paren(Wrap<(StringEq!("("), Ws), Box<Expr>, (Ws, StringEq!(")"))>),
-    Number(Int),
-}
-
-char_class!(pub IsDigit, "digit", |ch| ch.is_ascii_digit());
-
-#[derive(Grammar, Debug, PartialEq, Eq)]
-pub struct Int(pub StringOf1<IsDigit>); // StringOf1: one or more digits
-
-char_class!(pub IsSpace, "space", |ch| ch.is_ascii_whitespace());
-
-#[derive(Grammar, Debug, PartialEq, Eq)]
-#[grammar(hidden)] // parsed & printed, but omitted from the BNF
-pub struct Ws(pub StringOf<IsSpace>); // StringOf: zero or more spaces
-```
-
-Get parser, printer, and EBNF generator:
-
-```rust
-let e = Expr::parse("1 + 2 * 3").unwrap();  // parse
-assert_eq!(e.print(), "1 + 2 * 3");         // round-trip print
-assert_eq!(bnf_rules![Expr, Op1, Expr1, Op2, Expr2, Int].to_string(),
-            "\
-Expr = Expr1 { Op1 Expr1 } ;
-Op1 = \"+\" | \"-\" ;
-Expr1 = Expr2 { Op2 Expr2 } ;
-Op2 = \"*\" | \"/\" ;
-Expr2 = \"(\" Expr \")\" | Int ;
-Int = 'digit' { 'digit' } ;"
-        );
-```
-
-## More examples
-
-- [`arith`](examples/arith.rs) — the grammar above, as a runnable example.
 - [`json`](examples/json.rs) — a full JSON grammar.
 - [`json_optimized`](examples/json_optimized.rs) — the same JSON grammar, hand-tuned for parsing throughput.
 
@@ -89,45 +26,7 @@ echo '{"a": 1}'         | cargo run --example json -- test    # check well-forme
 The optimized JSON grammar is also benchmarked (`cargo bench`) against the inputs
 in [`data/`](data/).
 
-## Feature flags
-
-The `tygr` crate enables the `trace_one_node` feature by default. Available features are:
-
-| Feature | Description |
-| ------- | ----------- |
-| `default` | Enables `trace_one_node`. |
-| `trace` | Enables all tracing features. |
-| `trace_pos` | Traces parser positions. |
-| `trace_one_node` | Traces only the nearest grammar node for each attempt. |
-| `trace_all_nodes` | Traces the complete grammar node chain for each attempt. |
-| `lower_bnf_name` | Converts generated BNF names to lowercase. |
-| `upper_bnf_name` | Converts generated BNF names to uppercase. |
-
-## How it works
-
-| Rust                               | Meaning                                  |
-| ---------------------------------- | ---------------------------------------- |
-| `struct`                           | sequence (`A B C`)                       |
-| `enum`                             | alternation (`A \| B`)                   |
-| `Vec<T>`                           | repetition (`{ T }`)                     |
-| `Option<T>`                        | optional (`[ T ]`)                       |
-| `StringEq!("…")`                   | literal string (`"…"`)                   |
-| `StringEqCI!("…")`                 | case-insensitive literal string (`"…"i`) |
-| `char_class!(Name, "…", \|c\| …)`  | define a character class (CC)            |
-| `CharOf<CC>`                       | a character of the given character class |
-| `StringOf<CC>` (`StringOf1<CC>`)   | (non-empty) sequence of characters       |
-| `VecSep<T, S>`                     | separated list (`T { S T }`)             |
-| `Either<A, B>`                     | inline alternation (`( A \| B )`)        |
-| `(A, B)`                           | inline sequence (`A B`)                  |
-| `Box<T>`                           | indirection (recursive rules)            |
-| `Raw<T>`                           | parse via `T`, store matched `String`    |
-| `NotFollowedBy<T>`                 | negative lookahead (`!T`)                |
-| `Hidden<T>` / `#[grammar(hidden)]` | parse & print, but hide from EBNF        |
-| `Wrap<L, T, R>`                    | `L T R`, dereferencing to `T`            |
-| `Prefix<P, T>`                     | `P T`, dereferencing to `T`              |
-| `Suffix<T, S>`                     | `T S`, dereferencing to `T`              |
-
-## See also
+## See Also
 
 **Deriving many routines from one spec.** Writing a grammar once and deriving several
 routines from it is an old idea: [BNFC](https://bnfc.digitalgrammars.com/), for example,

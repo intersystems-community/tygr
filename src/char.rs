@@ -13,7 +13,6 @@ use std::marker::PhantomData;
 #[cfg(feature = "trace_one_node")]
 use crate::Expectation;
 use crate::bnf::Expr;
-use crate::char_class;
 use crate::grammar::{AnyCharFirst, CharFirst, CharFirstCI, EmptyFirst, First, Grammar};
 use crate::state::State;
 use crate::{IntoInner, Raw};
@@ -49,7 +48,18 @@ pub trait CharClass: 'static {
     fn name() -> &'static str;
 }
 
-char_class!(pub AnyChar, "any", |_c| true);
+#[doc(hidden)]
+pub struct AnyChar;
+
+impl CharClass for AnyChar {
+    fn matches(_: char) -> bool {
+        true
+    }
+
+    fn name() -> &'static str {
+        "any"
+    }
+}
 
 /// Matches exactly one character satisfying `M`.
 pub struct CharOf<M: CharClass>(pub char, PhantomData<M>);

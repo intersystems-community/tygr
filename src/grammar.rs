@@ -36,6 +36,7 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use tygr_derive::Grammar;
 
+#[doc(hidden)]
 pub trait First {
     type Concat<G: Grammar>: First;
     type Union<X: First>: First;
@@ -47,8 +48,10 @@ pub trait First {
     const CONTAINS_NIL: bool;
 }
 
+#[doc(hidden)]
 pub trait ByteSet: First {}
 
+#[doc(hidden)]
 pub struct EmptyByteSet;
 impl ByteSet for EmptyByteSet {}
 impl First for EmptyByteSet {
@@ -69,6 +72,7 @@ impl First for EmptyByteSet {
     const CONTAINS_NIL: bool = false;
 }
 
+#[doc(hidden)]
 pub struct AnyCharFirst;
 impl ByteSet for AnyCharFirst {}
 impl First for AnyCharFirst {
@@ -89,6 +93,7 @@ impl First for AnyCharFirst {
     const CONTAINS_NIL: bool = false;
 }
 
+#[doc(hidden)]
 pub struct AddChar<B: ByteSet, const C: char>(PhantomData<B>);
 impl<B: ByteSet, const C: char> ByteSet for AddChar<B, C> {}
 impl<B: ByteSet, const C: char> First for AddChar<B, C> {
@@ -120,6 +125,7 @@ const fn first_byte(c: char) -> u8 {
     buf[0]
 }
 
+#[doc(hidden)]
 pub struct AddCharCI<B: ByteSet, const C: char>(PhantomData<B>);
 impl<B: ByteSet, const C: char> ByteSet for AddCharCI<B, C> {}
 impl<B: ByteSet, const C: char> First for AddCharCI<B, C> {
@@ -147,6 +153,7 @@ impl<B: ByteSet, const C: char> First for AddCharCI<B, C> {
 
 /// Union of two byte sets — a single type node (O(1) depth per union) whose
 /// byte map is the elementwise OR of its operands.
+#[doc(hidden)]
 pub struct UnionSet<A: ByteSet, B: ByteSet>(PhantomData<(A, B)>);
 impl<A: ByteSet, B: ByteSet> ByteSet for UnionSet<A, B> {}
 impl<A: ByteSet, B: ByteSet> First for UnionSet<A, B> {
@@ -177,9 +184,12 @@ impl<A: ByteSet, B: ByteSet> First for UnionSet<A, B> {
     const CONTAINS_NIL: bool = false;
 }
 
+#[doc(hidden)]
 pub type CharFirst<const C: char> = AddChar<EmptyByteSet, C>;
+#[doc(hidden)]
 pub type CharFirstCI<const C: char> = AddCharCI<EmptyByteSet, C>;
 
+#[doc(hidden)]
 pub struct OptionalFirst<B: ByteSet>(PhantomData<B>);
 
 impl<B: ByteSet> First for OptionalFirst<B> {
@@ -200,7 +210,9 @@ impl<B: ByteSet> First for OptionalFirst<B> {
     const CONTAINS_NIL: bool = true;
 }
 
+#[doc(hidden)]
 pub type EmptyFirst = OptionalFirst<EmptyByteSet>;
+#[doc(hidden)]
 pub type AnyThingFirst = OptionalFirst<AnyCharFirst>;
 
 pub trait Grammar: Sized + 'static {

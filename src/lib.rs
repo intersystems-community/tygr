@@ -18,30 +18,72 @@
 //! Rule references are just type references — if a `rule_ref` is wrong, the
 //! program simply won't compile.
 //!
-//! ## Quick example
+//! ## Feature Flags
+//!
+//! The `tygr` crate enables the `trace_one_node` feature by default.
+//! Available features are:
+//!
+//! | Feature | Description |
+//! | ------- | ----------- |
+//! | `default` | Enables `trace_one_node`. |
+//! | `trace` | Enables all tracing features. |
+//! | `trace_pos` | Traces parser positions. |
+//! | `trace_one_node` | Traces only the nearest grammar node for each attempt. |
+//! | `trace_all_nodes` | Traces the complete grammar node chain for each attempt. |
+//! | `lower_bnf_name` | Converts generated BNF names to lowercase. |
+//! | `upper_bnf_name` | Converts generated BNF names to uppercase. |
+//!
+//! ## Quick Example
 //!
 //! ```rust
 //! use tygr::*;
 //!
-//! // -- character class --
-//! char_class!(pub IsDigit, "digit", |ch| ch.is_ascii_digit());
+//! #[derive(Grammar, Debug, PartialEq, Eq)]
+//! pub struct Expr(pub Expr1, pub Vec<(Wrap<Ws, Op1, Ws>, Expr1)>);
 //!
-//! // -- AST types --
-//!
-//! #[derive(Grammar)]
-//! pub struct Number(pub StringOf1<IsDigit>);
-//!
-//! #[derive(Grammar)]
-//! pub enum Factor {
-//!     Paren(StringEq!("("), Box<Expr>, StringEq!(")")),
-//!     Num(Number),
+//! #[derive(Grammar, Debug, PartialEq, Eq)]
+//! pub enum Op1 {
+//!     Add(StringEq!("+")),
+//!     Sub(StringEq!("-")),
 //! }
 //!
-//! #[derive(Grammar)]
-//! pub struct Expr(pub Factor, pub Vec<(StringEq!("+"), Factor)>);
+//! #[derive(Grammar, Debug, PartialEq, Eq)]
+//! pub struct Expr1(pub Expr2, pub Vec<(Wrap<Ws, Op2, Ws>, Expr2)>);
 //!
-//! let e = Expr::parse("1+2+(3)").unwrap();
-//! assert_eq!(e.print(), "1+2+(3)");
+//! #[derive(Grammar, Debug, PartialEq, Eq)]
+//! pub enum Op2 {
+//!     Mul(StringEq!("*")),
+//!     Div(StringEq!("/")),
+//! }
+//!
+//! #[derive(Grammar, Debug, PartialEq, Eq)]
+//! pub enum Expr2 {
+//!     Paren(Wrap<(StringEq!("("), Ws), Box<Expr>, (Ws, StringEq!(")"))>),
+//!     Number(Int),
+//! }
+//!
+//! char_class!(pub IsDigit, "digit", |ch| ch.is_ascii_digit());
+//!
+//! #[derive(Grammar, Debug, PartialEq, Eq)]
+//! pub struct Int(pub StringOf1<IsDigit>);
+//!
+//! char_class!(pub IsSpace, "space", |ch| ch.is_ascii_whitespace());
+//!
+//! #[derive(Grammar, Debug, PartialEq, Eq)]
+//! #[grammar(hidden)]
+//! pub struct Ws(pub StringOf<IsSpace>);
+//!
+//! let e = Expr::parse("1 + 2 * 3").unwrap();
+//! assert_eq!(e.print(), "1 + 2 * 3");
+//! assert_eq!(
+//!     bnf_rules![Expr, Op1, Expr1, Op2, Expr2, Int].to_string(),
+//!     "Expr = Expr1 { Op1 Expr1 } ;\n\
+//! Op1 = \"+\" | \"-\" ;\n\
+//! Expr1 = Expr2 { Op2 Expr2 } ;\n\
+//! Op2 = \"*\" | \"/\" ;\n\
+//! Expr2 = \"(\" Expr \")\" | Int ;\n\
+//! Int = 'digit' { 'digit' } ;"
+//! );
 //! ```
 pub mod bnf;
 mod char;

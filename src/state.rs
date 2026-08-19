@@ -6,6 +6,7 @@ use std::{fmt::Display, marker::PhantomData};
 
 /// Threaded parse state: the error `History` and the call-stack `Context`.
 /// Both are behind feature flags, so `State` is a ZST when nothing is traced.
+#[doc(hidden)]
 pub struct State<'a> {
     #[cfg(feature = "trace_pos")]
     history: &'a mut History,
@@ -119,6 +120,7 @@ impl History {
 }
 
 #[derive(std::fmt::Debug)]
+#[doc(hidden)]
 pub enum Expectation {
     StringEq(String),
     StringEqCI(String),
@@ -169,6 +171,7 @@ impl Display for Expectation {
 }
 
 #[derive(std::fmt::Debug)]
+#[doc(hidden)]
 pub struct Attempt {
     pub context: Vec<(&'static str, usize)>,
     pub expectation: Expectation,
@@ -269,6 +272,7 @@ impl<'a> Context<'a> {
 #[cfg(feature = "trace_one_node")]
 #[doc(hidden)]
 #[derive(Clone, Copy)]
+#[doc(hidden)]
 pub struct Frame {
     node: &'static str,
     pos: usize,
