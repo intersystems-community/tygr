@@ -19,7 +19,7 @@ body:
   - type: textarea
     id: observed
     attributes:
-      label: What do you observe?
+      label: What did you observe?
     validations:
       required: true
   - type: textarea
