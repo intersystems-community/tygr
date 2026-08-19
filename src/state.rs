@@ -1,28 +1,29 @@
-#[cfg(feature = "trace_attempts")]
+#[cfg(feature = "trace_one_node")]
 use core::str;
-#[cfg(feature = "trace_any")]
+#[cfg(feature = "trace_pos")]
 use std::cmp::Ordering;
 use std::{fmt::Display, marker::PhantomData};
 
 /// Threaded parse state: the error `History` and the call-stack `Context`.
 /// Both are behind feature flags, so `State` is a ZST when nothing is traced.
+#[doc(hidden)]
 pub struct State<'a> {
-    #[cfg(feature = "history")]
+    #[cfg(feature = "trace_pos")]
     history: &'a mut History,
-    #[cfg(feature = "context")]
+    #[cfg(feature = "trace_one_node")]
     context: Context<'a>,
     _marker: PhantomData<&'a ()>,
 }
 
 impl<'a> State<'a> {
     pub(crate) fn new(
-        #[cfg(feature = "history")] history: &'a mut History,
-        #[cfg(feature = "context")] context: Context<'a>,
+        #[cfg(feature = "trace_pos")] history: &'a mut History,
+        #[cfg(feature = "trace_one_node")] context: Context<'a>,
     ) -> Self {
         Self {
-            #[cfg(feature = "history")]
+            #[cfg(feature = "trace_pos")]
             history,
-            #[cfg(feature = "context")]
+            #[cfg(feature = "trace_one_node")]
             context,
             _marker: PhantomData,
         }
@@ -31,9 +32,9 @@ impl<'a> State<'a> {
     /// Reborrow for a nested call. `State` isn't `Copy` because it holds `&mut`.
     pub fn reborrow(&mut self) -> State<'_> {
         State {
-            #[cfg(feature = "history")]
+            #[cfg(feature = "trace_pos")]
             history: &mut *self.history,
-            #[cfg(feature = "context")]
+            #[cfg(feature = "trace_one_node")]
             context: self.context,
             _marker: PhantomData,
         }
@@ -46,27 +47,27 @@ impl<'a> State<'a> {
         #[allow(unused_variables)] pos: usize,
     ) -> State<'_> {
         State {
-            #[cfg(feature = "history")]
+            #[cfg(feature = "trace_pos")]
             history: &mut *self.history,
-            #[cfg(feature = "context")]
+            #[cfg(feature = "trace_one_node")]
             context: self.context.node(node, pos),
             _marker: PhantomData,
         }
     }
 
     /// Record a failed expectation at `other_pos` (a no-op unless tracing).
-    #[cfg(feature = "trace_any")]
+    #[cfg(feature = "trace_pos")]
     #[inline]
     pub fn expect(
         &mut self,
         other_pos: usize,
-        #[cfg(feature = "trace_attempts")] expectation: Expectation,
+        #[cfg(feature = "trace_one_node")] expectation: Expectation,
     ) {
         self.history.expect(
-            #[cfg(feature = "trace_attempts")]
+            #[cfg(feature = "trace_one_node")]
             self.context,
             other_pos,
-            #[cfg(feature = "trace_attempts")]
+            #[cfg(feature = "trace_one_node")]
             expectation,
         );
     }
@@ -74,63 +75,81 @@ impl<'a> State<'a> {
     /// Probe with a throwaway history so a match or miss during lookahead
     /// doesn't pollute the real error trace.
     pub fn probe<R>(&mut self, f: impl FnOnce(State<'_>) -> R) -> R {
-        #[cfg(feature = "history")]
+        #[cfg(feature = "trace_pos")]
         let mut scratch = History::new();
         f(State::new(
-            #[cfg(feature = "history")]
+            #[cfg(feature = "trace_pos")]
             &mut scratch,
-            #[cfg(feature = "context")]
+            #[cfg(feature = "trace_one_node")]
             self.context,
         ))
     }
 }
 
-#[cfg(feature = "history")]
+#[cfg(feature = "trace_pos")]
 #[derive(std::fmt::Debug, Default)]
 pub(crate) struct History {
-    #[cfg(feature = "trace_attempts")]
-    attempts: Vec<Attempt>,
+    #[cfg(feature = "trace_one_node")]
+    traces: Vec<Trace>,
     #[cfg(feature = "trace_pos")]
     pos: usize,
 }
 
-#[cfg(feature = "history")]
+#[cfg(feature = "trace_pos")]
 impl History {
     pub(crate) fn new() -> Self {
         History::default()
     }
 
     pub(crate) fn into_error(self) -> Error {
-        #[cfg(feature = "trace_attempts")]
-        let attempts = {
-            let mut attempts = self.attempts;
-            for attempt in &mut attempts {
-                attempt.context.reverse()
+        #[cfg(feature = "trace_one_node")]
+        let traces = {
+            let mut traces = self.traces;
+            for trace in &mut traces {
+                trace.context.reverse()
             }
-            attempts
+            traces
         };
         Error {
-            #[cfg(feature = "trace_attempts")]
-            attempts,
+            #[cfg(feature = "trace_one_node")]
+            traces,
             #[cfg(feature = "trace_pos")]
             pos: self.pos,
         }
     }
 }
 
-#[derive(std::fmt::Debug)]
+/// One candidate for what would have matched at a [`Trace`]'s recorded position.
+#[derive(std::fmt::Debug, PartialEq, Eq)]
 pub enum Expectation {
+    /// A case-sensitive literal (from `StringEq!`) didn't match.
     StringEq(String),
+    /// A case-insensitive literal (from `StringEqCI!`) didn't match.
     StringEqCI(String),
+    /// No character satisfying this [`CharClass`](crate::CharClass) was found.
     CharClass(&'static str),
-    Filtered { pos: usize, be_valid: &'static str },
-    Conversion(String),
+    /// A `#[grammar(validated)]` type parsed successfully but
+    /// [`Validate::validate`](crate::Validate::validate) rejected it;
+    /// `be_valid` is the rejection message, and `pos` is where the rejected
+    /// value started (as opposed to the [`Trace`]'s own recorded position,
+    /// which is where it ended).
+    Valid {
+        /// Start position of the rejected value.
+        pos: usize,
+        /// The rejection message from [`Validation::be_valid`](crate::Validation::be_valid).
+        be_valid: &'static str,
+    },
+    /// A `GrammarFromStr`/`GrammarFromOther`/`GrammarTryFromOther`-derived
+    /// type matched its source grammar but failed to convert; `msg` is the
+    /// conversion error's `Display` text.
+    GrammarFrom(String),
 }
 
-#[cfg(feature = "trace_attempts")]
+#[cfg(feature = "trace_one_node")]
 impl Expectation {
+    /// The start position of the rejected value, for [`Expectation::Valid`]; `None` otherwise.
     pub fn pos(&self) -> Option<usize> {
-        if let Expectation::Filtered { pos, .. } = self {
+        if let Expectation::Valid { pos, .. } = self {
             Some(*pos)
         } else {
             None
@@ -138,7 +157,7 @@ impl Expectation {
     }
 }
 
-#[cfg(feature = "trace_attempts")]
+#[cfg(feature = "trace_one_node")]
 fn escape_string(s: &str) -> String {
     s.chars()
         .map(|char| match char {
@@ -151,7 +170,7 @@ fn escape_string(s: &str) -> String {
         .collect()
 }
 
-#[cfg(feature = "trace_attempts")]
+#[cfg(feature = "trace_one_node")]
 impl Display for Expectation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -160,45 +179,51 @@ impl Display for Expectation {
                 write!(f, "\"{}\"i", escape_string(s))
             }
             Expectation::CharClass(c) => write!(f, "{c}"),
-            Expectation::Filtered { be_valid, .. } => {
+            Expectation::Valid { be_valid, .. } => {
                 write!(f, "The proceeding unit must {be_valid}")
             }
-            Expectation::Conversion(msg) => write!(f, "{msg}"),
+            Expectation::GrammarFrom(msg) => write!(f, "{msg}"),
         }
     }
 }
 
-#[derive(std::fmt::Debug)]
-pub struct Attempt {
-    pub context: Vec<(&'static str, usize)>,
+/// One recorded parse attempt at [`Error::pos`] — a rule call chain and what
+/// it expected to find there. Multiple `Trace`s at the same position are
+/// candidates: any one of them matching would have let the parse continue.
+#[derive(std::fmt::Debug, PartialEq, Eq)]
+pub struct Trace {
+    /// The nearest enclosing named rule(s), outermost first. Only ever more
+    /// than one element with `trace_all_nodes` enabled.
+    pub context: Vec<Frame>,
+    /// What was expected at this position.
     pub expectation: Expectation,
 }
 
-#[cfg(feature = "trace_any")]
+#[cfg(feature = "trace_pos")]
 impl History {
     pub fn expect(
         &mut self,
-        #[cfg(feature = "trace_attempts")] context: Context<'_>,
+        #[cfg(feature = "trace_one_node")] context: Context<'_>,
         other_pos: usize,
-        #[cfg(feature = "trace_attempts")] expectation: Expectation,
+        #[cfg(feature = "trace_one_node")] expectation: Expectation,
     ) {
-        #[cfg(feature = "trace_attempts")]
-        let attempt = || Attempt {
+        #[cfg(feature = "trace_one_node")]
+        let trace = || Trace {
             context: context.to_vec(),
             expectation,
         };
         match self.pos.cmp(&other_pos) {
             Ordering::Equal => {
-                #[cfg(feature = "trace_attempts")]
+                #[cfg(feature = "trace_one_node")]
                 {
-                    self.attempts.push(attempt())
+                    self.traces.push(trace())
                 }
             }
             Ordering::Less => {
                 self.pos = other_pos;
-                #[cfg(feature = "trace_attempts")]
+                #[cfg(feature = "trace_one_node")]
                 {
-                    self.attempts = vec![attempt()];
+                    self.traces = vec![trace()];
                 }
             }
             Ordering::Greater => (),
@@ -210,39 +235,52 @@ impl History {
 #[doc(hidden)]
 #[derive(Clone, Copy, Default)]
 pub struct Context<'a>(
-    #[cfg(feature = "context")] Option<ContextNode<'a>>,
+    #[cfg(feature = "trace_one_node")] Option<ContextNode<'a>>,
     PhantomData<&'a ()>,
 );
 
-#[cfg(feature = "context")]
+#[cfg(feature = "trace_one_node")]
 #[derive(Clone, Copy)]
 struct ContextNode<'a> {
     first: Frame,
+    #[cfg(feature = "trace_one_node")]
+    _marker: PhantomData<&'a ()>,
+    #[cfg(feature = "trace_all_nodes")]
     remaining: &'a Context<'a>,
 }
 
 impl<'a> Context<'a> {
-    #[cfg(feature = "context")]
+    #[cfg(feature = "trace_one_node")]
     pub(crate) fn new() -> Self {
         Self::default()
     }
 
-    #[cfg(feature = "trace_attempts")]
-    fn to_vec(self) -> Vec<(&'static str, usize)> {
-        let mut result = vec![];
-        let mut cursor = self;
-        while let Some(node) = cursor.0 {
-            result.push((node.first.node, node.first.pos));
-            cursor = *node.remaining;
+    #[cfg(feature = "trace_one_node")]
+    fn to_vec(self) -> Vec<Frame> {
+        #[cfg(feature = "trace_all_nodes")]
+        {
+            let mut result = vec![];
+            let mut cursor = self;
+            while let Some(node) = cursor.0 {
+                result.push(node.first);
+                cursor = *node.remaining;
+            }
+            result
         }
-        result
+        #[cfg(not(feature = "trace_all_nodes"))]
+        {
+            self.0.map(|node| vec![node.first]).unwrap_or_default()
+        }
     }
 
-    #[cfg(feature = "context")]
+    #[cfg(feature = "trace_one_node")]
     fn node(&'a self, node: &'static str, pos: usize) -> Context<'a> {
         Context(
             Some(ContextNode {
                 first: Frame { node, pos },
+                #[cfg(feature = "trace_one_node")]
+                _marker: PhantomData,
+                #[cfg(feature = "trace_all_nodes")]
                 remaining: self,
             }),
             PhantomData,
@@ -250,45 +288,57 @@ impl<'a> Context<'a> {
     }
 }
 
-#[cfg(feature = "context")]
-#[doc(hidden)]
-#[derive(Clone, Copy)]
+/// One named rule call in a [`Trace`]'s [`context`](Trace::context).
+#[derive(Clone, Copy, std::fmt::Debug, PartialEq, Eq)]
 pub struct Frame {
-    node: &'static str,
-    pos: usize,
+    /// The rule's name, as in [`GrammarRule::NAME`](crate::GrammarRule::NAME).
+    pub node: &'static str,
+    /// The position this rule was entered at.
+    pub pos: usize,
 }
 
+/// A parse failure. Carries no detail unless the relevant `trace_*` feature
+/// is enabled (see the crate-level feature flag table); use [`Error::pos`]
+/// and [`Error::traces`] to inspect it rather than the fields directly, since
+/// those degrade gracefully across feature configurations.
+#[derive(PartialEq, Eq)]
 pub struct Error {
-    #[cfg(feature = "trace_attempts")]
-    pub attempts: Vec<Attempt>,
+    #[cfg(feature = "trace_one_node")]
+    #[doc(hidden)]
+    pub traces: Vec<Trace>,
     #[cfg(feature = "trace_pos")]
+    #[doc(hidden)]
     pub pos: usize,
 }
 
 /// Build the parse `Error`. When `history` is off, `Error` carries no data.
-pub(crate) fn make_error(#[cfg(feature = "history")] history: History) -> Error {
-    #[cfg(feature = "history")]
+pub(crate) fn make_error(#[cfg(feature = "trace_pos")] history: History) -> Error {
+    #[cfg(feature = "trace_pos")]
     {
         history.into_error()
     }
-    #[cfg(not(feature = "history"))]
+    #[cfg(not(feature = "trace_pos"))]
     {
         Error {}
     }
 }
 
 impl Error {
-    pub fn attempts(&self) -> &[Attempt] {
-        #[cfg(feature = "trace_attempts")]
+    /// The candidate expectations recorded at the deepest position reached.
+    /// Empty unless `trace_one_node` is enabled.
+    pub fn traces(&self) -> &[Trace] {
+        #[cfg(feature = "trace_one_node")]
         {
-            &self.attempts
+            &self.traces
         }
-        #[cfg(not(feature = "trace_attempts"))]
+        #[cfg(not(feature = "trace_one_node"))]
         {
             &[]
         }
     }
 
+    /// The deepest byte offset the parser reached before giving up. `0`
+    /// unless `trace_pos` is enabled.
     pub fn pos(&self) -> usize {
         #[cfg(feature = "trace_pos")]
         {
@@ -304,17 +354,17 @@ impl Error {
 impl Display for Error {
     #[allow(unused_variables)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        #[cfg(feature = "trace_attempts")]
+        #[cfg(feature = "trace_one_node")]
         {
-            let attempts: std::collections::HashSet<_> = self
-                .attempts
+            let lines: std::collections::HashSet<_> = self
+                .traces
                 .iter()
                 .map(
-                    |Attempt {
+                    |Trace {
                          context,
                          expectation,
                      }| {
-                        if let Some((node, pos)) = context.last() {
+                        if let Some(Frame { node, pos }) = context.last() {
                             if *pos == self.pos {
                                 node.to_string()
                             } else {
@@ -326,10 +376,10 @@ impl Display for Error {
                     },
                 )
                 .collect();
-            let mut attempts: Vec<String> = attempts.into_iter().collect();
-            attempts.sort();
-            for attempt in attempts {
-                writeln!(f, "\t-{attempt}")?;
+            let mut lines: Vec<String> = lines.into_iter().collect();
+            lines.sort();
+            for line in lines {
+                writeln!(f, "\t-{line}")?;
             }
         }
         Ok(())
@@ -339,21 +389,21 @@ impl Display for Error {
 impl std::fmt::Debug for Error {
     #[allow(unused_variables)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        #[cfg(feature = "trace_attempts")]
+        #[cfg(feature = "trace_one_node")]
         {
             writeln!(f, ":{}", self.pos)?;
             writeln!(f, "Looking for")?;
-            for attempt in &self.attempts {
+            for trace in &self.traces {
                 writeln!(
                     f,
                     "\t- {}!{}",
-                    attempt
+                    trace
                         .context
                         .iter()
-                        .map(|(node, pos)| { format!("{node}@:{pos}") })
+                        .map(|Frame { node, pos }| { format!("{node}@:{pos}") })
                         .collect::<Vec<String>>()
                         .join("/"),
-                    attempt.expectation
+                    trace.expectation
                 )?;
             }
         }

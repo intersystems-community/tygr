@@ -17,8 +17,7 @@ either = "1.15.0"
 
 [features]
 default = []
-trace = ["trace_pos", "trace_attempts"]
+trace = ["trace_pos"]
 trace_pos = []
-trace_attempts = ["trace_pos"]
 lower_bnf_name = []
 upper_bnf_name = []

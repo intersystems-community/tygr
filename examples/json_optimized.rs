@@ -149,7 +149,7 @@ enum Sign {
 struct Ws(PhantomData<Vec<W>>);
 
 #[derive(Grammar, Debug)]
-#[grammar(transparent)]
+#[grammar(inline)]
 enum W {
     C0020(StringEq!("\u{0020}")),
     C000A(StringEq!("\u{000A}")),
