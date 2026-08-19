@@ -11,7 +11,7 @@ Fixes #
 
 -
 
-## Notes to Maintainer(s)
+## Notes
 
-<!-- e.g. "Chose X over Y because...", "Follow-up: ...", "Out of scope: ...", "Review focus: ...", "Depends on: ...", "Migration: ..." -->
+<!-- Other notes to maintainer(s): "Chose X over Y because...", "Follow-up: ...", "Out of scope: ...", "Review focus: ...", "Depends on: ...", "Migration: ..." -->
 -
