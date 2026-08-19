@@ -2,21 +2,6 @@ name: Bug report
 description: Report something that isn't working as expected
 labels: [bug]
 body:
-  - type: textarea
-    id: what-happened
-    attributes:
-      label: What happened?
-      description: A clear description of the bug, including what you expected instead.
-    validations:
-      required: true
-  - type: textarea
-    id: repro
-    attributes:
-      label: Steps to reproduce
-      description: A minimal grammar / input that triggers the problem. Code snippets help most.
-      render: rust
-    validations:
-      required: true
   - type: input
     id: version
     attributes:
@@ -24,3 +9,22 @@ body:
       description: Crate version or git commit.
     validations:
       required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A minimal grammar / input that triggers the problem. Code snippets help most.
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: What do you observe?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What do you expect?
+    validations:
+      required: false
