@@ -3,8 +3,16 @@ name: CI
 on:
   push:
     branches: [master]
+    paths-ignore:
+      - "*.md"
+      - ".github/**"
+      - "!.github/workflows/**"
   pull_request:
     branches: [master]
+    paths-ignore:
+      - "*.md"
+      - ".github/**"
+      - "!.github/workflows/**"
 
 env:
   CARGO_TERM_COLOR: always

@@ -701,6 +701,14 @@ fn impl_enum(
         &quote! { <#self_ty>::scan_case_miss },
     );
     const DISPATCH_THRESHOLD: usize = 4;
+    // `cfg!`, not `#[cfg(...)]`: this call is spliced into whatever crate
+    // derives `Grammar`, so an embedded `#[cfg(feature = "trace_pos")]`
+    // would check that crate's own (nonexistent) feature, not tygr's.
+    let fail_at_on_miss = if cfg!(feature = "trace_pos") {
+        quote! { Self::fail_at_variants(pos, state); }
+    } else {
+        quote! {}
+    };
     let (dispatch_body, scan_dispatch_body, case_impls) = if n >= DISPATCH_THRESHOLD {
         (
             quote! {
@@ -723,15 +731,13 @@ fn impl_enum(
 
                 #[inline]
                 fn parse_case_miss(_input: &str, #[allow(unused_variables)] pos: usize, #[allow(unused_variables)] state: ::tygr::State) -> Option<(Self, usize)> {
-                    #[cfg(feature = "trace_pos")]
-                    Self::fail_at_variants(pos, state);
+                    #fail_at_on_miss
                     None
                 }
 
                 #[inline]
                 fn scan_case_miss(_input: &str, #[allow(unused_variables)] pos: usize, #[allow(unused_variables)] state: ::tygr::State) -> Option<usize> {
-                    #[cfg(feature = "trace_pos")]
-                    Self::fail_at_variants(pos, state);
+                    #fail_at_on_miss
                     None
                 }
             },
