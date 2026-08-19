@@ -89,6 +89,20 @@ echo '{"a": 1}'         | cargo run --example json -- test    # check well-forme
 The optimized JSON grammar is also benchmarked (`cargo bench`) against the inputs
 in [`data/`](data/).
 
+## Feature flags
+
+The `tygr` crate enables the `trace_one_node` feature by default. Available features are:
+
+| Feature | Description |
+| ------- | ----------- |
+| `default` | Enables `trace_one_node`. |
+| `trace` | Enables all tracing features. |
+| `trace_pos` | Traces parser positions. |
+| `trace_one_node` | Traces only the nearest grammar node for each attempt. |
+| `trace_all_nodes` | Traces the complete grammar node chain for each attempt. |
+| `lower_bnf_name` | Converts generated BNF names to lowercase. |
+| `upper_bnf_name` | Converts generated BNF names to uppercase. |
+
 ## How it works
 
 | Rust                               | Meaning                                  |

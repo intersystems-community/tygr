@@ -10,7 +10,7 @@ use std::char;
 use std::fmt;
 use std::marker::PhantomData;
 
-#[cfg(feature = "trace_attempts")]
+#[cfg(feature = "trace_one_node")]
 use crate::Expectation;
 use crate::bnf::Expr;
 use crate::char_class;
@@ -112,10 +112,10 @@ impl<M: CharClass> Grammar for CharOf<M> {
         if let Some((ch, len)) = ch {
             Some((CharOf(ch, PhantomData), pos + len))
         } else {
-            #[cfg(feature = "trace_any")]
+            #[cfg(feature = "trace_pos")]
             state.expect(
                 pos,
-                #[cfg(feature = "trace_attempts")]
+                #[cfg(feature = "trace_one_node")]
                 Expectation::CharClass(M::name()),
             );
             None
@@ -292,10 +292,10 @@ impl<const CH: char, T: Token> Token for CharThen<CH, T> {
         if input[pos..].starts_with(CH) {
             T::scan_at(input, pos + CH.len_utf8(), state)
         } else {
-            #[cfg(feature = "trace_any")]
+            #[cfg(feature = "trace_pos")]
             state.expect(
                 pos,
-                #[cfg(feature = "trace_attempts")]
+                #[cfg(feature = "trace_one_node")]
                 Expectation::StringEq(Self::expectation()),
             );
             None
@@ -323,10 +323,10 @@ impl<const CH: char, T: Token> Token for CharCIThen<CH, T> {
         match input[pos..].chars().next() {
             Some(c) if c.eq_ignore_ascii_case(&CH) => T::scan_at(input, pos + c.len_utf8(), state),
             _ => {
-                #[cfg(feature = "trace_any")]
+                #[cfg(feature = "trace_pos")]
                 state.expect(
                     pos,
-                    #[cfg(feature = "trace_attempts")]
+                    #[cfg(feature = "trace_one_node")]
                     Expectation::StringEqCI(Self::expectation()),
                 );
                 None

@@ -385,7 +385,7 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
     let self_ty = quote! { #ident #ty_generics };
     let source = quote! { <#self_ty as ::tygr::GrammarFrom>::Source };
     // parse_at: parse Source, then build Self via the forward conversion.
-    let trace = if cfg!(feature = "trace_attempts") {
+    let trace = if cfg!(feature = "trace") {
         quote! {
             state.expect(
                 pos,

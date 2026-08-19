@@ -22,9 +22,9 @@
 //! | `Hidden<T>`     | parsed & printed, but omitted from BNF |
 
 use crate::char::{AnyChar, CharOf};
-#[cfg(feature = "context")]
+#[cfg(feature = "trace_one_node")]
 use crate::state::Context;
-#[cfg(feature = "history")]
+#[cfg(feature = "trace_pos")]
 use crate::state::History;
 use crate::state::make_error;
 use crate::{Error, IntoInner, State, bnf::Expr};
@@ -212,14 +212,14 @@ pub trait Grammar: Sized + 'static {
     }
 
     fn parse(input: &str) -> Result<Self, Error> {
-        #[cfg(feature = "history")]
+        #[cfg(feature = "trace_pos")]
         let mut history = History::new();
-        #[cfg(feature = "context")]
+        #[cfg(feature = "trace_one_node")]
         let context = Context::new();
         let state = State::new(
-            #[cfg(feature = "history")]
+            #[cfg(feature = "trace_pos")]
             &mut history,
-            #[cfg(feature = "context")]
+            #[cfg(feature = "trace_one_node")]
             context,
         );
         if let Some((val, pos)) = Self::parse_at(input, 0, state)
@@ -228,21 +228,21 @@ pub trait Grammar: Sized + 'static {
             Ok(val)
         } else {
             Err(make_error(
-                #[cfg(feature = "history")]
+                #[cfg(feature = "trace_pos")]
                 history,
             ))
         }
     }
 
     fn scan(input: &str) -> Result<(), Error> {
-        #[cfg(feature = "history")]
+        #[cfg(feature = "trace_pos")]
         let mut history = History::new();
-        #[cfg(feature = "context")]
+        #[cfg(feature = "trace_one_node")]
         let context = Context::new();
         let state = State::new(
-            #[cfg(feature = "history")]
+            #[cfg(feature = "trace_pos")]
             &mut history,
-            #[cfg(feature = "context")]
+            #[cfg(feature = "trace_one_node")]
             context,
         );
         if let Some(pos) = Self::scan_at(input, 0, state)
@@ -251,7 +251,7 @@ pub trait Grammar: Sized + 'static {
             Ok(())
         } else {
             Err(make_error(
-                #[cfg(feature = "history")]
+                #[cfg(feature = "trace_pos")]
                 history,
             ))
         }
