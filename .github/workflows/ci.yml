@@ -42,7 +42,7 @@ jobs:
         run: cargo clippy --all-targets ${{ matrix.features.flags }} -- -D warnings
 
       - name: Test (${{ matrix.features.name }})
-        run: cargo test --all-targets ${{ matrix.features.flags }}
+        run: cargo test --lib --bins --examples --tests ${{ matrix.features.flags }}
 
       - name: Doc tests (${{ matrix.features.name }})
         run: cargo test --doc ${{ matrix.features.flags }}
