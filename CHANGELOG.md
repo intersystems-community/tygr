@@ -2,6 +2,16 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
+## [0.2.1] - 2026-08-19
+
+### Non-breaking Changes
+
+- Fixed enum dispatch miss-branch tracing being silently dead for any
+  `#[derive(Grammar)]` outside the `tygr` crate itself — an embedded
+  `#[cfg(feature = "trace_pos")]` was checking the deriving crate's own
+  features instead of `tygr`'s
+  ([#5](https://github.com/intersystems-community/tygr/issues/5)).
+
 ## [0.2.0] - 2026-08-19
 
 ### Breaking Changes
