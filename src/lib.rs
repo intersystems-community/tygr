@@ -7,24 +7,24 @@
 //!
 //! Derive [`Grammar`] on a `struct` or `enum` to get a parser, a printer, and
 //! a BNF presentation for free. Each supported Rust construct maps to an
-//! EBNF concept:
+//! EBNF concept.
 //!
-//! | Rust construct | EBNF (ISO 14977)             |
-//! |----------------|------------------------------|
-//! | `struct`       | concatenation (`A , B , C`)  |
-//! | `enum`         | alternation of each variant's own fields (`A B \| C`) |
+//! | Rust construct | EBNF ([Wirth 1977](https://doi.org/10.1145/359863.359883)) |
+//! |----------------|-------------------------------|
+//! | `struct`       | concatenation (`A B C`)      |
+//! | `enum`         | alternation (`A B \| C`) |
 //! | `(A, B, …)`    | inline concatenation         |
 //! | [`Either<A, B>`](either::Either) | inline alternation (`A \| B`) |
 //! | [`Vec<T>`]     | repetition (`{ T }`)         |
-//! | [`Vec1<T>`]    | one-or-more (`T , { T }`)     |
+//! | [`Vec1<T>`]    | one-or-more repetition (`T { T }`)      |
 //! | [`Option<T>`]  | optional (`[ T ]`)           |
 //! | [`Box<T>`]     | recursive indirection        |
-//! | [`NotFollowedBy<G>`] | negative lookahead (`! G`), consumes nothing |
+//! | [`NotFollowedBy<G>`] | negative lookahead (`!G`), consumes nothing |
 //! | [`Hidden<T>`]  | parsed/printed, omitted from BNF |
 //! | [`Raw<T>`]     | parsed via `T`, kept as the raw matched text |
 //! | [`Range<T>`]   | parsed via `T`, kept alongside its `[start, end)` span |
-//! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | `T` with delimiters that are parsed/printed but ignored otherwise — [`Deref`]s to `T` |
-//! | [`VecSep<T, S>`] | `T` items separated by `S` (`T , { S , T }`) |
+//! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | concatenation shorthands, [`Deref`]-ing to `T` |
+//! | [`VecSep<T, S>`] | one-or-more repetition with separators (`T { S T }`) |
 //!
 //! For a type that isn't itself a direct concatenation/alternation of other
 //! grammars, but is instead built *from* one (e.g. parsing digits into a
@@ -101,12 +101,12 @@
 //! assert_eq!(e.print(), "1 + 2 * 3");
 //! assert_eq!(
 //!     bnf_rules![Expr, Op1, Expr1, Op2, Expr2, Int].to_string(),
-//!     "Expr = Expr1 { Op1 Expr1 } ;\n\
-//! Op1 = \"+\" | \"-\" ;\n\
-//! Expr1 = Expr2 { Op2 Expr2 } ;\n\
-//! Op2 = \"*\" | \"/\" ;\n\
-//! Expr2 = \"(\" Expr \")\" | Int ;\n\
-//! Int = 'digit' { 'digit' } ;"
+//!     "Expr = Expr1 { Op1 Expr1 } .\n\
+//! Op1 = \"+\" | \"-\" .\n\
+//! Expr1 = Expr2 { Op2 Expr2 } .\n\
+//! Op2 = \"*\" | \"/\" .\n\
+//! Expr2 = \"(\" Expr \")\" | Int .\n\
+//! Int = 'digit' { 'digit' } ."
 //! );
 //! ```
 #![warn(missing_docs)]

@@ -4,6 +4,9 @@
 //! and then formatted. This allows us to:
 //! - Simplify repetition patterns based on hidden elements
 //! - Detect and simplify enum-as-option patterns
+//!
+//! Formatted output follows Wirth syntax notation — see the crate-level
+//! `## Design` section for the exact notation and its citation.
 
 use std::fmt;
 

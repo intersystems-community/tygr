@@ -3,23 +3,12 @@
 //! Every grammar type implements [`Grammar`], providing:
 //! - **parsing**  — `parse_at(input, pos, State) → Option<(Self, usize)>`
 //! - **printing** — `print_to(&self, buf)`
-//! - **BNF**      — `write_bnf(w)`
+//! - **BNF**      — `to_bnf() -> Expr`
 //!
 //! Parser uses ordered choice with backtracking. No left recursion.
 //!
-//! The library provides blanket impls so that standard Rust types map directly
-//! to EBNF concepts:
-//!
-//! | Rust type       | EBNF concept     |
-//! |-----------------|------------------|
-//! | `struct`        | sequence (`A B`) |
-//! | `enum`          | alternation (`A \| B`) |
-//! | `(A, B, …)`     | inline sequence |
-//! | `Either<A,B>`   | inline alternation |
-//! | `Vec<T>`        | repetition (`T*`) |
-//! | `Option<T>`     | optional (`[ T ]`) |
-//! | `Box<T>`        | indirection (for recursive grammars) |
-//! | `Hidden<T>`     | parsed & printed, but omitted from BNF |
+//! See the crate-level `## Design` section for how Rust constructs map to
+//! EBNF concepts.
 
 #[cfg(feature = "trace_one_node")]
 use crate::state::Context;
@@ -310,14 +299,14 @@ pub trait GrammarRule: Grammar {
     /// which is how *other* rules refer to it.
     fn to_bnf_def() -> Expr;
 
-    /// Format this rule as a complete BNF line: `NAME = <definition> ;`.
+    /// Format this rule as a complete BNF line: `NAME = <definition> .`.
     fn bnf_rule() -> String {
         let mut s = String::new();
         s.push_str(Self::NAME);
         s.push_str(" = ");
         let expr = Self::to_bnf_def();
         expr.format(&mut s).unwrap();
-        s.push_str(" ;");
+        s.push_str(" .");
         s
     }
 }
