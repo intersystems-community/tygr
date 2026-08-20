@@ -131,13 +131,23 @@ pub enum Expectation {
     /// A `#[grammar(validated)]` type parsed successfully but
     /// [`Validate::validate`](crate::Validate::validate) rejected it.
     Valid {
+        /// The rejected type's own [`GrammarRule::NAME`](crate::GrammarRule::NAME).
+        node: &'static str,
+        /// The raw text that was parsed and then rejected.
+        text: String,
         /// The rejection message from [`Validation::be_valid`](crate::Validation::be_valid).
         be_valid: &'static str,
     },
     /// A `GrammarFromStr`/`GrammarFromOther`/`GrammarTryFromOther`-derived
-    /// type matched its source grammar but failed to convert; `msg` is the
-    /// conversion error's `Display` text.
-    GrammarFrom(String),
+    /// type matched its source grammar but failed to convert.
+    GrammarFrom {
+        /// The raw text that matched the source grammar but failed to convert.
+        from: String,
+        /// The target type's own [`GrammarRule::NAME`](crate::GrammarRule::NAME).
+        into: &'static str,
+        /// The conversion error's `Display` text.
+        fail: String,
+    },
 }
 
 #[cfg(feature = "trace_one_node")]
@@ -159,11 +169,21 @@ impl Display for Expectation {
         match self {
             Expectation::StringEq(s) => write!(f, "\"{}\"", escape_string(s)),
             Expectation::StringEqCI(s) => {
-                write!(f, "\"{}\"i", escape_string(s))
+                write!(f, "\"{}\" (case-insensitive)", escape_string(s))
             }
-            Expectation::CharClass(c) => write!(f, "{c}"),
-            Expectation::Valid { be_valid } => write!(f, "The preceding unit must {be_valid}"),
-            Expectation::GrammarFrom(msg) => write!(f, "{msg}"),
+            Expectation::CharClass(c) => write!(f, "Char of {c}"),
+            Expectation::Valid {
+                node,
+                text,
+                be_valid,
+            } => write!(
+                f,
+                "The proceeding {node} \"{}\" to {be_valid}",
+                escape_string(text)
+            ),
+            Expectation::GrammarFrom { from, into, fail } => {
+                write!(f, "From {from} to {into}: {fail}")
+            }
         }
     }
 }
@@ -338,10 +358,9 @@ impl Display for Error {
         write!(f, "parse error")?;
         #[cfg(feature = "trace_pos")]
         write!(f, " at byte {}", self.pos)?;
-
         #[cfg(feature = "trace_one_node")]
         {
-            let lines: std::collections::HashSet<_> = self
+            let mut lines: Vec<String> = self
                 .traces
                 .iter()
                 .map(
@@ -349,23 +368,20 @@ impl Display for Error {
                          context,
                          expectation,
                      }| {
-                        let context = context
-                            .iter()
-                            .map(|Frame { node, .. }| *node)
-                            .collect::<Vec<_>>()
-                            .join("/");
-                        if context.is_empty() {
-                            format!("{expectation}")
+                        if let Some(frame) = context.last()
+                            && frame.pos == self.pos
+                        {
+                            frame.node.to_string()
                         } else {
-                            format!("{context}: {expectation}")
+                            format!("{expectation}")
                         }
                     },
                 )
                 .collect();
-            let mut lines: Vec<String> = lines.into_iter().collect();
             lines.sort();
+            lines.dedup();
             if !lines.is_empty() {
-                writeln!(f, ":")?;
+                writeln!(f, ", expected:")?;
                 for line in lines {
                     writeln!(f, "\t- {line}")?;
                 }
