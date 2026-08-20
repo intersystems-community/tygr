@@ -33,7 +33,11 @@ pub fn derive_grammar(input: TokenStream) -> TokenStream {
 /// Parses `GrammarFrom::Source`, then calls `Self::from_str` on the exact
 /// substring it matched. `Err` backtracks the parse as if nothing had
 /// matched, and is traced under the `trace`/`trace_pos` features.
-#[proc_macro_derive(GrammarFromStr)]
+///
+/// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
+/// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
+/// not supported — reject the value from the conversion's own `Err` instead.
+#[proc_macro_derive(GrammarFromStr, attributes(grammar))]
 pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::FromStr)
 }
@@ -42,7 +46,11 @@ pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
 ///
 /// Parses `GrammarFrom::Source`, then builds `Self` with `From::from` — this
 /// conversion can't fail, so nothing is traced.
-#[proc_macro_derive(GrammarFromOther)]
+///
+/// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
+/// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
+/// not supported — reject the value from the conversion's own `Err` instead.
+#[proc_macro_derive(GrammarFromOther, attributes(grammar))]
 pub fn derive_grammar_from_source(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::From)
 }
@@ -52,7 +60,11 @@ pub fn derive_grammar_from_source(input: TokenStream) -> TokenStream {
 /// Parses `GrammarFrom::Source`, then calls `Self::try_from`. `Err`
 /// backtracks the parse as if nothing had matched, and is traced under the
 /// `trace`/`trace_pos` features.
-#[proc_macro_derive(GrammarTryFromOther)]
+///
+/// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
+/// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
+/// not supported — reject the value from the conversion's own `Err` instead.
+#[proc_macro_derive(GrammarTryFromOther, attributes(grammar))]
 pub fn derive_grammar_try_from_source(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::TryFrom)
 }
@@ -167,6 +179,16 @@ fn with_node(inline: bool, body: TokenStream2) -> TokenStream2 {
     }
 }
 
+/// The BNF rule name a type gets when `#[grammar(name = "...")]` isn't given.
+fn default_name(ident: &Ident) -> String {
+    let ident = ident.to_string();
+    #[cfg(all(feature = "lower_bnf_name", not(feature = "upper_bnf_name")))]
+    let ident = ident.to_ascii_lowercase();
+    #[cfg(all(feature = "upper_bnf_name", not(feature = "lower_bnf_name")))]
+    let ident = ident.to_ascii_uppercase();
+    ident
+}
+
 fn impl_grammar(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let ident = &input.ident;
     let generics = &input.generics;
@@ -176,14 +198,7 @@ fn impl_grammar(input: &DeriveInput) -> syn::Result<TokenStream2> {
         inline,
         validated,
     } = grammar_attr(input)?;
-    let name = name.unwrap_or_else(|| {
-        let ident = ident.to_string();
-        #[cfg(all(feature = "lower_bnf_name", not(feature = "upper_bnf_name")))]
-        let ident = ident.to_ascii_lowercase();
-        #[cfg(all(feature = "upper_bnf_name", not(feature = "lower_bnf_name")))]
-        let ident = ident.to_ascii_uppercase();
-        ident
-    });
+    let name = name.unwrap_or_else(|| default_name(ident));
     match &input.data {
         Data::Struct(data) => impl_struct(ident, generics, name, hidden, inline, validated, data),
         Data::Enum(data) => impl_enum(ident, generics, name, hidden, inline, validated, data),
@@ -293,7 +308,11 @@ fn parse_at(validated: bool, fields: &ProcessedFields, constructor: &TokenStream
     let (start_pos, validate) = if validated {
         let trace = if cfg!(feature = "trace") {
             quote! {
-                state.expect(pos, ::tygr::Expectation::Valid { pos: start_pos, be_valid });
+                state.expect(pos, ::tygr::Expectation::Valid {
+                    node: Self::NAME,
+                    text: input[start_pos..pos].to_string(),
+                    be_valid,
+                });
             }
         } else if cfg!(feature = "trace_pos") {
             quote! {
@@ -422,6 +441,19 @@ impl FieldsInfo {
 fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStream2> {
     let ident = &input.ident;
     let generics = &input.generics;
+    let GrammarAttr {
+        name,
+        hidden,
+        inline,
+        validated,
+    } = grammar_attr(input)?;
+    if validated {
+        return Err(syn::Error::new_spanned(
+            ident,
+            "GrammarFromStr/GrammarFromOther/GrammarTryFromOther don't support `#[grammar(validated)]` — reject the value from FromStr/TryFrom's own `Err` instead",
+        ));
+    }
+    let name = name.unwrap_or_else(|| default_name(ident));
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let self_ty = quote! { #ident #ty_generics };
     let source = quote! { <#self_ty as ::tygr::GrammarFrom>::Source };
@@ -430,7 +462,11 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
         quote! {
             state.expect(
                 end,
-                ::tygr::Expectation::GrammarFrom(::std::string::ToString::to_string(&err)),
+                ::tygr::Expectation::GrammarFrom {
+                    from: input[pos..end].to_string(),
+                    into: Self::NAME,
+                    fail: ::std::string::ToString::to_string(&err),
+                },
             );
         }
     } else if cfg!(feature = "trace_pos") {
@@ -477,6 +513,8 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
             Self::parse_at(input, pos, state).map(|(_, end)| end)
         },
     };
+    let to_bnf_def = quote! { <#source as ::tygr::Grammar>::to_bnf() };
+    let bnf_ref = bnf_ref(&name, hidden, to_bnf_def.clone(), inline);
     Ok(quote! {
         impl #impl_generics ::tygr::Grammar for #self_ty #where_clause {
             type First = <#source as ::tygr::Grammar>::First;
@@ -496,11 +534,19 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
             }
 
             fn to_bnf() -> ::tygr::bnf::Expr {
-                <#source as ::tygr::Grammar>::to_bnf()
+                #bnf_ref
             }
 
             fn fail_at(pos: usize, state: ::tygr::State) -> bool {
                 <#source as ::tygr::Grammar>::fail_at(pos, state)
+            }
+        }
+
+        impl #impl_generics ::tygr::GrammarRule for #self_ty #where_clause {
+            const NAME: &'static str = #name;
+
+            fn to_bnf_def() -> ::tygr::bnf::Expr {
+                #to_bnf_def
             }
         }
     })

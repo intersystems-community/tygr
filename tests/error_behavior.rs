@@ -93,9 +93,11 @@ fn conversion_records_from_str_error() {
                 },
                 Trace {
                     context: vec![],
-                    expectation: Expectation::GrammarFrom(
-                        "number too large to fit in target type".to_string()
-                    ),
+                    expectation: Expectation::GrammarFrom {
+                        from: "999".to_string(),
+                        into: "SmallNumber",
+                        fail: "number too large to fit in target type".to_string(),
+                    },
                 },
             ],
             pos: 3,
@@ -128,14 +130,54 @@ fn validated_records_be_valid_message() {
                 Trace {
                     context: vec![frame("NonZero", 0)],
                     expectation: Expectation::Valid {
-                        pos: 0,
-                        be_valid: "be valid"
+                        node: "NonZero",
+                        text: "007".to_string(),
+                        be_valid: "be valid",
                     },
                 },
             ],
             pos: 3,
         }
     );
+}
+
+#[test]
+fn display_includes_position_context_and_expectation() {
+    let err = NonZero::parse("007").unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "parse error at byte 3, expected:\n\t- Char of digit\n\t- The proceeding NonZero \"007\" to be valid\n"
+    );
+}
+
+#[test]
+fn display_shows_each_expectation_kind() {
+    let cases = [
+        (
+            Lit::parse("bar").unwrap_err(),
+            "parse error at byte 0, expected:\n\t- Lit\n",
+        ),
+        (
+            LitCI::parse("bar").unwrap_err(),
+            "parse error at byte 0, expected:\n\t- LitCI\n",
+        ),
+        (
+            Digits::parse("abc").unwrap_err(),
+            "parse error at byte 0, expected:\n\t- Digits\n",
+        ),
+        (
+            SmallNumber::parse("999").unwrap_err(),
+            "parse error at byte 3, expected:\n\t- Char of digit\n\t- From 999 to SmallNumber: number too large to fit in target type\n",
+        ),
+        (
+            NonZero::parse("007").unwrap_err(),
+            "parse error at byte 3, expected:\n\t- Char of digit\n\t- The proceeding NonZero \"007\" to be valid\n",
+        ),
+    ];
+
+    for (err, expected) in cases {
+        assert_eq!(err.to_string(), expected);
+    }
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]

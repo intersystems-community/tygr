@@ -129,32 +129,25 @@ pub enum Expectation {
     /// No character satisfying this [`CharClass`](crate::CharClass) was found.
     CharClass(&'static str),
     /// A `#[grammar(validated)]` type parsed successfully but
-    /// [`Validate::validate`](crate::Validate::validate) rejected it;
-    /// `be_valid` is the rejection message, and `pos` is where the rejected
-    /// value started (as opposed to the [`Trace`]'s own recorded position,
-    /// which is where it ended).
+    /// [`Validate::validate`](crate::Validate::validate) rejected it.
     Valid {
-        /// Start position of the rejected value.
-        pos: usize,
+        /// The rejected type's own [`GrammarRule::NAME`](crate::GrammarRule::NAME).
+        node: &'static str,
+        /// The raw text that was parsed and then rejected.
+        text: String,
         /// The rejection message from [`Validation::be_valid`](crate::Validation::be_valid).
         be_valid: &'static str,
     },
     /// A `GrammarFromStr`/`GrammarFromOther`/`GrammarTryFromOther`-derived
-    /// type matched its source grammar but failed to convert; `msg` is the
-    /// conversion error's `Display` text.
-    GrammarFrom(String),
-}
-
-#[cfg(feature = "trace_one_node")]
-impl Expectation {
-    /// The start position of the rejected value, for [`Expectation::Valid`]; `None` otherwise.
-    pub fn pos(&self) -> Option<usize> {
-        if let Expectation::Valid { pos, .. } = self {
-            Some(*pos)
-        } else {
-            None
-        }
-    }
+    /// type matched its source grammar but failed to convert.
+    GrammarFrom {
+        /// The raw text that matched the source grammar but failed to convert.
+        from: String,
+        /// The target type's own [`GrammarRule::NAME`](crate::GrammarRule::NAME).
+        into: &'static str,
+        /// The conversion error's `Display` text.
+        fail: String,
+    },
 }
 
 #[cfg(feature = "trace_one_node")]
@@ -176,13 +169,21 @@ impl Display for Expectation {
         match self {
             Expectation::StringEq(s) => write!(f, "\"{}\"", escape_string(s)),
             Expectation::StringEqCI(s) => {
-                write!(f, "\"{}\"i", escape_string(s))
+                write!(f, "\"{}\" (case-insensitive)", escape_string(s))
             }
-            Expectation::CharClass(c) => write!(f, "{c}"),
-            Expectation::Valid { be_valid, .. } => {
-                write!(f, "The proceeding unit must {be_valid}")
+            Expectation::CharClass(c) => write!(f, "Char of {c}"),
+            Expectation::Valid {
+                node,
+                text,
+                be_valid,
+            } => write!(
+                f,
+                "The proceeding {node} \"{}\" to {be_valid}",
+                escape_string(text)
+            ),
+            Expectation::GrammarFrom { from, into, fail } => {
+                write!(f, "From {from} to {into}: {fail}")
             }
-            Expectation::GrammarFrom(msg) => write!(f, "{msg}"),
         }
     }
 }
@@ -354,9 +355,12 @@ impl Error {
 impl Display for Error {
     #[allow(unused_variables)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "parse error")?;
+        #[cfg(feature = "trace_pos")]
+        write!(f, " at byte {}", self.pos)?;
         #[cfg(feature = "trace_one_node")]
         {
-            let lines: std::collections::HashSet<_> = self
+            let mut lines: Vec<String> = self
                 .traces
                 .iter()
                 .map(
@@ -364,22 +368,23 @@ impl Display for Error {
                          context,
                          expectation,
                      }| {
-                        if let Some(Frame { node, pos }) = context.last() {
-                            if *pos == self.pos {
-                                node.to_string()
-                            } else {
-                                format!("{expectation}")
-                            }
+                        if let Some(frame) = context.last()
+                            && frame.pos == self.pos
+                        {
+                            frame.node.to_string()
                         } else {
                             format!("{expectation}")
                         }
                     },
                 )
                 .collect();
-            let mut lines: Vec<String> = lines.into_iter().collect();
             lines.sort();
-            for line in lines {
-                writeln!(f, "\t-{line}")?;
+            lines.dedup();
+            if !lines.is_empty() {
+                writeln!(f, ", expected:")?;
+                for line in lines {
+                    writeln!(f, "\t- {line}")?;
+                }
             }
         }
         Ok(())
