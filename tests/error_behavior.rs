@@ -146,6 +146,36 @@ fn display_includes_position_context_and_expectation() {
     );
 }
 
+#[test]
+fn display_shows_each_expectation_kind() {
+    let cases = [
+        (
+            Lit::parse("bar").unwrap_err(),
+            "parse error at byte 0:\n\t- Lit: \"foo\"\n",
+        ),
+        (
+            LitCI::parse("bar").unwrap_err(),
+            "parse error at byte 0:\n\t- LitCI: \"foo\"i\n",
+        ),
+        (
+            Digits::parse("abc").unwrap_err(),
+            "parse error at byte 0:\n\t- Digits: digit\n",
+        ),
+        (
+            SmallNumber::parse("999").unwrap_err(),
+            "parse error at byte 3:\n\t- digit\n\t- number too large to fit in target type\n",
+        ),
+        (
+            NonZero::parse("007").unwrap_err(),
+            "parse error at byte 3:\n\t- NonZero: The preceding unit must be valid\n\t- NonZero: digit\n",
+        ),
+    ];
+
+    for (err, expected) in cases {
+        assert_eq!(err.to_string(), expected);
+    }
+}
+
 #[derive(Grammar, Debug, PartialEq, Eq)]
 struct Wrapper(Lit);
 
