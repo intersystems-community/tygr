@@ -128,13 +128,21 @@ fn validated_records_be_valid_message() {
                 Trace {
                     context: vec![frame("NonZero", 0)],
                     expectation: Expectation::Valid {
-                        pos: 0,
                         be_valid: "be valid"
                     },
                 },
             ],
             pos: 3,
         }
+    );
+}
+
+#[test]
+fn display_includes_position_context_and_expectation() {
+    let err = NonZero::parse("007").unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "parse error at byte 3:\n\t- NonZero: The preceding unit must be valid\n\t- NonZero: digit\n"
     );
 }
 

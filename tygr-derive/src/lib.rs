@@ -293,7 +293,7 @@ fn parse_at(validated: bool, fields: &ProcessedFields, constructor: &TokenStream
     let (start_pos, validate) = if validated {
         let trace = if cfg!(feature = "trace") {
             quote! {
-                state.expect(pos, ::tygr::Expectation::Valid { pos: start_pos, be_valid });
+                state.expect(pos, ::tygr::Expectation::Valid { be_valid });
             }
         } else if cfg!(feature = "trace_pos") {
             quote! {

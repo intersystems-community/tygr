@@ -129,13 +129,8 @@ pub enum Expectation {
     /// No character satisfying this [`CharClass`](crate::CharClass) was found.
     CharClass(&'static str),
     /// A `#[grammar(validated)]` type parsed successfully but
-    /// [`Validate::validate`](crate::Validate::validate) rejected it;
-    /// `be_valid` is the rejection message, and `pos` is where the rejected
-    /// value started (as opposed to the [`Trace`]'s own recorded position,
-    /// which is where it ended).
+    /// [`Validate::validate`](crate::Validate::validate) rejected it.
     Valid {
-        /// Start position of the rejected value.
-        pos: usize,
         /// The rejection message from [`Validation::be_valid`](crate::Validation::be_valid).
         be_valid: &'static str,
     },
@@ -143,18 +138,6 @@ pub enum Expectation {
     /// type matched its source grammar but failed to convert; `msg` is the
     /// conversion error's `Display` text.
     GrammarFrom(String),
-}
-
-#[cfg(feature = "trace_one_node")]
-impl Expectation {
-    /// The start position of the rejected value, for [`Expectation::Valid`]; `None` otherwise.
-    pub fn pos(&self) -> Option<usize> {
-        if let Expectation::Valid { pos, .. } = self {
-            Some(*pos)
-        } else {
-            None
-        }
-    }
 }
 
 #[cfg(feature = "trace_one_node")]
@@ -179,9 +162,7 @@ impl Display for Expectation {
                 write!(f, "\"{}\"i", escape_string(s))
             }
             Expectation::CharClass(c) => write!(f, "{c}"),
-            Expectation::Valid { be_valid, .. } => {
-                write!(f, "The proceeding unit must {be_valid}")
-            }
+            Expectation::Valid { be_valid } => write!(f, "The preceding unit must {be_valid}"),
             Expectation::GrammarFrom(msg) => write!(f, "{msg}"),
         }
     }
@@ -354,6 +335,10 @@ impl Error {
 impl Display for Error {
     #[allow(unused_variables)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "parse error")?;
+        #[cfg(feature = "trace_pos")]
+        write!(f, " at byte {}", self.pos)?;
+
         #[cfg(feature = "trace_one_node")]
         {
             let lines: std::collections::HashSet<_> = self
@@ -364,22 +349,26 @@ impl Display for Error {
                          context,
                          expectation,
                      }| {
-                        if let Some(Frame { node, pos }) = context.last() {
-                            if *pos == self.pos {
-                                node.to_string()
-                            } else {
-                                format!("{expectation}")
-                            }
-                        } else {
+                        let context = context
+                            .iter()
+                            .map(|Frame { node, .. }| *node)
+                            .collect::<Vec<_>>()
+                            .join("/");
+                        if context.is_empty() {
                             format!("{expectation}")
+                        } else {
+                            format!("{context}: {expectation}")
                         }
                     },
                 )
                 .collect();
             let mut lines: Vec<String> = lines.into_iter().collect();
             lines.sort();
-            for line in lines {
-                writeln!(f, "\t-{line}")?;
+            if !lines.is_empty() {
+                writeln!(f, ":")?;
+                for line in lines {
+                    writeln!(f, "\t- {line}")?;
+                }
             }
         }
         Ok(())
