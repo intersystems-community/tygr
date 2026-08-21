@@ -228,6 +228,30 @@ pub trait Grammar: Sized + 'static {
         }
     }
 
+    /// Like [`parse`](Self::parse), but doesn't require consuming all of
+    /// `input` — returns the byte position just past the match, leaving any
+    /// remaining input unexamined.
+    fn parse_prefix(input: &str) -> Result<(Self, usize), Error> {
+        #[cfg(feature = "trace_pos")]
+        let mut history = History::new();
+        #[cfg(feature = "trace_one_node")]
+        let context = Context::new();
+        let state = State::new(
+            #[cfg(feature = "trace_pos")]
+            &mut history,
+            #[cfg(feature = "trace_one_node")]
+            context,
+        );
+        if let Some((val, pos)) = Self::parse_at(input, 0, state) {
+            Ok((val, pos))
+        } else {
+            Err(make_error(
+                #[cfg(feature = "trace_pos")]
+                history,
+            ))
+        }
+    }
+
     /// Like [`parse`](Self::parse), but only checks that `input` is well-formed
     /// and discards the parsed value.
     fn scan(input: &str) -> Result<(), Error> {
@@ -245,6 +269,30 @@ pub trait Grammar: Sized + 'static {
             && pos == input.len()
         {
             Ok(())
+        } else {
+            Err(make_error(
+                #[cfg(feature = "trace_pos")]
+                history,
+            ))
+        }
+    }
+
+    /// Like [`scan`](Self::scan), but doesn't require consuming all of
+    /// `input` — returns the byte position just past the match, leaving any
+    /// remaining input unexamined.
+    fn scan_prefix(input: &str) -> Result<usize, Error> {
+        #[cfg(feature = "trace_pos")]
+        let mut history = History::new();
+        #[cfg(feature = "trace_one_node")]
+        let context = Context::new();
+        let state = State::new(
+            #[cfg(feature = "trace_pos")]
+            &mut history,
+            #[cfg(feature = "trace_one_node")]
+            context,
+        );
+        if let Some(pos) = Self::scan_at(input, 0, state) {
+            Ok(pos)
         } else {
             Err(make_error(
                 #[cfg(feature = "trace_pos")]
