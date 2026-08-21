@@ -2,6 +2,43 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
+## [0.3.0] - 2026-08-21
+
+### Breaking Changes
+
+- Added a `GrammarRule` impl for `GrammarFromStr`/`GrammarFromOther`/
+  `GrammarTryFromOther`, giving them a real `NAME` and
+  `#[grammar(name = "...", hidden, inline)]` support; as a result they now
+  reference their own BNF rule by name by default instead of always
+  splicing `Source`'s definition inline (`#[grammar(inline)]` restores the
+  old behavior). `#[grammar(validated)]` is rejected there.
+- Changed `Expectation::Valid`'s fields — dropped `pos` (and the
+  `Expectation::pos()` accessor); added `node` (the rejected type's
+  `NAME`) and `text` (the raw rejected span).
+- Changed `Expectation::GrammarFrom` from a tuple variant to a struct
+  variant with `from` (raw text that failed to convert), `into` (target
+  type's `NAME`), and `fail` (the conversion error's message).
+- Changed `Display for Error`/`Expectation` wording to consistently
+  report every trace's node name and full expectation text, instead of a
+  heuristic "nearest node OR raw expectation" choice.
+- Changed `bnf_rule()`'s rule terminator from `;` to `.`, matching the
+  cited Wirth syntax notation exactly.
+
+### Non-breaking Changes
+
+- Added `Grammar::parse_prefix`, like `parse()` but without requiring the
+  whole input to match — returns the byte position just past the match.
+- Added `Grammar::scan_prefix`, the `scan()` counterpart to
+  `parse_prefix`.
+- Cited Wirth syntax notation (Wirth, 1977) in the crate-level Design
+  table, replacing the "ISO 14977" citation, which was inaccurate (that
+  standard requires `,` for concatenation; the `Display` impl never
+  emits one).
+- Fixed inconsistent EBNF snippets in doc comments that used commas, to
+  match the whitespace concatenation the library actually outputs.
+- Removed a stale, duplicate construct-mapping table from `grammar.rs`'s
+  module doc that referenced a nonexistent `write_bnf(w)` method.
+
 ## [0.2.1] - 2026-08-19
 
 ### Non-breaking Changes
