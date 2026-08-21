@@ -277,6 +277,30 @@ pub trait Grammar: Sized + 'static {
         }
     }
 
+    /// Like [`scan`](Self::scan), but doesn't require consuming all of
+    /// `input` — returns the byte position just past the match, leaving any
+    /// remaining input unexamined.
+    fn scan_prefix(input: &str) -> Result<usize, Error> {
+        #[cfg(feature = "trace_pos")]
+        let mut history = History::new();
+        #[cfg(feature = "trace_one_node")]
+        let context = Context::new();
+        let state = State::new(
+            #[cfg(feature = "trace_pos")]
+            &mut history,
+            #[cfg(feature = "trace_one_node")]
+            context,
+        );
+        if let Some(pos) = Self::scan_at(input, 0, state) {
+            Ok(pos)
+        } else {
+            Err(make_error(
+                #[cfg(feature = "trace_pos")]
+                history,
+            ))
+        }
+    }
+
     /// Attempt to parse `Self` starting at `pos`, returning the value and the
     /// position just past it, or `None` on failure.
     fn parse_at(input: &str, pos: usize, state: State) -> Option<(Self, usize)>;

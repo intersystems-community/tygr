@@ -16,3 +16,13 @@ fn parse_prefix_stops_at_the_match_without_consuming_the_rest() {
 fn parse_prefix_fails_when_nothing_matches() {
     assert!(Digits::parse_prefix("abc").is_err());
 }
+
+#[test]
+fn scan_prefix_stops_at_the_match_without_consuming_the_rest() {
+    assert_eq!(Digits::scan_prefix("123abc").unwrap(), 3);
+}
+
+#[test]
+fn scan_prefix_fails_when_nothing_matches() {
+    assert!(Digits::scan_prefix("abc").is_err());
+}
