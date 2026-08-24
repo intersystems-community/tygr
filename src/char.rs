@@ -13,7 +13,8 @@ use std::marker::PhantomData;
 #[cfg(feature = "trace_one_node")]
 use crate::Expectation;
 use crate::bnf::Expr;
-use crate::grammar::{AnyCharFirst, CharFirst, CharFirstCI, EmptyFirst, First, Grammar};
+use crate::first::{AnyChar, CharFirst, CharFirstCI, EmptyFirst, First};
+use crate::grammar::Grammar;
 use crate::state::State;
 use crate::{IntoInner, Raw};
 
@@ -84,7 +85,7 @@ impl<M: CharClass> CharOf<M> {
 }
 
 impl<M: CharClass> Grammar for CharOf<M> {
-    type First = AnyCharFirst;
+    type First = AnyChar;
 
     #[inline]
     fn parse_at(

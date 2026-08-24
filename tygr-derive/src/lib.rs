@@ -420,10 +420,10 @@ impl FieldsInfo {
         let print_steps = print_steps(&fields);
         let parse_at = parse_at(validated, &fields, &constructor);
         let scan_at = scan_at(validated, &fields, &constructor);
-        let mut first = quote! { ::tygr::OptionalFirst<::tygr::EmptyByteSet> };
+        let mut first = quote! { ::tygr::first::OptionalFirst<::tygr::first::Never> };
         for (_, _, t) in &fields {
             first = quote! {
-                <#first as ::tygr::First>::Concat<#t>
+                <#first as ::tygr::first::First>::Concat<#t>
             }
         }
         Self {
@@ -758,15 +758,15 @@ fn impl_enum(
     let (dispatch_body, scan_dispatch_body, case_impls) = if n >= DISPATCH_THRESHOLD {
         (
             quote! {
-                const CONTAINS_NIL: [bool; #n] = [ #(<#each_first as ::tygr::First>::CONTAINS_NIL),* ];
-                const CONTAINS_BYTE: [[bool; 256]; #n] = [ #(<#each_first as ::tygr::First>::CONTAINS_BYTE),* ];
+                const CONTAINS_NIL: [bool; #n] = [ #(<#each_first as ::tygr::first::First>::CONTAINS_NIL),* ];
+                const CONTAINS_BYTE: [[bool; 256]; #n] = [ #(<#each_first as ::tygr::first::First>::CONTAINS_BYTE),* ];
                 const DISPATCH: [#parse_fn_ty; 257] = #parse_table;
                 let first = input.as_bytes().get(pos).map(|&first| first as usize).unwrap_or(256);
                 DISPATCH[first](input, pos, state)
             },
             quote! {
-                const CONTAINS_NIL: [bool; #n] = [ #(<#each_first as ::tygr::First>::CONTAINS_NIL),* ];
-                const CONTAINS_BYTE: [[bool; 256]; #n] = [ #(<#each_first as ::tygr::First>::CONTAINS_BYTE),* ];
+                const CONTAINS_NIL: [bool; #n] = [ #(<#each_first as ::tygr::first::First>::CONTAINS_NIL),* ];
+                const CONTAINS_BYTE: [[bool; 256]; #n] = [ #(<#each_first as ::tygr::first::First>::CONTAINS_BYTE),* ];
                 const DISPATCH: [#scan_fn_ty; 257] = #scan_table;
                 let first = input.as_bytes().get(pos).map(|&first| first as usize).unwrap_or(256);
                 DISPATCH[first](input, pos, state)
@@ -805,9 +805,9 @@ fn impl_enum(
     let scan_body = with_node(inline, scan_dispatch_body);
     let fail_at = with_node(inline, quote! { Self::fail_at_variants(pos, state) });
     let first = {
-        let mut the_first = quote! { ::tygr::EmptyByteSet };
+        let mut the_first = quote! { ::tygr::first::Never };
         for first in each_first {
-            the_first = quote! { <#the_first as ::tygr::First>::Union<#first> };
+            the_first = quote! { <#the_first as ::tygr::first::First>::Union<#first> };
         }
         the_first
     };
