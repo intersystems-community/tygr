@@ -38,9 +38,7 @@ pub fn derive_grammar(input: TokenStream) -> TokenStream {
 /// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
 /// not supported — reject the value from the conversion's own `Err` instead.
 /// Since the conversion can reject an otherwise-matching `Source`, BNF
-/// output and traces show a side-condition, "be convertible into {name}" —
-/// pick an informative `name` (directly, or via `name = "..."`) if the
-/// default reads too generically.
+/// output and traces show a side-condition, "be convertible".
 #[proc_macro_derive(GrammarFromStr, attributes(grammar))]
 pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::FromStr)
@@ -69,9 +67,7 @@ pub fn derive_grammar_from_source(input: TokenStream) -> TokenStream {
 /// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
 /// not supported — reject the value from the conversion's own `Err` instead.
 /// Since the conversion can reject an otherwise-matching `Source`, BNF
-/// output and traces show a side-condition, "be convertible into {name}" —
-/// pick an informative `name` (directly, or via `name = "..."`) if the
-/// default reads too generically.
+/// output and traces show a side-condition, "be convertible".
 #[proc_macro_derive(GrammarTryFromOther, attributes(grammar))]
 pub fn derive_grammar_try_from_source(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::TryFrom)
@@ -462,7 +458,7 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
         ));
     }
     let name = name.unwrap_or_else(|| default_name(ident));
-    let requirement = format!("be convertible into {name}");
+    let requirement = "be convertible".to_string();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let self_ty = quote! { #ident #ty_generics };
     let source = quote! { <#self_ty as ::tygr::GrammarFrom>::Source };
