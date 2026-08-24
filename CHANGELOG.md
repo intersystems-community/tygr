@@ -2,7 +2,7 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
-## [Unreleased]
+## [0.4.0] - 2026-08-24
 
 ### Breaking Changes
 
