@@ -842,6 +842,20 @@ impl<G> std::hash::Hash for NotFollowedBy<G> {
     fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
 }
 
+/// Zero-width positive lookahead: matches the empty string, but only when the
+/// following input *does* match the wrapped grammar. Consumes nothing and
+/// prints nothing.
+///
+/// ```
+/// # use tygr::*;
+/// // A key that must be followed by ":", without consuming the ":".
+/// #[derive(Grammar)]
+/// struct Key(StringEq!("k"), FollowedBy<StringEq!(":")>);
+/// assert!(Key::parse("k").is_err());
+/// assert_eq!(Key::parse_prefix("k:").unwrap().1, 1);
+/// ```
+pub type FollowedBy<G> = NotFollowedBy<NotFollowedBy<G>>;
+
 /// Wrapper that records the `[start, end)` input span its ranged value was parsed from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Range<T> {

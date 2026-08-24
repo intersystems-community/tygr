@@ -20,6 +20,7 @@
 //! | [`Option<T>`]  | optional (`[ T ]`)           |
 //! | [`Box<T>`]     | recursive indirection        |
 //! | [`NotFollowedBy<G>`] | negative lookahead (`!G`), consumes nothing |
+//! | [`FollowedBy<G>`] | positive lookahead (`!!G`), consumes nothing |
 //! | [`Hidden<T>`]  | parsed/printed, omitted from BNF |
 //! | [`Raw<T>`]     | parsed via `T`, kept as the raw matched text |
 //! | [`Range<T>`]   | parsed via `T`, kept alongside its `[start, end)` span |
@@ -269,8 +270,8 @@ pub trait Validate {
     fn validate(&self) -> Self::Result;
 }
 
-// `pub`, not private: leaks into `VecSep`'s public `Grammar::First` associated
-// type through the `rest` field, so it must stay nameable (E0446).
+// `pub`, not private: leaks into `VecSepSource`'s public `Grammar::First`
+// associated type through the `rest` field, so it must stay nameable (E0446).
 #[derive(Debug, Clone, PartialEq, Eq, Grammar)]
 #[grammar(inline)]
 #[doc(hidden)]
@@ -279,47 +280,69 @@ pub struct SepItem<S, T> {
     item: T,
 }
 
-/// One or more items, with a separator between each pair.
+// The shape actually parsed (`T { S T }`); `VecSep` converts from this to
+// expose `items`/`seps` as plain vectors instead.
 #[derive(Debug, Clone, PartialEq, Eq, Grammar)]
 #[grammar(inline)]
-pub struct VecSep<T, S> {
+#[doc(hidden)]
+pub struct VecSepSource<T, S> {
     head: Box<T>,
     rest: Vec<SepItem<S, T>>,
 }
 
+/// One or more items, with a separator between each pair.
+#[derive(Debug, Clone, PartialEq, Eq, GrammarFromOther)]
+#[grammar(inline)]
+pub struct VecSep<T, S> {
+    /// The `T` items, in order.
+    pub items: Vec<T>,
+    /// The `S` separators, in order — always exactly one fewer than `items`.
+    pub seps: Vec<S>,
+}
+
+impl<T, S> From<VecSepSource<T, S>> for VecSep<T, S> {
+    fn from(source: VecSepSource<T, S>) -> Self {
+        let mut items = Vec::with_capacity(source.rest.len() + 1);
+        let mut seps = Vec::with_capacity(source.rest.len());
+        items.push(*source.head);
+        for sep_item in source.rest {
+            seps.push(sep_item.sep);
+            items.push(sep_item.item);
+        }
+        VecSep { items, seps }
+    }
+}
+
+impl<T: Grammar, S: Grammar> GrammarFrom for VecSep<T, S> {
+    type Source = VecSepSource<T, S>;
+
+    fn print_to(&self, buf: &mut String) {
+        let mut items = self.items.iter();
+        if let Some(first) = items.next() {
+            first.print_to(buf);
+        }
+        for (sep, item) in self.seps.iter().zip(items) {
+            sep.print_to(buf);
+            item.print_to(buf);
+        }
+    }
+}
+
 impl<T, S> VecSep<T, S> {
-    /// Iterate over the `T` items, in order.
-    pub fn items(&self) -> impl Iterator<Item = &T> {
-        vec![self.head.as_ref()]
-            .into_iter()
-            .chain(self.rest.iter().map(|sep_item| &sep_item.item))
-    }
-
-    /// Iterate over the `S` separators, in order.
-    pub fn seps(&self) -> impl Iterator<Item = &S> {
-        self.rest.iter().map(|sep_item| &sep_item.sep)
-    }
-
-    /// Consume into `(item, separator)` pairs, one per separator (the head
+    /// Consume into `(item, separator)` pairs, one per separator (the first
     /// item is paired with the separator that follows it).
     pub fn into_item_sep(self) -> impl Iterator<Item = (T, S)> {
-        self.rest.into_iter().scan(*self.head, |prev, sep_item| {
-            let item = std::mem::replace(prev, sep_item.item);
-            Some((item, sep_item.sep))
-        })
+        self.items.into_iter().zip(self.seps)
     }
 
     /// The first `T` item.
     pub fn first(&self) -> &T {
-        &self.head
+        &self.items[0]
     }
 
     /// The last `T` item.
     pub fn last(&self) -> &T {
-        match self.rest.last() {
-            Some(sep_item) => &sep_item.item,
-            None => &self.head,
-        }
+        self.items.last().unwrap()
     }
 }
 
