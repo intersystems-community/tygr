@@ -135,8 +135,8 @@ pub enum Expectation {
         node: &'static str,
         /// The raw text that was parsed and then rejected.
         text: String,
-        /// The rejection message from [`Validation::be_valid`](crate::Validation::be_valid).
-        be_valid: &'static str,
+        /// The rejected type's [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT).
+        requirement: &'static str,
     },
     /// A `GrammarFromStr`/`GrammarFromOther`/`GrammarTryFromOther`-derived
     /// type matched its source grammar but failed to convert.
@@ -175,12 +175,10 @@ impl Display for Expectation {
             Expectation::Valid {
                 node,
                 text,
-                be_valid,
-            } => write!(
-                f,
-                "The proceeding {node} \"{}\" to {be_valid}",
-                escape_string(text)
-            ),
+                requirement,
+            } => {
+                write!(f, "{node} \"{}\" must {requirement}", escape_string(text))
+            }
             Expectation::GrammarFrom { from, into, fail } => {
                 write!(f, "From {from} to {into}: {fail}")
             }

@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use tygr::*;
 
 char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
@@ -77,7 +78,7 @@ fn inline_splices_fields_instead_of_referencing_by_rule() {
 struct NonZero(StringOf1<IsDigit>);
 
 impl Validate for NonZero {
-    type Result = bool;
+    const REQUIREMENT: &'static str = "be non-zero";
     fn validate(&self) -> bool {
         !self.0.starts_with('0')
     }
@@ -91,4 +92,145 @@ fn validated_accepts_values_that_pass_validation() {
 #[test]
 fn validated_rejects_values_that_fail_validation() {
     assert!(NonZero::parse("007").is_err());
+}
+
+#[test]
+fn validated_bnf_shows_the_side_condition() {
+    assert_eq!(
+        NonZero::bnf_rule(),
+        "NonZero = ( 'digit' { 'digit' } ) ^1 .\n\n^1: be non-zero"
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+#[grammar(validated)]
+enum ValidatedEnum {
+    A(StringEq!("a")),
+    B(StringEq!("b")),
+}
+
+impl Validate for ValidatedEnum {
+    const REQUIREMENT: &'static str = "be a recognized token";
+    fn validate(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn validated_enum_bnf_shows_the_side_condition_around_the_whole_alternation() {
+    assert_eq!(
+        ValidatedEnum::bnf_rule(),
+        "ValidatedEnum = ( \"a\" | \"b\" ) ^1 .\n\n^1: be a recognized token"
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+#[grammar(inline, validated)]
+struct InlineNonZero(StringOf1<IsDigit>);
+
+impl Validate for InlineNonZero {
+    const REQUIREMENT: &'static str = "be non-zero";
+    fn validate(&self) -> bool {
+        !self.0.starts_with('0')
+    }
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+struct UsesInlineValidated(InlineNonZero, Digits);
+
+#[test]
+fn inline_validated_side_condition_propagates_into_the_splice() {
+    assert_eq!(
+        UsesInlineValidated::bnf_rule(),
+        "UsesInlineValidated = ( ( 'digit' { 'digit' } ) ^1 ) Digits .\n\n^1: be non-zero"
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+struct UsesInlineValidatedTwice(InlineNonZero, InlineNonZero);
+
+#[test]
+fn repeated_inline_validated_side_condition_gets_one_deduplicated_footnote() {
+    assert_eq!(
+        UsesInlineValidatedTwice::bnf_rule(),
+        "UsesInlineValidatedTwice = ( ( 'digit' { 'digit' } ) ^1 ) ( ( 'digit' { 'digit' } ) ^1 ) .\n\n^1: be non-zero"
+    );
+}
+
+#[derive(Debug, GrammarFromStr)]
+#[grammar(validated)]
+struct EvenNumber(u32);
+
+impl GrammarFrom for EvenNumber {
+    type Source = StringOf1<IsDigit>;
+    fn print_to(&self, buf: &mut String) {
+        buf.push_str(&self.0.to_string());
+    }
+}
+
+impl FromStr for EvenNumber {
+    type Err = std::num::ParseIntError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse::<u32>().map(EvenNumber)
+    }
+}
+
+impl Validate for EvenNumber {
+    const REQUIREMENT: &'static str = "be even";
+    fn validate(&self) -> bool {
+        self.0.is_multiple_of(2)
+    }
+}
+
+#[test]
+fn validated_grammar_from_str_bnf_shows_both_side_conditions() {
+    assert_eq!(
+        EvenNumber::bnf_rule(),
+        "EvenNumber = ( ( 'digit' { 'digit' } ) ^1 ) ^2 .\n\n^1: be convertible\n^2: be even"
+    );
+}
+
+#[test]
+fn validated_grammar_from_str_rejects_values_that_fail_validation() {
+    assert!(EvenNumber::parse("4").is_ok());
+    assert!(EvenNumber::parse("3").is_err());
+}
+
+#[derive(Debug, GrammarFromOther)]
+#[grammar(validated)]
+struct PositiveDoubled(u32);
+
+impl GrammarFrom for PositiveDoubled {
+    type Source = StringOf1<IsDigit>;
+    fn print_to(&self, buf: &mut String) {
+        buf.push_str(&(self.0 / 2).to_string());
+    }
+}
+
+impl From<StringOf1<IsDigit>> for PositiveDoubled {
+    fn from(s: StringOf1<IsDigit>) -> Self {
+        PositiveDoubled(s.to_string().parse::<u32>().unwrap_or(0) * 2)
+    }
+}
+
+impl Validate for PositiveDoubled {
+    const REQUIREMENT: &'static str = "be non-zero after doubling";
+    fn validate(&self) -> bool {
+        self.0 != 0
+    }
+}
+
+#[test]
+fn validated_grammar_from_other_bnf_shows_only_the_validated_side_condition() {
+    assert_eq!(
+        PositiveDoubled::bnf_rule(),
+        "PositiveDoubled = ( 'digit' { 'digit' } ) ^1 .\n\n^1: be non-zero after doubling"
+    );
+}
+
+#[test]
+fn validated_grammar_from_other_rejects_via_scan_too() {
+    assert!(PositiveDoubled::parse("5").is_ok());
+    assert!(PositiveDoubled::parse("0").is_err());
+    assert!(PositiveDoubled::scan("0").is_err());
 }

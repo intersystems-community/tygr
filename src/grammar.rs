@@ -216,6 +216,10 @@ pub trait GrammarRule: Grammar {
         let expr = Self::to_bnf_def();
         expr.format(&mut s).unwrap();
         s.push_str(" .");
+        for (i, text) in expr.side_conditions().into_iter().enumerate() {
+            s.push_str(if i == 0 { "\n\n" } else { "\n" });
+            s.push_str(&format!("^{}: {text}", i + 1));
+        }
         s
     }
 }

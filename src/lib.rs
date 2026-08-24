@@ -239,36 +239,20 @@ macro_rules! char_class {
     };
 }
 
-/// Return type of [`Validate::validate`] — either `bool` (`false` rejects) or
-/// `Option<&'static str>` (`Some(msg)` rejects with a reason).
-pub trait Validation {
-    /// `None` accepts; `Some(msg)` rejects, with `msg` describing what was expected.
-    fn be_valid(self) -> Option<&'static str>;
-}
-
-impl Validation for bool {
-    fn be_valid(self) -> Option<&'static str> {
-        if self { None } else { Some("be valid") }
-    }
-}
-
-impl Validation for Option<&'static str> {
-    fn be_valid(self) -> Option<&'static str> {
-        self
-    }
-}
-
 /// Post-parse validation for `#[grammar(validated)]` types.
 ///
-/// Return `false`/`None` to reject the parsed value (the parse backtracks as
-/// if the grammar hadn't matched); `true`/`Some(msg)` accepts it, where `msg`
-/// with `Some` is reported in traces as "must {msg}".
+/// Return `false` to reject the parsed value — the parse backtracks as if
+/// the grammar hadn't matched, and [`REQUIREMENT`](Validate::REQUIREMENT) is reported
+/// in traces as "must {REQUIREMENT}".
 pub trait Validate {
-    /// See [`Validation`].
-    type Result: Validation;
+    /// The property a value must satisfy — a fixed, per-type description,
+    /// not a per-value diagnostic, since it doesn't depend on `self`. Shown
+    /// in both error traces and generated BNF, so pick something concrete
+    /// rather than a generic placeholder.
+    const REQUIREMENT: &'static str;
 
-    /// Check the just-parsed value; see the trait docs for how the result is interpreted.
-    fn validate(&self) -> Self::Result;
+    /// Check the just-parsed value; return `false` to reject it.
+    fn validate(&self) -> bool;
 }
 
 // `pub`, not private: leaks into `VecSepSource`'s public `Grammar::First`
