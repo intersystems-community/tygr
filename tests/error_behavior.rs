@@ -96,7 +96,6 @@ fn conversion_records_from_str_error() {
                     expectation: Expectation::GrammarFrom {
                         from: "999".to_string(),
                         into: "SmallNumber",
-                        requirement: "be convertible",
                         fail: "number too large to fit in target type".to_string(),
                     },
                 },
@@ -107,10 +106,10 @@ fn conversion_records_from_str_error() {
 }
 
 #[test]
-fn conversion_bnf_shows_the_default_requirement() {
+fn conversion_bnf_shows_only_the_source_grammar() {
     assert_eq!(
         SmallNumber::bnf_rule(),
-        "SmallNumber = ( 'digit' { 'digit' } ) ^1 .\n\n^1: be convertible"
+        "SmallNumber = 'digit' { 'digit' } ."
     );
 }
 
@@ -176,7 +175,7 @@ fn display_shows_each_expectation_kind() {
         ),
         (
             SmallNumber::parse("999").unwrap_err(),
-            "parse error at byte 3, expected:\n\t- Char of digit\n\t- From 999 to SmallNumber: must be convertible (number too large to fit in target type)\n",
+            "parse error at byte 3, expected:\n\t- Char of digit\n\t- From 999 to SmallNumber: number too large to fit in target type\n",
         ),
         (
             NonZero::parse("007").unwrap_err(),

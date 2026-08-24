@@ -37,8 +37,6 @@ pub fn derive_grammar(input: TokenStream) -> TokenStream {
 /// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
 /// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
 /// not supported — reject the value from the conversion's own `Err` instead.
-/// Since the conversion can reject an otherwise-matching `Source`, BNF
-/// output and traces show a side-condition, "be convertible".
 #[proc_macro_derive(GrammarFromStr, attributes(grammar))]
 pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::FromStr)
@@ -66,8 +64,6 @@ pub fn derive_grammar_from_source(input: TokenStream) -> TokenStream {
 /// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
 /// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
 /// not supported — reject the value from the conversion's own `Err` instead.
-/// Since the conversion can reject an otherwise-matching `Source`, BNF
-/// output and traces show a side-condition, "be convertible".
 #[proc_macro_derive(GrammarTryFromOther, attributes(grammar))]
 pub fn derive_grammar_try_from_source(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::TryFrom)
@@ -458,7 +454,6 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
         ));
     }
     let name = name.unwrap_or_else(|| default_name(ident));
-    let requirement = "be convertible".to_string();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let self_ty = quote! { #ident #ty_generics };
     let source = quote! { <#self_ty as ::tygr::GrammarFrom>::Source };
@@ -470,7 +465,6 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
                 ::tygr::Expectation::GrammarFrom {
                     from: input[pos..end].to_string(),
                     into: Self::NAME,
-                    requirement: #requirement,
                     fail: ::std::string::ToString::to_string(&err),
                 },
             );
@@ -520,12 +514,6 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
         },
     };
     let to_bnf = quote! { <#source as ::tygr::Grammar>::to_bnf() };
-    let to_bnf = match convert {
-        Convert::From => to_bnf,
-        Convert::FromStr | Convert::TryFrom => quote! {
-            ::tygr::bnf::Expr::side_condition(#to_bnf, #requirement)
-        },
-    };
     let bnf_ref = bnf_ref(&name, hidden, &to_bnf, inline);
     Ok(quote! {
         impl #impl_generics ::tygr::Grammar for #self_ty #where_clause {

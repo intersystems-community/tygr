@@ -138,17 +138,13 @@ pub enum Expectation {
         /// The rejected type's [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT).
         requirement: &'static str,
     },
-    /// A `GrammarFromStr`/`GrammarTryFromOther`-derived type matched its
-    /// source grammar but failed to convert (`GrammarFromOther`'s `From`
-    /// conversion can't fail, so this never fires for it).
+    /// A `GrammarFromStr`/`GrammarFromOther`/`GrammarTryFromOther`-derived
+    /// type matched its source grammar but failed to convert.
     GrammarFrom {
         /// The raw text that matched the source grammar but failed to convert.
         from: String,
         /// The target type's own [`GrammarRule::NAME`](crate::GrammarRule::NAME).
         into: &'static str,
-        /// `#[grammar(requirement = "...")]`, or a generated default
-        /// ("be convertible into {into}") if omitted.
-        requirement: &'static str,
         /// The conversion error's `Display` text.
         fail: String,
     },
@@ -183,13 +179,8 @@ impl Display for Expectation {
             } => {
                 write!(f, "{node} \"{}\" must {requirement}", escape_string(text))
             }
-            Expectation::GrammarFrom {
-                from,
-                into,
-                requirement,
-                fail,
-            } => {
-                write!(f, "From {from} to {into}: must {requirement} ({fail})")
+            Expectation::GrammarFrom { from, into, fail } => {
+                write!(f, "From {from} to {into}: {fail}")
             }
         }
     }
