@@ -37,6 +37,10 @@ pub fn derive_grammar(input: TokenStream) -> TokenStream {
 /// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
 /// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
 /// not supported — reject the value from the conversion's own `Err` instead.
+/// Since the conversion can reject an otherwise-matching `Source`, BNF
+/// output and traces show a side-condition, "be convertible into {name}" —
+/// pick an informative `name` (directly, or via `name = "..."`) if the
+/// default reads too generically.
 #[proc_macro_derive(GrammarFromStr, attributes(grammar))]
 pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::FromStr)
@@ -49,7 +53,7 @@ pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
 ///
 /// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
 /// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
-/// not supported — reject the value from the conversion's own `Err` instead.
+/// not supported — `From` can't fail, so there's no rejection to describe.
 #[proc_macro_derive(GrammarFromOther, attributes(grammar))]
 pub fn derive_grammar_from_source(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::From)
@@ -64,6 +68,10 @@ pub fn derive_grammar_from_source(input: TokenStream) -> TokenStream {
 /// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
 /// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
 /// not supported — reject the value from the conversion's own `Err` instead.
+/// Since the conversion can reject an otherwise-matching `Source`, BNF
+/// output and traces show a side-condition, "be convertible into {name}" —
+/// pick an informative `name` (directly, or via `name = "..."`) if the
+/// default reads too generically.
 #[proc_macro_derive(GrammarTryFromOther, attributes(grammar))]
 pub fn derive_grammar_try_from_source(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::TryFrom)
@@ -311,7 +319,7 @@ fn parse_at(validated: bool, fields: &ProcessedFields, constructor: &TokenStream
                 state.expect(pos, ::tygr::Expectation::Valid {
                     node: Self::NAME,
                     text: input[start_pos..pos].to_string(),
-                    be_valid,
+                    requirement: <Self as ::tygr::Validate>::REQUIREMENT,
                 });
             }
         } else if cfg!(feature = "trace_pos") {
@@ -324,7 +332,7 @@ fn parse_at(validated: bool, fields: &ProcessedFields, constructor: &TokenStream
         (
             quote! { let start_pos = pos; },
             quote! {
-                if let Some(be_valid) = ::tygr::Validation::be_valid(::tygr::Validate::validate(&value)) {
+                if !::tygr::Validate::validate(&value) {
                     #trace
                     return None
                 }
@@ -394,11 +402,11 @@ fn fail_at(fields: &ProcessedFields) -> TokenStream2 {
     }
 }
 
-fn bnf_ref(grammar_name: &str, hidden: bool, to_bnf: TokenStream2, inline: bool) -> TokenStream2 {
+fn bnf_ref(grammar_name: &str, hidden: bool, to_bnf: &TokenStream2, inline: bool) -> TokenStream2 {
     if hidden {
         quote! { ::tygr::bnf::Expr::empty() }
     } else if inline {
-        to_bnf
+        quote! { #to_bnf }
     } else {
         quote! { ::tygr::bnf::Expr::RuleRef(#grammar_name.to_string()) }
     }
@@ -454,6 +462,7 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
         ));
     }
     let name = name.unwrap_or_else(|| default_name(ident));
+    let requirement = format!("be convertible into {name}");
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let self_ty = quote! { #ident #ty_generics };
     let source = quote! { <#self_ty as ::tygr::GrammarFrom>::Source };
@@ -465,6 +474,7 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
                 ::tygr::Expectation::GrammarFrom {
                     from: input[pos..end].to_string(),
                     into: Self::NAME,
+                    requirement: #requirement,
                     fail: ::std::string::ToString::to_string(&err),
                 },
             );
@@ -513,8 +523,14 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
             Self::parse_at(input, pos, state).map(|(_, end)| end)
         },
     };
-    let to_bnf_def = quote! { <#source as ::tygr::Grammar>::to_bnf() };
-    let bnf_ref = bnf_ref(&name, hidden, to_bnf_def.clone(), inline);
+    let to_bnf = quote! { <#source as ::tygr::Grammar>::to_bnf() };
+    let to_bnf = match convert {
+        Convert::From => to_bnf,
+        Convert::FromStr | Convert::TryFrom => quote! {
+            ::tygr::bnf::Expr::side_condition(#to_bnf, #requirement)
+        },
+    };
+    let bnf_ref = bnf_ref(&name, hidden, &to_bnf, inline);
     Ok(quote! {
         impl #impl_generics ::tygr::Grammar for #self_ty #where_clause {
             type First = <#source as ::tygr::Grammar>::First;
@@ -546,7 +562,7 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
             const NAME: &'static str = #name;
 
             fn to_bnf_def() -> ::tygr::bnf::Expr {
-                #to_bnf_def
+                #to_bnf
             }
         }
     })
@@ -575,7 +591,12 @@ fn impl_struct(
     let parse_at = with_node(inline, parse_at);
     let scan_at = with_node(inline, scan_at);
     let fail_at = with_node(inline, fail_at);
-    let bnf_ref = bnf_ref(&name, hidden, to_bnf.clone(), inline);
+    let to_bnf = if validated {
+        quote! { ::tygr::bnf::Expr::side_condition(#to_bnf, <Self as ::tygr::Validate>::REQUIREMENT) }
+    } else {
+        to_bnf
+    };
+    let bnf_ref = bnf_ref(&name, hidden, &to_bnf, inline);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     Ok(quote! {
         impl #impl_generics ::tygr::Grammar for #ident #ty_generics #where_clause {
@@ -662,7 +683,12 @@ fn impl_enum(
         variants.fold(first, |acc, next| quote! { (#acc) & (#next) })
     };
     let to_bnf = quote! { ::tygr::bnf::Expr::alternation(vec![ #(#each_to_bnf),* ]) };
-    let bnf_ref = bnf_ref(&name, hidden, to_bnf.clone(), inline);
+    let to_bnf = if validated {
+        quote! { ::tygr::bnf::Expr::side_condition(#to_bnf, <Self as ::tygr::Validate>::REQUIREMENT) }
+    } else {
+        to_bnf
+    };
+    let bnf_ref = bnf_ref(&name, hidden, &to_bnf, inline);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let n = each_first.len();
     let self_ty = quote! { #ident #ty_generics };

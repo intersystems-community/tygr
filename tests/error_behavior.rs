@@ -96,6 +96,7 @@ fn conversion_records_from_str_error() {
                     expectation: Expectation::GrammarFrom {
                         from: "999".to_string(),
                         into: "SmallNumber",
+                        requirement: "be convertible into SmallNumber",
                         fail: "number too large to fit in target type".to_string(),
                     },
                 },
@@ -105,19 +106,27 @@ fn conversion_records_from_str_error() {
     );
 }
 
+#[test]
+fn conversion_bnf_shows_the_default_requirement() {
+    assert_eq!(
+        SmallNumber::bnf_rule(),
+        "SmallNumber = ( 'digit' { 'digit' } ) ^1 .\n\n^1: be convertible into SmallNumber"
+    );
+}
+
 #[derive(Grammar, Debug, PartialEq, Eq)]
 #[grammar(validated)]
 struct NonZero(StringOf1<IsDigit>);
 
 impl Validate for NonZero {
-    type Result = bool;
+    const REQUIREMENT: &'static str = "be non-zero";
     fn validate(&self) -> bool {
         !self.0.starts_with('0')
     }
 }
 
 #[test]
-fn validated_records_be_valid_message() {
+fn validated_records_requirement() {
     let err = NonZero::parse("007").unwrap_err();
     assert_eq!(
         err,
@@ -132,7 +141,7 @@ fn validated_records_be_valid_message() {
                     expectation: Expectation::Valid {
                         node: "NonZero",
                         text: "007".to_string(),
-                        be_valid: "be valid",
+                        requirement: "be non-zero",
                     },
                 },
             ],
@@ -146,7 +155,7 @@ fn display_includes_position_context_and_expectation() {
     let err = NonZero::parse("007").unwrap_err();
     assert_eq!(
         err.to_string(),
-        "parse error at byte 3, expected:\n\t- Char of digit\n\t- The proceeding NonZero \"007\" to be valid\n"
+        "parse error at byte 3, expected:\n\t- Char of digit\n\t- NonZero \"007\" must be non-zero\n"
     );
 }
 
@@ -167,11 +176,11 @@ fn display_shows_each_expectation_kind() {
         ),
         (
             SmallNumber::parse("999").unwrap_err(),
-            "parse error at byte 3, expected:\n\t- Char of digit\n\t- From 999 to SmallNumber: number too large to fit in target type\n",
+            "parse error at byte 3, expected:\n\t- Char of digit\n\t- From 999 to SmallNumber: must be convertible into SmallNumber (number too large to fit in target type)\n",
         ),
         (
             NonZero::parse("007").unwrap_err(),
-            "parse error at byte 3, expected:\n\t- Char of digit\n\t- The proceeding NonZero \"007\" to be valid\n",
+            "parse error at byte 3, expected:\n\t- Char of digit\n\t- NonZero \"007\" must be non-zero\n",
         ),
     ];
 

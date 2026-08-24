@@ -77,7 +77,7 @@ fn inline_splices_fields_instead_of_referencing_by_rule() {
 struct NonZero(StringOf1<IsDigit>);
 
 impl Validate for NonZero {
-    type Result = bool;
+    const REQUIREMENT: &'static str = "be non-zero";
     fn validate(&self) -> bool {
         !self.0.starts_with('0')
     }
@@ -91,4 +91,67 @@ fn validated_accepts_values_that_pass_validation() {
 #[test]
 fn validated_rejects_values_that_fail_validation() {
     assert!(NonZero::parse("007").is_err());
+}
+
+#[test]
+fn validated_bnf_shows_the_side_condition() {
+    assert_eq!(
+        NonZero::bnf_rule(),
+        "NonZero = ( 'digit' { 'digit' } ) ^1 .\n\n^1: be non-zero"
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+#[grammar(validated)]
+enum ValidatedEnum {
+    A(StringEq!("a")),
+    B(StringEq!("b")),
+}
+
+impl Validate for ValidatedEnum {
+    const REQUIREMENT: &'static str = "be a recognized token";
+    fn validate(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn validated_enum_bnf_shows_the_side_condition_around_the_whole_alternation() {
+    assert_eq!(
+        ValidatedEnum::bnf_rule(),
+        "ValidatedEnum = ( \"a\" | \"b\" ) ^1 .\n\n^1: be a recognized token"
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+#[grammar(inline, validated)]
+struct InlineNonZero(StringOf1<IsDigit>);
+
+impl Validate for InlineNonZero {
+    const REQUIREMENT: &'static str = "be non-zero";
+    fn validate(&self) -> bool {
+        !self.0.starts_with('0')
+    }
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+struct UsesInlineValidated(InlineNonZero, Digits);
+
+#[test]
+fn inline_validated_side_condition_propagates_into_the_splice() {
+    assert_eq!(
+        UsesInlineValidated::bnf_rule(),
+        "UsesInlineValidated = ( ( 'digit' { 'digit' } ) ^1 ) Digits .\n\n^1: be non-zero"
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+struct UsesInlineValidatedTwice(InlineNonZero, InlineNonZero);
+
+#[test]
+fn repeated_inline_validated_side_condition_gets_one_deduplicated_footnote() {
+    assert_eq!(
+        UsesInlineValidatedTwice::bnf_rule(),
+        "UsesInlineValidatedTwice = ( ( 'digit' { 'digit' } ) ^1 ) ( ( 'digit' { 'digit' } ) ^1 ) .\n\n^1: be non-zero"
+    );
 }

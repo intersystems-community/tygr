@@ -8,8 +8,7 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
 
 - Changed `VecSep<T, S>`'s representation from `head`/`rest` fields with
   `items()`/`seps()` accessor methods to public `items: Vec<T>` and
-  `seps: Vec<S>` fields, giving direct (including mutable) access
-  ([#20](https://github.com/intersystems-community/tygr/issues/20)).
+  `seps: Vec<S>` fields, giving direct (including mutable) access.
 - Moved the FIRST-set types out of the crate root into a new `first`
   module, and renamed them for readability: `First::UEmpty` →
   `First::Nullable`, `First::UChar`/`UCharCI` → `First::WithChar`/
@@ -18,16 +17,34 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
   plumbing manual `impl Grammar`s never needed. Documented, on
   `Grammar::First`, the three ways a manual `impl Grammar` picks its
   `First`.
+- Simplified `Validate`: dropped the `Validation` trait and the
+  `type Result: Validation` associated type — `validate()` now returns
+  a plain `bool`, and the rejection message is a mandatory
+  `const REQUIREMENT: &'static str` on the trait itself, shown in both
+  error traces and generated BNF (no default — it's user-facing
+  documentation, not just an error detail, so every `impl Validate`
+  must supply something concrete). Renamed `Expectation::Valid`'s
+  `be_valid` field to `requirement`, and reworded its `Display` output
+  from "The proceeding {node} \"{text}\" to {be_valid}" to
+  "{node} \"{text}\" must {requirement}".
 
 ### Non-breaking Changes
 
+- Added `bnf::Expr::SideCondition`, and wired it into generated BNF: a
+  `#[grammar(validated)]` type's own rule definition now shows a
+  numbered marker (`^1`, `^2`, ...) with the text — `Validate::REQUIREMENT`,
+  or for `GrammarFromStr`/`GrammarTryFromOther`, "be convertible into
+  {name}" (pick an informative `name` if that reads too generically) —
+  listed as a footnote after the rule. Footnotes are deduplicated by
+  string equality within a rule, so the same side-condition repeated
+  (e.g. via `#[grammar(inline)]`) gets one shared marker. Also added the
+  requirement text to `Expectation::GrammarFrom`'s trace, alongside the
+  existing conversion-error `fail` text.
 - Added `FollowedBy<G>`, the positive-lookahead counterpart to
-  `NotFollowedBy<G>`
-  ([#19](https://github.com/intersystems-community/tygr/issues/19)).
+  `NotFollowedBy<G>`.
 - Fixed BNF output showing empty `[ ]`/`{ }` brackets for an
   `Option`/`Vec` wrapping an entirely-hidden element, instead of omitting
-  it like the hidden element itself would be
-  ([#18](https://github.com/intersystems-community/tygr/issues/18)).
+  it like the hidden element itself would be.
 
 ## [0.3.0] - 2026-08-21
 

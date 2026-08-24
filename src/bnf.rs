@@ -32,6 +32,8 @@ pub enum Expr {
     Optional(Box<Expr>),
     /// Negative lookahead: `!A`.
     NotFollowedBy(Box<Expr>),
+    /// A side-condition beyond the shown syntax: `A ^1` (see [`Expr::side_conditions`]).
+    SideCondition(Box<Expr>, &'static str),
 }
 
 /// Binding tightness, from loosest to tightest.
@@ -109,22 +111,67 @@ impl Expr {
         }
     }
 
-    /// Format this expression as EBNF.
+    /// Attach a side-condition to `expr`, reported as a numbered marker —
+    /// see [`Expr::side_conditions`].
+    pub fn side_condition(expr: Expr, text: &'static str) -> Expr {
+        Expr::SideCondition(Box::new(expr), text)
+    }
+
+    /// This expression's [`SideCondition`](Expr::SideCondition) texts, deduplicated by string
+    /// equality, in first-occurrence order — the same order [`format`](
+    /// Self::format) numbers their `^1`, `^2`, ... markers. Callers print
+    /// these as footnotes after the formatted expression.
+    pub fn side_conditions(&self) -> Vec<&'static str> {
+        let mut notes = Vec::new();
+        self.collect_side_conditions(&mut notes);
+        notes
+    }
+
+    fn collect_side_conditions(&self, notes: &mut Vec<&'static str>) {
+        match self {
+            Expr::SideCondition(inner, text) => {
+                inner.collect_side_conditions(notes);
+                if !notes.contains(text) {
+                    notes.push(text);
+                }
+            }
+            Expr::Sequence(exprs) | Expr::Alternation(exprs) => {
+                for expr in exprs {
+                    expr.collect_side_conditions(notes);
+                }
+            }
+            Expr::Repetition(inner) | Expr::Optional(inner) | Expr::NotFollowedBy(inner) => {
+                inner.collect_side_conditions(notes);
+            }
+            Expr::StringEq(_) | Expr::StringEqCI(_) | Expr::RuleRef(_) | Expr::CharOf(_) => {}
+        }
+    }
+
+    /// Format this expression as EBNF. Each [`SideCondition`](Expr::SideCondition) renders as a
+    /// numbered marker (`^1`, `^2`, ...) rather than its text — see
+    /// [`side_conditions`](Self::side_conditions) for the footnotes to print
+    /// alongside.
     pub fn format(&self, f: &mut dyn fmt::Write) -> fmt::Result {
-        self.format_internal(f, Prec::Alternation)
+        let notes = self.side_conditions();
+        self.format_internal(f, Prec::Alternation, &notes)
     }
 
     fn prec(&self) -> Prec {
         match self {
             _ if self.is_empty() => Prec::Atom,
-            Expr::Alternation(_) => Prec::Alternation,
+            Expr::Alternation(_) | Expr::SideCondition(..) => Prec::Alternation,
             Expr::Sequence(_) => Prec::Sequence,
             _ => Prec::Atom,
         }
     }
 
     /// Wrap in parens when this expression binds looser than the surrounding context.
-    fn format_internal(&self, f: &mut dyn fmt::Write, min_prec: Prec) -> fmt::Result {
+    fn format_internal(
+        &self,
+        f: &mut dyn fmt::Write,
+        min_prec: Prec,
+        notes: &[&'static str],
+    ) -> fmt::Result {
         let paren = self.prec() < min_prec;
         if paren {
             write!(f, "( ")?;
@@ -134,21 +181,28 @@ impl Expr {
             Expr::StringEqCI(s) => write!(f, "\"{}\"i", escape_string(s)),
             Expr::RuleRef(name) => write!(f, "{name}"),
             Expr::CharOf(name) => write!(f, "'{}'", escape_char_class(name)),
-            Expr::Sequence(exprs) => Self::format_list(exprs, " ", Prec::Sequence, f),
-            Expr::Alternation(exprs) => Self::format_list(exprs, " | ", Prec::Alternation, f),
+            Expr::Sequence(exprs) => Self::format_list(exprs, " ", Prec::Sequence, f, notes),
+            Expr::Alternation(exprs) => {
+                Self::format_list(exprs, " | ", Prec::Alternation, f, notes)
+            }
             Expr::Repetition(inner) => {
                 write!(f, "{{ ")?;
-                inner.format_internal(f, Prec::Alternation)?;
+                inner.format_internal(f, Prec::Alternation, notes)?;
                 write!(f, " }}")
             }
             Expr::Optional(inner) => {
                 write!(f, "[ ")?;
-                inner.format_internal(f, Prec::Alternation)?;
+                inner.format_internal(f, Prec::Alternation, notes)?;
                 write!(f, " ]")
             }
             Expr::NotFollowedBy(inner) => {
                 write!(f, "!")?;
-                inner.format_internal(f, Prec::Atom)
+                inner.format_internal(f, Prec::Atom, notes)
+            }
+            Expr::SideCondition(inner, text) => {
+                inner.format_internal(f, Prec::Atom, notes)?;
+                let index = notes.iter().position(|note| note == text).unwrap() + 1;
+                write!(f, " ^{index}")
             }
         }?;
         if paren {
@@ -162,6 +216,7 @@ impl Expr {
         sep: &str,
         min_prec: Prec,
         f: &mut dyn fmt::Write,
+        notes: &[&'static str],
     ) -> fmt::Result {
         let mut first = true;
         for expr in exprs {
@@ -169,7 +224,7 @@ impl Expr {
                 if !first {
                     write!(f, "{sep}")?;
                 }
-                expr.format_internal(f, min_prec)?;
+                expr.format_internal(f, min_prec, notes)?;
                 first = false;
             }
         }
