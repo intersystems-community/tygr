@@ -10,6 +10,14 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
   `items()`/`seps()` accessor methods to public `items: Vec<T>` and
   `seps: Vec<S>` fields, giving direct (including mutable) access
   ([#20](https://github.com/intersystems-community/tygr/issues/20)).
+- Moved the FIRST-set types out of the crate root into a new `first`
+  module, and renamed them for readability: `First::UEmpty` →
+  `First::Nullable`, `First::UChar`/`UCharCI` → `First::WithChar`/
+  `WithCharCI`, `EmptyByteSet` → `first::Never`, `AnyCharFirst` →
+  `first::AnyChar`. `ByteSet` is no longer public — it was internal
+  plumbing manual `impl Grammar`s never needed. Documented, on
+  `Grammar::First`, the three ways a manual `impl Grammar` picks its
+  `First`.
 
 ### Non-breaking Changes
 

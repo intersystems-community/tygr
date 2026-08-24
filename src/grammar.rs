@@ -10,6 +10,7 @@
 //! See the crate-level `## Design` section for how Rust constructs map to
 //! EBNF concepts.
 
+use crate::first::{EmptyFirst, First};
 #[cfg(feature = "trace_one_node")]
 use crate::state::Context;
 #[cfg(feature = "trace_pos")]
@@ -22,186 +23,46 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use tygr_derive::Grammar;
 
-#[doc(hidden)]
-pub trait First {
-    type Concat<G: Grammar>: First;
-    type Union<X: First>: First;
-    type UnionByteSet<X: ByteSet>: First;
-    type UEmpty: First;
-    type UChar<const C: char>: First;
-    type UCharCI<const C: char>: First;
-    const CONTAINS_BYTE: [bool; 256];
-    const CONTAINS_NIL: bool;
-}
-
-#[doc(hidden)]
-pub trait ByteSet: First {}
-
-#[doc(hidden)]
-pub struct EmptyByteSet;
-impl ByteSet for EmptyByteSet {}
-impl First for EmptyByteSet {
-    type Concat<G: Grammar> = Self;
-
-    type Union<X: First> = X;
-
-    type UnionByteSet<X: ByteSet> = X;
-
-    type UEmpty = OptionalFirst<Self>;
-
-    type UChar<const D: char> = AddChar<Self, D>;
-
-    type UCharCI<const D: char> = AddCharCI<Self, D>;
-
-    const CONTAINS_BYTE: [bool; 256] = [false; 256];
-
-    const CONTAINS_NIL: bool = false;
-}
-
-#[doc(hidden)]
-pub struct AnyCharFirst;
-impl ByteSet for AnyCharFirst {}
-impl First for AnyCharFirst {
-    type Concat<G: Grammar> = Self;
-
-    type Union<X: First> = X::UnionByteSet<Self>;
-
-    type UnionByteSet<X: ByteSet> = Self;
-
-    type UEmpty = OptionalFirst<Self>;
-
-    type UChar<const D: char> = AddChar<Self, D>;
-
-    type UCharCI<const D: char> = AddCharCI<Self, D>;
-
-    const CONTAINS_BYTE: [bool; 256] = [true; 256];
-
-    const CONTAINS_NIL: bool = false;
-}
-
-#[doc(hidden)]
-pub struct AddChar<B: ByteSet, const C: char>(PhantomData<B>);
-impl<B: ByteSet, const C: char> ByteSet for AddChar<B, C> {}
-impl<B: ByteSet, const C: char> First for AddChar<B, C> {
-    type Concat<G: Grammar> = Self;
-
-    type Union<X: First> = X::UnionByteSet<Self>;
-
-    type UnionByteSet<X: ByteSet> = UnionSet<Self, X>;
-
-    type UEmpty = OptionalFirst<Self>;
-
-    type UChar<const D: char> = AddChar<Self, D>;
-
-    type UCharCI<const D: char> = AddCharCI<Self, D>;
-
-    const CONTAINS_BYTE: [bool; 256] = {
-        let mut map = B::CONTAINS_BYTE;
-        map[first_byte(C) as usize] = true;
-        map
-    };
-
-    const CONTAINS_NIL: bool = false;
-}
-
-/// First UTF-8 byte of `c` — the byte a first-set actually keys on.
-const fn first_byte(c: char) -> u8 {
-    let mut buf = [0u8; 4];
-    c.encode_utf8(&mut buf);
-    buf[0]
-}
-
-#[doc(hidden)]
-pub struct AddCharCI<B: ByteSet, const C: char>(PhantomData<B>);
-impl<B: ByteSet, const C: char> ByteSet for AddCharCI<B, C> {}
-impl<B: ByteSet, const C: char> First for AddCharCI<B, C> {
-    type Concat<G: Grammar> = Self;
-
-    type Union<X: First> = X::UnionByteSet<Self>;
-
-    type UnionByteSet<X: ByteSet> = UnionSet<Self, X>;
-
-    type UEmpty = OptionalFirst<Self>;
-
-    type UChar<const D: char> = AddChar<Self, D>;
-
-    type UCharCI<const D: char> = AddCharCI<Self, D>;
-
-    const CONTAINS_BYTE: [bool; 256] = {
-        let mut map = B::CONTAINS_BYTE;
-        map[first_byte(C.to_ascii_lowercase()) as usize] = true;
-        map[first_byte(C.to_ascii_uppercase()) as usize] = true;
-        map
-    };
-
-    const CONTAINS_NIL: bool = false;
-}
-
-/// Union of two byte sets — a single type node (O(1) depth per union) whose
-/// byte map is the elementwise OR of its operands.
-#[doc(hidden)]
-pub struct UnionSet<A: ByteSet, B: ByteSet>(PhantomData<(A, B)>);
-impl<A: ByteSet, B: ByteSet> ByteSet for UnionSet<A, B> {}
-impl<A: ByteSet, B: ByteSet> First for UnionSet<A, B> {
-    type Concat<G: Grammar> = Self;
-
-    type Union<X: First> = X::UnionByteSet<Self>;
-
-    type UnionByteSet<X: ByteSet> = UnionSet<Self, X>;
-
-    type UEmpty = OptionalFirst<Self>;
-
-    type UChar<const D: char> = AddChar<Self, D>;
-
-    type UCharCI<const D: char> = AddCharCI<Self, D>;
-
-    const CONTAINS_BYTE: [bool; 256] = {
-        let a = A::CONTAINS_BYTE;
-        let b = B::CONTAINS_BYTE;
-        let mut map = [false; 256];
-        let mut i = 0;
-        while i < 256 {
-            map[i] = a[i] || b[i];
-            i += 1;
-        }
-        map
-    };
-
-    const CONTAINS_NIL: bool = false;
-}
-
-pub(crate) type CharFirst<const C: char> = AddChar<EmptyByteSet, C>;
-pub(crate) type CharFirstCI<const C: char> = AddCharCI<EmptyByteSet, C>;
-
-#[doc(hidden)]
-pub struct OptionalFirst<B: ByteSet>(PhantomData<B>);
-
-impl<B: ByteSet> First for OptionalFirst<B> {
-    type Concat<G: Grammar> = <B as First>::Union<G::First>;
-
-    type Union<X: First> = <X::UnionByteSet<B> as First>::UEmpty;
-
-    type UnionByteSet<X: ByteSet> = <B::UnionByteSet<X> as First>::UEmpty;
-
-    type UEmpty = Self;
-
-    type UChar<const D: char> = <B::UChar<D> as First>::UEmpty;
-
-    type UCharCI<const D: char> = <B::UCharCI<D> as First>::UEmpty;
-
-    const CONTAINS_BYTE: [bool; 256] = B::CONTAINS_BYTE;
-
-    const CONTAINS_NIL: bool = true;
-}
-
-pub(crate) type EmptyFirst = OptionalFirst<EmptyByteSet>;
-
 /// Parse, print, and describe (as BNF) a grammar element.
 ///
 /// Implement this by hand only for leaf/wrapper types; for `struct`s and
 /// `enum`s, `#[derive(Grammar)]` generates it (see the crate-level docs).
 pub trait Grammar: Sized + 'static {
-    /// The set of bytes (and whether empty input is valid) this grammar could start with.
+    /// The set of bytes (and whether empty input is valid) this grammar
+    /// could start with — used to fast-path-reject an alternative before
+    /// actually trying to parse it. A manual `impl Grammar` picks its
+    /// `First` one of three ways, in order of preference:
+    ///
+    /// 1. **Delegate** to a grammar this one wraps or forwards to:
+    ///    `type First = T::First;` (e.g. [`Raw<T>`](Raw), `Box<T>`).
+    /// 2. **Build from a known, finite set of characters**: start from
+    ///    [`first::Never`](crate::first::Never) (matches no byte, not
+    ///    nullable) and chain
+    ///    [`WithChar<C>`](crate::first::First::WithChar) /
+    ///    [`WithCharCI<C>`](crate::first::First::WithCharCI) for each
+    ///    character; finish with
+    ///    [`Nullable`](crate::first::First::Nullable) if the grammar can
+    ///    also match empty input.
+    /// 3. **Over-approximate with [`first::AnyChar`](crate::first::AnyChar)**
+    ///    (matches any byte) when the starting characters can't be
+    ///    enumerated at compile time — e.g. behind an arbitrary runtime
+    ///    predicate. `AnyChar` by itself is *not* nullable; add
+    ///    [`Nullable`](crate::first::First::Nullable) if the grammar can
+    ///    also match empty input.
+    ///
+    /// ```
+    /// # use tygr::*;
+    /// # use tygr::first::*;
+    /// // Case 2: matches 'a' or 'b', not nullable.
+    /// type AOrB = <<Never as First>::WithChar<'a'> as First>::WithChar<'b'>;
+    ///
+    /// // Case 3, nullable: matches any single character, or none.
+    /// type MaybeAnyChar = <AnyChar as First>::Nullable;
+    ///
+    /// fn assert_first<T: First>() {}
+    /// assert_first::<AOrB>();
+    /// assert_first::<MaybeAnyChar>();
+    /// ```
     type First: First;
 
     /// Parse the entire `input` as `Self`, failing if any input is left unconsumed.
@@ -530,7 +391,7 @@ impl<T> From<String> for Raw<T> {
 }
 
 impl<T: Grammar> Grammar for Option<T> {
-    type First = <T::First as First>::UEmpty;
+    type First = <T::First as First>::Nullable;
 
     #[inline]
     fn parse_at(input: &str, pos: usize, state: State) -> Option<(Self, usize)> {
@@ -565,7 +426,7 @@ impl<T: Grammar> Grammar for Option<T> {
 }
 
 impl<T: Grammar> Grammar for Vec<T> {
-    type First = <T::First as First>::UEmpty;
+    type First = <T::First as First>::Nullable;
 
     #[inline]
     fn parse_at(input: &str, mut pos: usize, mut state: State) -> Option<(Self, usize)> {

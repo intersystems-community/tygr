@@ -114,6 +114,7 @@
 
 pub mod bnf;
 mod char;
+pub mod first;
 mod grammar;
 mod olc;
 mod state;
