@@ -37,6 +37,8 @@ pub fn derive_grammar(input: TokenStream) -> TokenStream {
 /// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
 /// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
 /// not supported — reject the value from the conversion's own `Err` instead.
+/// Since the conversion can reject an otherwise-matching `Source`, the
+/// rule's own BNF definition shows a side-condition marker.
 #[proc_macro_derive(GrammarFromStr, attributes(grammar))]
 pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::FromStr)
@@ -64,6 +66,8 @@ pub fn derive_grammar_from_source(input: TokenStream) -> TokenStream {
 /// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
 /// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
 /// not supported — reject the value from the conversion's own `Err` instead.
+/// Since the conversion can reject an otherwise-matching `Source`, the
+/// rule's own BNF definition shows a side-condition marker.
 #[proc_macro_derive(GrammarTryFromOther, attributes(grammar))]
 pub fn derive_grammar_try_from_source(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::TryFrom)
@@ -515,6 +519,18 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
     };
     let to_bnf = quote! { <#source as ::tygr::Grammar>::to_bnf() };
     let bnf_ref = bnf_ref(&name, hidden, &to_bnf, inline);
+    // The rule's own definition shows the side-condition; a reference to it
+    // from elsewhere (`RuleRef`, or a spliced `#[grammar(inline)]` body)
+    // doesn't — nesting `^N` inside another rule's sequence would make its
+    // scope ambiguous. Only the BNF gets this: the trace already has the
+    // real conversion error's message, so a generic requirement would only
+    // repeat "this can fail" without adding anything.
+    let to_bnf_def = match convert {
+        Convert::From => to_bnf,
+        Convert::FromStr | Convert::TryFrom => quote! {
+            ::tygr::bnf::Expr::side_condition(#to_bnf, "be convertible")
+        },
+    };
     Ok(quote! {
         impl #impl_generics ::tygr::Grammar for #self_ty #where_clause {
             type First = <#source as ::tygr::Grammar>::First;
@@ -546,7 +562,7 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
             const NAME: &'static str = #name;
 
             fn to_bnf_def() -> ::tygr::bnf::Expr {
-                #to_bnf
+                #to_bnf_def
             }
         }
     })

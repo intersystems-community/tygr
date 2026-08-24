@@ -106,10 +106,10 @@ fn conversion_records_from_str_error() {
 }
 
 #[test]
-fn conversion_bnf_shows_only_the_source_grammar() {
+fn conversion_bnf_shows_the_side_condition() {
     assert_eq!(
         SmallNumber::bnf_rule(),
-        "SmallNumber = 'digit' { 'digit' } ."
+        "SmallNumber = ( 'digit' { 'digit' } ) ^1 .\n\n^1: be convertible"
     );
 }
 

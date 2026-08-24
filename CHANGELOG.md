@@ -32,13 +32,16 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
 
 - Added `bnf::Expr::SideCondition`, and wired it into generated BNF: a
   `#[grammar(validated)]` type's own rule definition now shows a
-  numbered marker (`^1`, `^2`, ...) with `Validate::REQUIREMENT`, listed
-  as a footnote after the rule. Footnotes are deduplicated by string
-  equality within a rule, so the same side-condition repeated (e.g. via
-  `#[grammar(inline)]`) gets one shared marker. `GrammarFromStr`/
-  `GrammarFromOther`/`GrammarTryFromOther` are unaffected — there's no
-  informative text to show beyond what the conversion error's own
-  message already gives at parse time.
+  numbered marker (`^1`, `^2`, ...) with `Validate::REQUIREMENT`, and a
+  fallible `GrammarFromStr`/`GrammarTryFromOther` conversion's shows one
+  with "be convertible" (`GrammarFromOther`'s `From` can't fail, so it's
+  unaffected) — listed as a footnote after the rule. Footnotes are
+  deduplicated by string equality within a rule, so the same
+  side-condition repeated (e.g. via `#[grammar(inline)]`) gets one
+  shared marker. The generic "be convertible" text is BNF-only — the
+  trace for a failed conversion still shows just the real conversion
+  error's message, since a repeated generic requirement there would add
+  nothing.
 - Added `FollowedBy<G>`, the positive-lookahead counterpart to
   `NotFollowedBy<G>`.
 - Fixed BNF output showing empty `[ ]`/`{ }` brackets for an
