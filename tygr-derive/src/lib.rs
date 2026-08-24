@@ -34,11 +34,11 @@ pub fn derive_grammar(input: TokenStream) -> TokenStream {
 /// substring it matched. `Err` backtracks the parse as if nothing had
 /// matched, and is traced under the `trace`/`trace_pos` features.
 ///
-/// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
-/// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
-/// not supported — reject the value from the conversion's own `Err` instead.
-/// Since the conversion can reject an otherwise-matching `Source`, the
-/// rule's own BNF definition shows a side-condition marker.
+/// `#[grammar(...)]` here supports `name = "..."`, `hidden`/`inline`, and
+/// `validated` (as for `#[derive(Grammar)]`) — `Validate::validate` runs
+/// after a successful conversion, independent of the conversion's own
+/// `Err`. Since the conversion can also reject an otherwise-matching
+/// `Source`, the rule's own BNF definition shows a side-condition marker.
 #[proc_macro_derive(GrammarFromStr, attributes(grammar))]
 pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::FromStr)
@@ -49,9 +49,10 @@ pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
 /// Parses `GrammarFrom::Source`, then builds `Self` with `From::from` — this
 /// conversion can't fail, so nothing is traced.
 ///
-/// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
-/// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
-/// not supported — `From` can't fail, so there's no rejection to describe.
+/// `#[grammar(...)]` here supports `name = "..."`, `hidden`/`inline`, and
+/// `validated` (as for `#[derive(Grammar)]`) — `From` itself can't fail, but
+/// `Validate::validate` still runs after the conversion and can reject the
+/// value.
 #[proc_macro_derive(GrammarFromOther, attributes(grammar))]
 pub fn derive_grammar_from_source(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::From)
@@ -63,11 +64,11 @@ pub fn derive_grammar_from_source(input: TokenStream) -> TokenStream {
 /// backtracks the parse as if nothing had matched, and is traced under the
 /// `trace`/`trace_pos` features.
 ///
-/// `#[grammar(...)]` here supports `name = "..."` (override the BNF rule
-/// name) and `hidden`/`inline` (as for `#[derive(Grammar)]`); `validated` is
-/// not supported — reject the value from the conversion's own `Err` instead.
-/// Since the conversion can reject an otherwise-matching `Source`, the
-/// rule's own BNF definition shows a side-condition marker.
+/// `#[grammar(...)]` here supports `name = "..."`, `hidden`/`inline`, and
+/// `validated` (as for `#[derive(Grammar)]`) — `Validate::validate` runs
+/// after a successful conversion, independent of the conversion's own
+/// `Err`. Since the conversion can also reject an otherwise-matching
+/// `Source`, the rule's own BNF definition shows a side-condition marker.
 #[proc_macro_derive(GrammarTryFromOther, attributes(grammar))]
 pub fn derive_grammar_try_from_source(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::TryFrom)
@@ -451,12 +452,6 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
         inline,
         validated,
     } = grammar_attr(input)?;
-    if validated {
-        return Err(syn::Error::new_spanned(
-            ident,
-            "GrammarFromStr/GrammarFromOther/GrammarTryFromOther don't support `#[grammar(validated)]` — reject the value from FromStr/TryFrom's own `Err` instead",
-        ));
-    }
     let name = name.unwrap_or_else(|| default_name(ident));
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let self_ty = quote! { #ident #ty_generics };
@@ -480,11 +475,41 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
     } else {
         quote! {}
     };
+    // After the conversion succeeds, `#[grammar(validated)]` can still
+    // reject `value` — independent of whether the conversion itself can fail.
+    let validate = if validated {
+        let validate_trace = if cfg!(feature = "trace") {
+            quote! {
+                state.expect(end, ::tygr::Expectation::Valid {
+                    node: Self::NAME,
+                    text: input[pos..end].to_string(),
+                    requirement: <Self as ::tygr::Validate>::REQUIREMENT,
+                });
+            }
+        } else if cfg!(feature = "trace_pos") {
+            quote! {
+                state.expect(end);
+            }
+        } else {
+            quote! {}
+        };
+        quote! {
+            if !::tygr::Validate::validate(&value) {
+                #validate_trace
+                return None
+            }
+        }
+    } else {
+        quote! {}
+    };
     let parse_at = match convert {
         Convert::FromStr => quote! {
             let end = <#source as ::tygr::Grammar>::scan_at(input, pos, state.reborrow())?;
             match <#self_ty as ::core::str::FromStr>::from_str(&input[pos..end]) {
-                Ok(value) => Some((value, end)),
+                Ok(value) => {
+                    #validate
+                    Some((value, end))
+                }
                 Err(err) => {
                     #trace
                     let _ = &err;
@@ -494,12 +519,17 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
         },
         Convert::From => quote! {
             let (source, end) = <#source as ::tygr::Grammar>::parse_at(input, pos, state.reborrow())?;
-            Some((<#self_ty as ::core::convert::From<#source>>::from(source), end))
+            let value = <#self_ty as ::core::convert::From<#source>>::from(source);
+            #validate
+            Some((value, end))
         },
         Convert::TryFrom => quote! {
             let (source, end) = <#source as ::tygr::Grammar>::parse_at(input, pos, state.reborrow())?;
             match <#self_ty as ::core::convert::TryFrom<#source>>::try_from(source) {
-                Ok(value) => Some((value, end)),
+                Ok(value) => {
+                    #validate
+                    Some((value, end))
+                }
                 Err(err) => {
                     #trace
                     let _ = &err;
@@ -508,28 +538,36 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
             }
         },
     };
-    // scan_at: `From` can't fail beyond Source; `FromStr`/`TryFrom` run the check.
-    let scan_at = match convert {
-        Convert::From => quote! {
+    // scan_at: infallible `From` alone can just delegate to `Source`; anything
+    // that can still reject (a fallible conversion, or `validated`) has to
+    // run the full check via `parse_at`.
+    let scan_at = if !validated && matches!(convert, Convert::From) {
+        quote! {
             <#source as ::tygr::Grammar>::scan_at(input, pos, state)
-        },
-        Convert::FromStr | Convert::TryFrom => quote! {
+        }
+    } else {
+        quote! {
             Self::parse_at(input, pos, state).map(|(_, end)| end)
-        },
+        }
     };
     let to_bnf = quote! { <#source as ::tygr::Grammar>::to_bnf() };
     let bnf_ref = bnf_ref(&name, hidden, &to_bnf, inline);
     // The rule's own definition shows the side-condition; a reference to it
     // from elsewhere (`RuleRef`, or a spliced `#[grammar(inline)]` body)
     // doesn't — nesting `^N` inside another rule's sequence would make its
-    // scope ambiguous. Only the BNF gets this: the trace already has the
-    // real conversion error's message, so a generic requirement would only
-    // repeat "this can fail" without adding anything.
+    // scope ambiguous. The conversion's own side-condition is BNF-only (the
+    // trace already has the real conversion error's message); `validated`'s
+    // is also traced, same as for `#[derive(Grammar)]`.
     let to_bnf_def = match convert {
         Convert::From => to_bnf,
         Convert::FromStr | Convert::TryFrom => quote! {
             ::tygr::bnf::Expr::side_condition(#to_bnf, "be convertible")
         },
+    };
+    let to_bnf_def = if validated {
+        quote! { ::tygr::bnf::Expr::side_condition(#to_bnf_def, <Self as ::tygr::Validate>::REQUIREMENT) }
+    } else {
+        to_bnf_def
     };
     Ok(quote! {
         impl #impl_generics ::tygr::Grammar for #self_ty #where_clause {

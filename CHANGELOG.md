@@ -42,6 +42,12 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
   trace for a failed conversion still shows just the real conversion
   error's message, since a repeated generic requirement there would add
   nothing.
+- `#[grammar(validated)]` is no longer rejected on `GrammarFromStr`/
+  `GrammarFromOther`/`GrammarTryFromOther` — `Validate::validate` now
+  runs after a successful conversion on any of them, independent of
+  whether the conversion itself can fail. `GrammarFromOther`'s `scan_at`
+  now runs the full check via `parse_at` when `validated`, rather than
+  delegating straight to `Source::scan_at`.
 - Added `FollowedBy<G>`, the positive-lookahead counterpart to
   `NotFollowedBy<G>`.
 - Fixed BNF output showing empty `[ ]`/`{ }` brackets for an
