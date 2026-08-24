@@ -87,16 +87,26 @@ impl Expr {
         }
     }
 
-    /// Create a repetition, dropping any hidden (`Empty`) elements first.
+    /// Create a repetition, dropping any hidden (`Empty`) elements first; an
+    /// entirely-hidden inner expression vanishes rather than showing as `{ }`.
     pub fn repetition(expr: Expr) -> Expr {
         let expr = expr.remove_empties();
-        Expr::Repetition(Box::new(expr))
+        if expr.is_empty() {
+            expr
+        } else {
+            Expr::Repetition(Box::new(expr))
+        }
     }
 
-    /// Create an optional, dropping any hidden (`Empty`) elements first.
+    /// Create an optional, dropping any hidden (`Empty`) elements first; an
+    /// entirely-hidden inner expression vanishes rather than showing as `[ ]`.
     pub fn optional(expr: Expr) -> Expr {
         let expr = expr.remove_empties();
-        Expr::Optional(Box::new(expr))
+        if expr.is_empty() {
+            expr
+        } else {
+            Expr::Optional(Box::new(expr))
+        }
     }
 
     /// Format this expression as EBNF.

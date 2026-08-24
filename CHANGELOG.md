@@ -2,6 +2,25 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
+## [Unreleased]
+
+### Breaking Changes
+
+- Changed `VecSep<T, S>`'s representation from `head`/`rest` fields with
+  `items()`/`seps()` accessor methods to public `items: Vec<T>` and
+  `seps: Vec<S>` fields, giving direct (including mutable) access
+  ([#20](https://github.com/intersystems-community/tygr/issues/20)).
+
+### Non-breaking Changes
+
+- Added `FollowedBy<G>`, the positive-lookahead counterpart to
+  `NotFollowedBy<G>`
+  ([#19](https://github.com/intersystems-community/tygr/issues/19)).
+- Fixed BNF output showing empty `[ ]`/`{ }` brackets for an
+  `Option`/`Vec` wrapping an entirely-hidden element, instead of omitting
+  it like the hidden element itself would be
+  ([#18](https://github.com/intersystems-community/tygr/issues/18)).
+
 ## [0.3.0] - 2026-08-21
 
 ### Breaking Changes

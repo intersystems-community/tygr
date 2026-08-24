@@ -39,6 +39,24 @@ fn hidden_field_vanishes_from_the_outer_rule_but_still_parses_and_prints() {
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
+struct UsesOptionalHidden(Option<Semi>, Digits);
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+struct UsesRepeatedHidden(Vec<Semi>, Digits);
+
+#[test]
+fn optional_or_repeated_hidden_field_vanishes_instead_of_showing_empty_brackets() {
+    assert_eq!(
+        UsesOptionalHidden::bnf_rule(),
+        "UsesOptionalHidden = Digits ."
+    );
+    assert_eq!(
+        UsesRepeatedHidden::bnf_rule(),
+        "UsesRepeatedHidden = Digits ."
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
 #[grammar(inline)]
 struct Inlined(StringEq!("a"), StringEq!("b"));
 
