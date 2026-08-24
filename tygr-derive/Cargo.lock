@@ -39,7 +39,7 @@ dependencies = [
 
 [[package]]
 name = "tygr-derive"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "either",
  "proc-macro2",

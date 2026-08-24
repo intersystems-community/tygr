@@ -1,6 +1,6 @@
 [package]
 name = "tygr"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Define your grammar once as Rust types and get a parser, printer, and EBNF presentation for free."
@@ -9,7 +9,7 @@ readme = "README.md"
 
 [dependencies]
 either = "1.15.0"
-tygr-derive = { path = "tygr-derive", version = "0.3" }
+tygr-derive = { path = "tygr-derive", version = "0.4" }
 
 [features]
 default = ["trace_one_node"]
