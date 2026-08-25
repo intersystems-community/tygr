@@ -21,6 +21,8 @@ env:
 
 jobs:
   test:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     strategy:
       matrix:
