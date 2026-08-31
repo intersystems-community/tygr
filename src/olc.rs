@@ -157,8 +157,8 @@ mod tests {
 
     #[test]
     fn three_byte_utf8_char() {
-        // '華' is 3 bytes in UTF-8, 1 unit in UTF-16.
-        check_all_offsets("華語");
+        // '平' is 3 bytes in UTF-8, 1 unit in UTF-16.
+        check_all_offsets("平安");
     }
 
     #[test]
@@ -169,12 +169,12 @@ mod tests {
 
     #[test]
     fn mixed_non_ascii_across_lines() {
-        check_all_offsets("café\n華語\na😀b\nplain");
+        check_all_offsets("café\n平安\na😀b\nplain");
     }
 
     #[test]
     fn line_character_to_offset_round_trips() {
-        let input = "café\n華語\na😀b\nplain";
+        let input = "café\n平安\na😀b\nplain";
         let olc = OLC::new(input);
         for offset in 0..=input.len() {
             if !input.is_char_boundary(offset) {
