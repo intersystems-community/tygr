@@ -3,16 +3,12 @@
 //! where `character` is a UTF-16 code-unit offset (as required by the
 //! Language Server Protocol's `Position.character`).
 
-/// Converts between byte offsets and `(line, character)` positions in a fixed
-/// input string. `character` is a UTF-16 code-unit offset from the start of
-/// the line, not a byte offset.
+/// Converts between byte offsets and `(line, character)` positions in a
+/// fixed input string.
 pub struct OLC {
-    // One entry per line: the line's starting byte offset, and one
-    // `(byte offset, UTF-16 offset)` checkpoint — both relative to the line
-    // start, both taken right after consuming the character — for every
-    // non-ASCII character in the line. Between checkpoints (and before the
-    // first), the span is pure ASCII, so byte offset and UTF-16 offset
-    // agree there; only the checkpoints need to record where they diverge.
+    // Per line: its starting byte offset, and a (byte, UTF-16) checkpoint
+    // after each non-ASCII char. Byte and UTF-16 offsets agree between
+    // checkpoints, so lookups never need the input text itself.
     lines: Vec<(usize, Vec<(usize, usize)>)>,
 }
 
