@@ -1,41 +1,75 @@
 //! Offset-Line-Character (OLC): converts between byte offsets (as reported by
-//! [`Error::pos`](crate::Error::pos)) and `(line, character)` positions.
+//! [`Error::pos`](crate::Error::pos)) and `(line, character)` positions,
+//! where `character` is a UTF-16 code-unit offset (as required by the
+//! Language Server Protocol's `Position.character`).
 
 /// Converts between byte offsets and `(line, character)` positions in a fixed
-/// input string.
+/// input string. `character` is a UTF-16 code-unit offset from the start of
+/// the line, not a byte offset.
 pub struct OLC {
-    map: Vec<usize>,
+    // One entry per line: the line's starting byte offset, and one
+    // `(byte offset, UTF-16 offset)` checkpoint — both relative to the line
+    // start, both taken right after consuming the character — for every
+    // non-ASCII character in the line. Between checkpoints (and before the
+    // first), the span is pure ASCII, so byte offset and UTF-16 offset
+    // agree there; only the checkpoints need to record where they diverge.
+    lines: Vec<(usize, Vec<(usize, usize)>)>,
 }
 
 impl OLC {
-    /// Index `input`'s line boundaries, for later offset/line-character conversions.
+    /// Index `input`'s line boundaries and non-ASCII characters, for later
+    /// offset/line-character conversions.
     pub fn new(input: &str) -> Self {
-        let mut map = vec![];
+        let mut lines = vec![];
+        let mut line_start = 0;
+        let mut checkpoints = vec![];
+        let mut utf16_in_line = 0;
         for (i, ch) in input.char_indices() {
             if ch == '\n' {
-                map.push(i + 1);
+                lines.push((line_start, checkpoints));
+                line_start = i + 1;
+                checkpoints = vec![];
+                utf16_in_line = 0;
+                continue;
+            }
+            let byte_len = ch.len_utf8();
+            utf16_in_line += ch.len_utf16();
+            if byte_len > 1 {
+                checkpoints.push((i - line_start + byte_len, utf16_in_line));
             }
         }
-        Self { map }
+        lines.push((line_start, checkpoints));
+        Self { lines }
     }
 
-    /// Convert a byte offset into a zero-indexed `(line, character)` pair.
+    /// Convert a byte offset into a zero-indexed `(line, character)` pair,
+    /// where `character` is a UTF-16 code-unit offset.
     pub fn offset_to_line_character(&self, offset: usize) -> (usize, usize) {
-        let line = self.map.partition_point(|&line_start| line_start <= offset);
-        if line == 0 {
-            (0, offset)
+        let line = self.lines.partition_point(|&(start, _)| start <= offset) - 1;
+        let (line_start, checkpoints) = &self.lines[line];
+        let byte_in_line = offset - line_start;
+        let idx = checkpoints.partition_point(|&(cb, _)| cb <= byte_in_line);
+        let character = if idx == 0 {
+            byte_in_line
         } else {
-            (line, offset - self.map[line - 1])
-        }
+            let (cb, cu) = checkpoints[idx - 1];
+            cu + (byte_in_line - cb)
+        };
+        (line, character)
     }
 
-    /// Convert a zero-indexed `(line, character)` pair into a byte offset.
+    /// Convert a zero-indexed `(line, character)` pair — `character` a
+    /// UTF-16 code-unit offset — into a byte offset.
     pub fn line_character_to_offset(&self, (line, character): (usize, usize)) -> usize {
-        if line == 0 {
+        let (line_start, checkpoints) = &self.lines[line];
+        let idx = checkpoints.partition_point(|&(_, cu)| cu <= character);
+        let byte_in_line = if idx == 0 {
             character
         } else {
-            character + self.map[line - 1]
-        }
+            let (cb, cu) = checkpoints[idx - 1];
+            cb + (character - cu)
+        };
+        line_start + byte_in_line
     }
 }
 
@@ -45,12 +79,15 @@ mod tests {
 
     fn reference_offset_to_line_char(input: &str, offset: usize) -> (usize, usize) {
         let (mut line, mut character) = (0, 0);
-        for ch in input.chars().take(offset) {
+        for (i, ch) in input.char_indices() {
+            if i >= offset {
+                break;
+            }
             if ch == '\n' {
                 line += 1;
                 character = 0;
             } else {
-                character += 1;
+                character += ch.len_utf16();
             }
         }
         (line, character)
@@ -59,6 +96,9 @@ mod tests {
     fn check_all_offsets(input: &str) {
         let olc = OLC::new(input);
         for offset in 0..=input.len() {
+            if !input.is_char_boundary(offset) {
+                continue;
+            }
             let expected = reference_offset_to_line_char(input, offset);
             let actual = olc.offset_to_line_character(offset);
             assert_eq!(
@@ -111,5 +151,41 @@ mod tests {
     #[test]
     fn single_char_lines() {
         check_all_offsets("a\nb\nc\nd");
+    }
+
+    #[test]
+    fn two_byte_utf8_char() {
+        // 'é' is 2 bytes in UTF-8, 1 unit in UTF-16.
+        check_all_offsets("café");
+    }
+
+    #[test]
+    fn three_byte_utf8_char() {
+        // '日' is 3 bytes in UTF-8, 1 unit in UTF-16.
+        check_all_offsets("日本語");
+    }
+
+    #[test]
+    fn four_byte_utf8_char() {
+        // '😀' is 4 bytes in UTF-8, a surrogate pair (2 units) in UTF-16.
+        check_all_offsets("a😀b");
+    }
+
+    #[test]
+    fn mixed_non_ascii_across_lines() {
+        check_all_offsets("café\n日本語\na😀b\nplain");
+    }
+
+    #[test]
+    fn line_character_to_offset_round_trips() {
+        let input = "café\n日本語\na😀b\nplain";
+        let olc = OLC::new(input);
+        for offset in 0..=input.len() {
+            if !input.is_char_boundary(offset) {
+                continue;
+            }
+            let lc = olc.offset_to_line_character(offset);
+            assert_eq!(olc.line_character_to_offset(lc), offset);
+        }
     }
 }
