@@ -72,6 +72,22 @@ impl<M: CharClass> fmt::Debug for CharOf<M> {
     }
 }
 
+// Hand-written, not derived: deriving would add an `M: Serialize` bound,
+// but `M` is just a marker for `CharClass`, never stored.
+#[cfg(feature = "serde")]
+impl<M: CharClass> serde::Serialize for CharOf<M> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, M: CharClass> serde::Deserialize<'de> for CharOf<M> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(CharOf(char::deserialize(deserializer)?, PhantomData))
+    }
+}
+
 impl<M: CharClass> CharOf<M> {
     /// Construct a `CharOf` from an already-known character.
     pub fn new(ch: char) -> Self {
@@ -258,6 +274,18 @@ macro_rules! impl_string_wrapper {
                 &self.0
             }
         }
+        #[cfg(feature = "serde")]
+        impl<C: CharClass> serde::Serialize for $ty<C> {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                self.0.serialize(serializer)
+            }
+        }
+        #[cfg(feature = "serde")]
+        impl<'de, C: CharClass> serde::Deserialize<'de> for $ty<C> {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                Ok($ty(serde::Deserialize::deserialize(deserializer)?))
+            }
+        }
         impl<C: CharClass> IntoInner<String> for $ty<C> {
             fn into_inner(self) -> String {
                 self.0.0
@@ -432,6 +460,23 @@ impl<T> PartialEq for StringEq<T> {
 
 impl<T> Eq for StringEq<T> {}
 
+// `StringEq<T>` has exactly one possible value (`T::expectation()`, fixed at
+// compile time), so it carries no information worth serializing.
+#[cfg(feature = "serde")]
+impl<T> serde::Serialize for StringEq<T> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_unit()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, T> serde::Deserialize<'de> for StringEq<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        <() as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::default())
+    }
+}
+
 /// `Grammar` for a `StringEqCI!` chain. Case-insensitive, so the matched text
 /// can differ from `T::expectation()`'s casing — it's captured once here
 /// rather than per chain link.
@@ -498,3 +543,19 @@ impl<T> PartialEq for StringEqCI<T> {
 }
 
 impl<T> Eq for StringEqCI<T> {}
+
+// Hand-written, not derived: deriving would add a `T` bound, but `T` is a
+// phantom marker, never stored.
+#[cfg(feature = "serde")]
+impl<T> serde::Serialize for StringEqCI<T> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, T> serde::Deserialize<'de> for StringEqCI<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(StringEqCI(String::deserialize(deserializer)?, PhantomData))
+    }
+}

@@ -245,6 +245,7 @@ pub trait GrammarRule: Grammar {
 /// struct Ws(StringOf<IsSpace>);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Grammar)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[grammar(hidden)]
 pub struct Hidden<T>(T);
 
@@ -360,6 +361,22 @@ impl<T> Eq for Raw<T> {}
 impl<T> std::hash::Hash for Raw<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.hash(state);
+    }
+}
+
+// Hand-written, not derived: deriving would add a `T` bound, but `T` is a
+// phantom marker, never stored.
+#[cfg(feature = "serde")]
+impl<T> serde::Serialize for Raw<T> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, T> serde::Deserialize<'de> for Raw<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(Raw(String::deserialize(deserializer)?, PhantomData))
     }
 }
 
@@ -707,6 +724,23 @@ impl<G> std::hash::Hash for NotFollowedBy<G> {
     fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
 }
 
+// `NotFollowedBy<G>` consumes and prints nothing, so it carries no
+// information worth serializing.
+#[cfg(feature = "serde")]
+impl<G> serde::Serialize for NotFollowedBy<G> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_unit()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, G> serde::Deserialize<'de> for NotFollowedBy<G> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        <() as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::default())
+    }
+}
+
 /// Zero-width positive lookahead: matches the empty string, but only when the
 /// following input *does* match the wrapped grammar. Consumes nothing and
 /// prints nothing.
@@ -723,6 +757,7 @@ pub type FollowedBy<G> = NotFollowedBy<NotFollowedBy<G>>;
 
 /// Wrapper that records the `[start, end)` input span its ranged value was parsed from.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Range<T> {
     /// Byte offset where the ranged value started matching.
     pub start: usize,

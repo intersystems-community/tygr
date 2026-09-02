@@ -10,6 +10,7 @@ readme = "README.md"
 [dependencies]
 either = "1.15.0"
 tygr-derive = { path = "tygr-derive", version = "0.4" }
+serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
 default = ["trace_one_node"]
@@ -19,6 +20,10 @@ trace_one_node = ["trace_pos", "tygr-derive/trace"]
 trace_all_nodes = ["trace_one_node"]
 lower_bnf_name = ["tygr-derive/lower_bnf_name"]
 upper_bnf_name = ["tygr-derive/upper_bnf_name"]
+serde = ["dep:serde", "either/serde"]
+
+[dev-dependencies]
+serde_json = "1"
 
 [[bench]]
 name = "json_optimized"

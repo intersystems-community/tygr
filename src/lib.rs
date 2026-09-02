@@ -57,6 +57,7 @@
 //! | `trace_all_nodes` | Traces the complete grammar node chain for each attempt. |
 //! | `lower_bnf_name` | Converts generated BNF names to lowercase. |
 //! | `upper_bnf_name` | Converts generated BNF names to uppercase. |
+//! | `serde` | Implements `Serialize`/`Deserialize` on the built-in grammar types. |
 //!
 //! ## Quick Example
 //!
@@ -277,6 +278,7 @@ pub struct VecSepSource<T, S> {
 
 /// One or more items, with a separator between each pair.
 #[derive(Debug, Clone, PartialEq, Eq, GrammarFromOther)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[grammar(inline)]
 pub struct VecSep<T, S> {
     /// The `T` items, in order.
@@ -333,6 +335,7 @@ impl<T, S> VecSep<T, S> {
 
 /// Sequence of three grammars, [`Deref`]-ing to the middle one.
 #[derive(Debug, Clone, PartialEq, Eq, Grammar)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[grammar(inline)]
 pub struct Wrap<L, T, R> {
     /// The leading element.
@@ -376,6 +379,7 @@ impl<L, T, E, R> Wrap<L, Result<T, E>, R> {
 
 /// Sequence of two grammars, [`Deref`]-ing to the second.
 #[derive(Debug, Clone, PartialEq, Eq, Grammar)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[grammar(inline)]
 pub struct Prefix<P, T> {
     prefix: P,
@@ -385,6 +389,7 @@ pub struct Prefix<P, T> {
 
 /// Sequence of two grammars, [`Deref`]-ing to the first.
 #[derive(Debug, Clone, PartialEq, Eq, Grammar)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[grammar(inline)]
 pub struct Suffix<T, S> {
     suffixed: T,
