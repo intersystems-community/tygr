@@ -414,6 +414,11 @@ impl<P, T> Deref for Prefix<P, T> {
 }
 
 impl<P, T> Prefix<P, T> {
+    /// Construct a `Prefix` from its two parts.
+    pub fn new(prefix: P, prefixed: T) -> Self {
+        Self { prefix, prefixed }
+    }
+
     /// Apply `f` to the prefixed value, keeping `prefix` unchanged.
     pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Prefix<P, U> {
         Prefix {
@@ -434,6 +439,11 @@ impl<P, T, E> Prefix<P, Result<T, E>> {
 }
 
 impl<T, S> Suffix<T, S> {
+    /// Construct a `Suffix` from its two parts.
+    pub fn new(suffixed: T, suffix: S) -> Self {
+        Self { suffixed, suffix }
+    }
+
     /// Apply `f` to the suffixed value, keeping `suffix` unchanged.
     pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Suffix<U, S> {
         Suffix {

@@ -835,6 +835,7 @@ impl<T: Grammar> Grammar for Range<T> {
 }
 
 /// Like `Vec`, but matches *one or more* items rather than zero or more.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Vec1<T>(Vec<T>);
 
 impl<T> Deref for Vec1<T> {
