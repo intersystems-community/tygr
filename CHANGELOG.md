@@ -2,6 +2,22 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
+## [0.5.0] - 2026-09-03
+
+### Breaking Changes
+
+- Changed `OLC::offset_to_line_character`/`line_character_to_offset`'s
+  `character` from a byte offset to a UTF-16 code-unit offset, matching
+  LSP's `Position.character` — a silent behavior change (not a compile
+  error) for any line containing non-ASCII text.
+
+### Non-breaking Changes
+
+- Added `Prefix::new(prefix, prefixed)` and `Suffix::new(suffixed, suffix)`,
+  matching `Wrap::new`'s explicit-all-fields shape.
+- Added `Debug`, `Clone`, `PartialEq`, `Eq` derives to `Vec1<T>`, matching
+  `Range`/`VecSep`/`Wrap` — it previously had none of the four.
+
 ## [0.4.0] - 2026-08-24
 
 ### Breaking Changes
