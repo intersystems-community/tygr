@@ -123,9 +123,9 @@ impl History {
 #[derive(std::fmt::Debug, PartialEq, Eq)]
 pub enum Expectation {
     /// A case-sensitive literal (from `StringEq!`) didn't match.
-    StringEq(String),
+    StringEq(String, String),
     /// A case-insensitive literal (from `StringEqCI!`) didn't match.
-    StringEqCI(String),
+    StringEqCI(String, String),
     /// No character satisfying this [`CharClass`](crate::CharClass) was found.
     CharClass(&'static str),
     /// A `#[grammar(validated)]` type parsed successfully but
@@ -167,9 +167,31 @@ fn escape_string(s: &str) -> String {
 impl Display for Expectation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expectation::StringEq(s) => write!(f, "\"{}\"", escape_string(s)),
-            Expectation::StringEqCI(s) => {
-                write!(f, "\"{}\" (case-insensitive)", escape_string(s))
+            Expectation::StringEq(partial, full) => {
+                // `partial` is always a suffix of `full`; equal length means
+                // no prefix was stripped, i.e. they're the same string.
+                if partial.len() == full.len() {
+                    write!(f, "\"{}\"", escape_string(full))
+                } else {
+                    write!(
+                        f,
+                        "\"{}\" of \"{}\"",
+                        escape_string(partial),
+                        escape_string(full)
+                    )
+                }
+            }
+            Expectation::StringEqCI(partial, full) => {
+                if partial.len() == full.len() {
+                    write!(f, "\"{}\" (case-insensitive)", escape_string(full))
+                } else {
+                    write!(
+                        f,
+                        "\"{}\" of \"{}\" (case-insensitive)",
+                        escape_string(partial),
+                        escape_string(full)
+                    )
+                }
             }
             Expectation::CharClass(c) => write!(f, "Char of {c}"),
             Expectation::Valid {
