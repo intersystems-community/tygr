@@ -2,6 +2,16 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
+## [0.6.1] - 2026-09-04
+
+### Non-breaking Changes
+
+- Fixed `StringEq!`/`StringEqCI!` partial matches (e.g. matching `"-"`
+  of `"->"` then failing on `>`) reporting the failure at the start of
+  the literal instead of where the mismatch actually occurred — a
+  regression introduced alongside 0.6.0's `Expectation::StringEq`/
+  `StringEqCI` fix.
+
 ## [0.6.0] - 2026-09-04
 
 ### Breaking Changes
