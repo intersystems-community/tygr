@@ -193,7 +193,7 @@ fn display_shows_each_expectation_kind() {
         ),
         (
             SmallNumber::parse("999").unwrap_err(),
-            "parse error at byte 3, expected:\n\t- Char of digit\n\t- From 999 to SmallNumber: number too large to fit in target type\n",
+            "parse error at byte 3, expected:\n\t- Char of digit\n\t- From \"999\" to SmallNumber: number too large to fit in target type\n",
         ),
         (
             NonZero::parse("007").unwrap_err(),

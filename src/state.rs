@@ -202,7 +202,7 @@ impl Display for Expectation {
                 write!(f, "{node} \"{}\" must {requirement}", escape_string(text))
             }
             Expectation::GrammarFrom { from, into, fail } => {
-                write!(f, "From {from} to {into}: {fail}")
+                write!(f, "From \"{}\" to {into}: {fail}", escape_string(from))
             }
         }
     }
