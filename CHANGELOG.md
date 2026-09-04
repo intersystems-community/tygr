@@ -2,6 +2,18 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
+## [0.6.0] - 2026-09-04
+
+### Breaking Changes
+
+- Changed `Expectation::StringEq`/`StringEqCI` from a single `String` field
+  to two (`partial`, `full`) — a `StringEq!`/`StringEqCI!` literal that
+  fails partway through (e.g. matching `"-"` of `"->"` then failing on
+  `>`) previously recorded only the unmatched tail (`">"`), losing the
+  whole literal it was actually trying to match. `Display` now shows
+  `"partial" of "full"` when they differ, and just the literal (as
+  before) when they don't.
+
 ## [0.5.0] - 2026-09-03
 
 ### Breaking Changes
