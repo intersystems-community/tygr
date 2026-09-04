@@ -2,6 +2,18 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
+## [0.6.2] - 2026-09-04
+
+### Non-breaking Changes
+
+- Reworded `StringEq!`/`StringEqCI!` partial-match `Display` from
+  `"partial" of "full"` to a possessive, `"full"'s "partial"` (e.g.
+  `"->"'s ">"` instead of `">" of "->"`), which reads in the right
+  direction.
+- Quoted and escaped `GrammarFrom`'s matched text in `Display`,
+  matching how `Valid`'s `text` field (the same kind of raw matched
+  text) is already treated.
+
 ## [0.6.1] - 2026-09-04
 
 ### Non-breaking Changes
