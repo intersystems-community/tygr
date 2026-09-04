@@ -175,9 +175,9 @@ impl Display for Expectation {
                 } else {
                     write!(
                         f,
-                        "\"{}\" of \"{}\"",
-                        escape_string(partial),
-                        escape_string(full)
+                        "\"{}\"'s \"{}\"",
+                        escape_string(full),
+                        escape_string(partial)
                     )
                 }
             }
@@ -187,9 +187,9 @@ impl Display for Expectation {
                 } else {
                     write!(
                         f,
-                        "\"{}\" of \"{}\" (case-insensitive)",
-                        escape_string(partial),
-                        escape_string(full)
+                        "\"{}\"'s \"{}\" (case-insensitive)",
+                        escape_string(full),
+                        escape_string(partial)
                     )
                 }
             }
