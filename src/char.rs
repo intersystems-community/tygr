@@ -277,7 +277,9 @@ impl_string_wrapper!(StringOf1);
 pub trait Token: 'static {
     type First: First;
 
-    fn scan_at(input: &str, pos: usize, state: State) -> Result<usize, String>;
+    // Err: the position the mismatch actually occurred at (past `pos` if a
+    // prefix of the chain matched), paired with what was expected there.
+    fn scan_at(input: &str, pos: usize, state: State) -> Result<usize, (usize, String)>;
 
     fn add_expectation(str: &mut String);
 
@@ -291,7 +293,7 @@ pub trait Token: 'static {
 impl Token for () {
     type First = EmptyFirst;
 
-    fn scan_at(_input: &str, pos: usize, _state: State) -> Result<usize, String> {
+    fn scan_at(_input: &str, pos: usize, _state: State) -> Result<usize, (usize, String)> {
         Ok(pos)
     }
 
@@ -310,11 +312,11 @@ impl<const CH: char, T: Token> Token for CharThen<CH, T> {
         input: &str,
         pos: usize,
         #[allow(unused_variables, unused_mut)] mut state: State,
-    ) -> Result<usize, String> {
+    ) -> Result<usize, (usize, String)> {
         if input[pos..].starts_with(CH) {
             T::scan_at(input, pos + CH.len_utf8(), state)
         } else {
-            Err(Self::expectation())
+            Err((pos, Self::expectation()))
         }
     }
 
@@ -335,10 +337,10 @@ impl<const CH: char, T: Token> Token for CharCIThen<CH, T> {
         input: &str,
         pos: usize,
         #[allow(unused_variables, unused_mut)] mut state: State,
-    ) -> Result<usize, String> {
+    ) -> Result<usize, (usize, String)> {
         match input[pos..].chars().next() {
             Some(c) if c.eq_ignore_ascii_case(&CH) => T::scan_at(input, pos + c.len_utf8(), state),
-            _ => Err(Self::expectation()),
+            _ => Err((pos, Self::expectation())),
         }
     }
 
@@ -367,10 +369,10 @@ impl<T: Token> Grammar for StringEq<T> {
         match T::scan_at(input, pos, state.reborrow()) {
             Ok(pos) => Some(pos),
             #[allow(unused_variables)]
-            Err(expectation) => {
+            Err((fail_pos, expectation)) => {
                 #[cfg(feature = "trace_pos")]
                 state.expect(
-                    pos,
+                    fail_pos,
                     #[cfg(feature = "trace_one_node")]
                     Expectation::StringEq(expectation, T::expectation()),
                 );
@@ -451,10 +453,10 @@ impl<T: Token> Grammar for StringEqCI<T> {
         match T::scan_at(input, pos, state.reborrow()) {
             Ok(pos) => Some(pos),
             #[allow(unused_variables)]
-            Err(expectation) => {
+            Err((fail_pos, expectation)) => {
                 #[cfg(feature = "trace_pos")]
                 state.expect(
-                    pos,
+                    fail_pos,
                     #[cfg(feature = "trace_one_node")]
                     Expectation::StringEqCI(expectation, T::expectation()),
                 );

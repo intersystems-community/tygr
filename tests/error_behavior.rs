@@ -46,6 +46,24 @@ fn string_eq_ci_records_ci_literal() {
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
+struct Arrow(StringEq!("->"));
+
+#[test]
+fn string_eq_partial_match_records_where_it_actually_failed() {
+    let err = Arrow::parse("-x").unwrap_err();
+    assert_eq!(
+        err,
+        Error {
+            traces: vec![Trace {
+                context: vec![frame("Arrow", 0)],
+                expectation: Expectation::StringEq(">".to_string(), "->".to_string()),
+            }],
+            pos: 1,
+        }
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
 struct Digits(StringOf1<IsDigit>);
 
 #[test]
