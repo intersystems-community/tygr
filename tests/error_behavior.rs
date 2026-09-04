@@ -20,7 +20,7 @@ fn string_eq_records_literal() {
         Error {
             traces: vec![Trace {
                 context: vec![frame("Lit", 0)],
-                expectation: Expectation::StringEq("foo".to_string()),
+                expectation: Expectation::StringEq("foo".to_string(), "foo".to_string()),
             }],
             pos: 0,
         }
@@ -38,7 +38,7 @@ fn string_eq_ci_records_ci_literal() {
         Error {
             traces: vec![Trace {
                 context: vec![frame("LitCI", 0)],
-                expectation: Expectation::StringEqCI("foo".to_string()),
+                expectation: Expectation::StringEqCI("foo".to_string(), "foo".to_string()),
             }],
             pos: 0,
         }
@@ -200,7 +200,7 @@ fn context_records_nearest_node() {
         Error {
             traces: vec![Trace {
                 context: vec![frame("Lit", 0)],
-                expectation: Expectation::StringEq("foo".to_string()),
+                expectation: Expectation::StringEq("foo".to_string(), "foo".to_string()),
             }],
             pos: 0,
         }
@@ -216,7 +216,7 @@ fn context_records_full_node_chain() {
         Error {
             traces: vec![Trace {
                 context: vec![frame("Wrapper", 0), frame("Lit", 0)],
-                expectation: Expectation::StringEq("foo".to_string()),
+                expectation: Expectation::StringEq("foo".to_string(), "foo".to_string()),
             }],
             pos: 0,
         }
@@ -242,19 +242,19 @@ fn enum_records_every_variant_when_first_matches_none() {
             traces: vec![
                 Trace {
                     context: vec![frame("Op", 0)],
-                    expectation: Expectation::StringEq("+".to_string()),
+                    expectation: Expectation::StringEq("+".to_string(), "+".to_string()),
                 },
                 Trace {
                     context: vec![frame("Op", 0)],
-                    expectation: Expectation::StringEq("-".to_string()),
+                    expectation: Expectation::StringEq("-".to_string(), "-".to_string()),
                 },
                 Trace {
                     context: vec![frame("Op", 0)],
-                    expectation: Expectation::StringEq("*".to_string()),
+                    expectation: Expectation::StringEq("*".to_string(), "*".to_string()),
                 },
                 Trace {
                     context: vec![frame("Op", 0)],
-                    expectation: Expectation::StringEq("/".to_string()),
+                    expectation: Expectation::StringEq("/".to_string(), "/".to_string()),
                 },
             ],
             pos: 0,
@@ -290,35 +290,35 @@ fn nullable_variant_traces() -> Vec<Trace> {
     vec![
         Trace {
             context: vec![frame("NullableOp", 0)],
-            expectation: Expectation::StringEq("+".to_string()),
+            expectation: Expectation::StringEq("+".to_string(), "+".to_string()),
         },
         Trace {
             context: vec![frame("NullableOp", 0)],
-            expectation: Expectation::StringEq("-".to_string()),
+            expectation: Expectation::StringEq("-".to_string(), "-".to_string()),
         },
         Trace {
             context: vec![frame("NullableOp", 0)],
-            expectation: Expectation::StringEq("*".to_string()),
+            expectation: Expectation::StringEq("*".to_string(), "*".to_string()),
         },
         Trace {
             context: vec![frame("NullableOp", 0)],
-            expectation: Expectation::StringEq("y".to_string()),
+            expectation: Expectation::StringEq("y".to_string(), "y".to_string()),
         },
         Trace {
             context: vec![frame("NullableOpThenTail", 0)],
-            expectation: Expectation::StringEq("TAIL".to_string()),
+            expectation: Expectation::StringEq("TAIL".to_string(), "TAIL".to_string()),
         },
         Trace {
             context: vec![frame("Outermost", 0)],
-            expectation: Expectation::StringEq("b".to_string()),
+            expectation: Expectation::StringEq("b".to_string(), "b".to_string()),
         },
         Trace {
             context: vec![frame("Outermost", 0)],
-            expectation: Expectation::StringEq("c".to_string()),
+            expectation: Expectation::StringEq("c".to_string(), "c".to_string()),
         },
         Trace {
             context: vec![frame("Outermost", 0)],
-            expectation: Expectation::StringEq("d".to_string()),
+            expectation: Expectation::StringEq("d".to_string(), "d".to_string()),
         },
     ]
 }
