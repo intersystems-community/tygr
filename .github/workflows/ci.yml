@@ -20,6 +20,38 @@ env:
   RUSTDOCFLAGS: -D warnings
 
 jobs:
+  version-consistency:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: tygr and tygr-derive versions, and their Cargo.lock entries, line up
+        run: |
+          set -e
+          tygr_version="$(grep -m1 '^version' Cargo.toml | sed -E 's/version *= *"([^"]+)"/\1/')"
+          derive_version="$(grep -m1 '^version' tygr-derive/Cargo.toml | sed -E 's/version *= *"([^"]+)"/\1/')"
+          if [ "$tygr_version" != "$derive_version" ]; then
+            echo "tygr ($tygr_version) and tygr-derive ($derive_version) versions are out of lockstep"
+            exit 1
+          fi
+          check_lock_entry() {
+            local lock="$1" name="$2" expected="$3"
+            local actual
+            actual="$(grep -A1 "name = \"$name\"\$" "$lock" | grep '^version' | head -1 | sed -E 's/version *= *"([^"]+)"/\1/')"
+            if [ "$actual" != "$expected" ]; then
+              echo "$lock's \"$name\" entry ($actual) doesn't match $name's Cargo.toml ($expected)"
+              exit 1
+            fi
+          }
+          check_lock_entry Cargo.lock tygr "$tygr_version"
+          check_lock_entry Cargo.lock tygr-derive "$derive_version"
+          # tygr-derive has its own Cargo.lock, separate from the root one
+          # (there's no [workspace] table linking them), so it needs
+          # checking independently — see #39.
+          check_lock_entry tygr-derive/Cargo.lock tygr-derive "$derive_version"
+
   test:
     permissions:
       contents: read
