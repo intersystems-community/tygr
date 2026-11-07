@@ -237,3 +237,35 @@ fn validated_grammar_from_other_rejects_via_scan_too() {
     assert!(PositiveDoubled::parse("0").is_err());
     assert!(PositiveDoubled::scan("0").is_err());
 }
+
+static CONVERSIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[derive(Debug, GrammarFromStrInfallible)]
+struct Counted(u32);
+
+impl GrammarFrom for Counted {
+    type Source = StringOf1<IsDigit>;
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(self.0.to_string().as_bytes());
+    }
+}
+
+impl FromStr for Counted {
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        CONVERSIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Ok(Counted(s.len() as u32))
+    }
+}
+
+#[test]
+fn grammar_from_str_infallible_converts_the_text_but_not_when_scanning() {
+    use std::sync::atomic::Ordering::Relaxed;
+    assert_eq!(Counted::bnf_rule(), "Counted = 'digit' { 'digit' } .");
+    let before = CONVERSIONS.load(Relaxed);
+    assert!(Counted::scan("123").is_ok());
+    assert_eq!(CONVERSIONS.load(Relaxed), before);
+    assert_eq!(Counted::parse("123").unwrap().0, 3);
+    assert_eq!(CONVERSIONS.load(Relaxed), before + 1);
+    assert!(Counted::parse("x").is_err());
+}

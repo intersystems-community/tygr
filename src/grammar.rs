@@ -199,7 +199,8 @@ pub trait GrammarRule: Grammar {
 }
 
 /// The source grammar of a type built by `GrammarFromStr`,
-/// `GrammarFromOther` or `GrammarTryFromOther`, and how to print it back.
+/// `GrammarFromStrInfallible`, `GrammarFromOther` or `GrammarTryFromOther`,
+/// and how to print it back.
 pub trait GrammarFrom {
     /// The grammar actually parsed.
     type Source: Grammar;

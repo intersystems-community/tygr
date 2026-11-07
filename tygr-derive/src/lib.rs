@@ -28,6 +28,16 @@ pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
     derive_convert(input, Convert::FromStr)
 }
 
+/// `Grammar` by parsing `GrammarFrom::Source` and calling
+/// [`FromStr`](std::str::FromStr) on the matched text, whose `Err` must be
+/// [`Infallible`](std::convert::Infallible). It can't fail, so scanning skips
+/// the conversion. Takes the same `#[grammar(...)]` options as
+/// `#[derive(Grammar)]`.
+#[proc_macro_derive(GrammarFromStrInfallible, attributes(grammar))]
+pub fn derive_grammar_from_str_infallible(input: TokenStream) -> TokenStream {
+    derive_convert(input, Convert::FromStrInfallible)
+}
+
 /// `Grammar` by parsing `GrammarFrom::Source` and converting with
 /// [`From`]. Takes the same `#[grammar(...)]` options as `#[derive(Grammar)]`.
 #[proc_macro_derive(GrammarFromOther, attributes(grammar))]
@@ -46,6 +56,7 @@ pub fn derive_grammar_try_from_source(input: TokenStream) -> TokenStream {
 #[derive(Clone, Copy)]
 enum Convert {
     FromStr,
+    FromStrInfallible,
     From,
     TryFrom,
 }
@@ -526,6 +537,16 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
                 }
             }
         },
+        Convert::FromStrInfallible => quote! {
+            let end = <#source as ::tygr::Grammar>::scan_at(input, pos, state.reborrow())?;
+            // SAFETY: see the invariant on `Grammar::parse_at`.
+            let text = unsafe { ::core::str::from_utf8_unchecked(&input[pos..end]) };
+            let result: ::core::result::Result<#self_ty, ::core::convert::Infallible> =
+                <#self_ty as ::core::str::FromStr>::from_str(text);
+            let Ok(value) = result;
+            #validate
+            Some((value, end))
+        },
         Convert::From => quote! {
             let (source, end) = <#source as ::tygr::Grammar>::parse_at(input, pos, state.reborrow())?;
             let value = <#self_ty as ::core::convert::From<#source>>::from(source);
@@ -547,8 +568,8 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
             }
         },
     };
-    // Only infallible, unvalidated `From` can scan without converting.
-    let scan_at = if !validated && matches!(convert, Convert::From) {
+    // Only infallible, unvalidated conversions can scan without converting.
+    let scan_at = if !validated && matches!(convert, Convert::From | Convert::FromStrInfallible) {
         quote! {
             <#source as ::tygr::Grammar>::scan_at(input, pos, state)
         }
@@ -561,7 +582,7 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
     let bnf_ref = bnf_ref(&name, hidden, &to_bnf, inline);
     // Side-conditions only on the rule's own definition, not references.
     let to_bnf_def = match convert {
-        Convert::From => to_bnf,
+        Convert::From | Convert::FromStrInfallible => to_bnf,
         Convert::FromStr | Convert::TryFrom => quote! {
             ::tygr::bnf::Expr::side_condition(#to_bnf, #CONVERTIBLE)
         },

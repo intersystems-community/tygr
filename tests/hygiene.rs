@@ -41,6 +41,23 @@ impl std::str::FromStr for Num {
     }
 }
 
+#[derive(tygr::GrammarFromStrInfallible)]
+struct Text(String);
+
+impl tygr::GrammarFrom for Text {
+    type Source = tygr::StringOf1<Digit>;
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(self.0.as_bytes());
+    }
+}
+
+impl std::str::FromStr for Text {
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Text(s.to_string()))
+    }
+}
+
 #[test]
 fn derives_compile_and_parse_without_imports() {
     use tygr::Grammar as _;
@@ -48,4 +65,5 @@ fn derives_compile_and_parse_without_imports() {
     assert!(Op::parse("*").is_ok() && Op::parse("x").is_err());
     assert!(NonZero::parse("10").is_ok() && NonZero::parse("00").is_err());
     assert_eq!(Num::parse("42").unwrap().0, 42);
+    assert_eq!(Text::parse("42").unwrap().0, "42");
 }

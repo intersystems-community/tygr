@@ -29,11 +29,16 @@
 //!
 //! For a type that isn't itself a direct concatenation/alternation of other
 //! grammars, but is instead built *from* one (e.g. parsing digits into a
-//! `u32`), derive [`GrammarFromStr`](derive@GrammarFromStr),
-//! [`GrammarFromOther`](derive@GrammarFromOther), or
-//! [`GrammarTryFromOther`](derive@GrammarTryFromOther) instead — each builds
-//! `Self` from a parsed [`GrammarFrom::Source`] via `FromStr`, `From`, or
-//! `TryFrom` respectively.
+//! `u32`), derive one of these instead. Each builds `Self` from a parsed
+//! [`GrammarFrom::Source`]:
+//! - [`GrammarFromStr`](derive@GrammarFromStr): `FromStr` on the matched text.
+//! - [`GrammarFromStrInfallible`](derive@GrammarFromStrInfallible): `FromStr`
+//!   with `Err = Infallible` on the matched text.
+//! - [`GrammarFromOther`](derive@GrammarFromOther): `From` the source value.
+//! - [`GrammarTryFromOther`](derive@GrammarTryFromOther): `TryFrom` the
+//!   source value.
+//!
+//! An infallible, unvalidated conversion is skipped when scanning.
 //!
 //! `#[grammar(...)]` on a `#[derive(Grammar)]` type:
 //! - `name = "..."` — override the BNF rule name (defaults to the type name).
@@ -145,7 +150,7 @@ pub mod __private {
 extern crate self as tygr;
 
 pub use tygr_derive::Grammar;
-pub use tygr_derive::{GrammarFromOther, GrammarFromStr, GrammarTryFromOther};
+pub use tygr_derive::{GrammarFromOther, GrammarFromStr, GrammarFromStrInfallible, GrammarTryFromOther};
 
 /// A literal-string grammar: `StringEq!("->")` matches exactly `->`.
 ///
