@@ -2,6 +2,80 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
+## [Unreleased]
+
+The parser now works on bytes, with string and character grammars built
+on top. On the JSON benchmark (`canada.json`), parsing is about 12× faster
+with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
+(33 → 105 MB/s).
+
+### Breaking Changes
+
+- `Grammar::parse_at`/`scan_at` take `input: &[u8]`, the UTF-8 bytes of
+  the `&str` passed to `parse` and friends (whose signatures are
+  unchanged). Every position is a char boundary; hand-written grammars
+  must keep it that way.
+- `Grammar::print_to` and `GrammarFrom::print_to` write to
+  `&mut Vec<u8>`. `print()` still returns a `String`; the new
+  `print_bytes()` returns the bytes.
+- Removed `CharOf<M>`: a `char_class!` type is now itself the grammar for
+  one matching char (`struct IsDigit(pub char)`). Replace `CharOf<IsDigit>`
+  with `IsDigit`. `CharClass` now requires `Grammar` and gains `new` and
+  `value`; define classes with `char_class!` rather than by hand.
+- `char_class!` requires a `const` predicate, so the class's first bytes
+  are known at compile time and enums can dispatch on them. Most
+  predicates already qualify (`is_ascii_*`, `is_whitespace`, `matches!`);
+  write `matches!(c, 'a'..='f')` rather than `('a'..='f').contains(&c)`.
+  For a predicate that can't be `const`, such as `char::is_alphabetic`,
+  use a `#[grammar(validated)]` type wrapping `char`.
+- `StringOf<C>` and `StringOf1<C>` are type aliases for `Raw<Vec<C>>` and
+  `Raw<Vec1<C>>`, so they `Debug`-print as `Raw(..)`.
+- Renamed `Range<T>` to `Ranged<T>`, freeing the name for
+  `std::ops::Range`. It gains `range() -> Range<usize>`.
+- `StringEqCI!` matches each char's Unicode case mappings rather than only
+  ASCII letters: `"é"` matches `"É"`, and `"ß"` matches `"SS"`.
+- A literal that fails to match is reported as a whole, at the position
+  where it starts. This reverts 0.6.1, which reported partial matches
+  where they diverged: `"->"` against `"-x"` now fails at byte 0 instead
+  of byte 1.
+- `Expectation`:
+  - `StringEq` and `StringEqCI` merged into `Token(&'static [u8])`.
+  - `Valid` and `GrammarFrom` merged into
+    `Rejected { node, range, requirement }`. It records the rejected byte
+    range instead of its text; slice your input to recover it. A failed
+    conversion has the requirement `"be convertible"` and no longer
+    carries the conversion error's message.
+  - `Display` changed to match: `"->"`, `NonZero at 0..3 must be
+    non-zero`, `SmallNumber at 0..3 must be convertible`.
+- `bnf::Expr::StringEq` and `StringEqCI` merged into
+  `Expr::Token { text, case_insensitive }`. A case-insensitive literal
+  without cased chars now prints without the `i` (`"123"`).
+- Reworked `tygr::first` around bytes, for hand-written `Grammar::First`:
+  - Name a constant set with `Required<S>` (not nullable) or `Optional<S>`
+    (nullable), where `S` is built from `byte_set::{Emp, All, One,
+    Between, Union}`.
+  - Combine sets with `First::Seq<G>` (`G` a grammar), `First::Alt<X>`
+    and `First::Opt`.
+  - Query a set with `first::contains::<F>(next: Option<u8>)`.
+  - Removed `Never`, `AnyChar`, `WithChar`, `WithCharCI`, `Nullable`,
+    `CONTAINS_BYTE` and `CONTAINS_NIL`.
+- The types that `StringEq!`/`StringEqCI!` expand to (`StringEq`,
+  `StringEqCI`, `CharThen`, `CharCIThen`) are gone. The macros now expand
+  to internal types; use the macros rather than naming their output.
+
+### Non-breaking Changes
+
+- Removed `examples/json_optimized.rs`. `examples/json.rs` is the one JSON
+  example, and `cargo bench --bench json` benchmarks the same grammar.
+- `char` is a grammar for any one char.
+- The name argument of `char_class!` is optional and defaults to the type
+  name (following `lower_bnf_name`/`upper_bnf_name`, like
+  `#[derive(Grammar)]`).
+- Fixed derived code failing to compile unless `GrammarRule` was in
+  scope (e.g. with `use tygr::Grammar;` instead of `use tygr::*;`).
+- Failed literals, validations and conversions no longer allocate when
+  recording what was expected.
+
 ## [0.6.2] - 2026-09-04
 
 ### Non-breaking Changes

@@ -21,7 +21,7 @@ lower_bnf_name = ["tygr-derive/lower_bnf_name"]
 upper_bnf_name = ["tygr-derive/upper_bnf_name"]
 
 [[bench]]
-name = "json_optimized"
+name = "json"
 harness = false
 
 [lints.clippy]

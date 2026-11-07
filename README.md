@@ -10,12 +10,8 @@ contains a complete arithmetic grammar with parsing, printing, and EBNF generati
 See the crate documentation for the complete API, grammar concepts, and feature
 flags.
 
-For runnable examples, see:
-
-- [`json`](examples/json.rs) — a full JSON grammar.
-- [`json_optimized`](examples/json_optimized.rs) — the same JSON grammar, hand-tuned for parsing throughput.
-
-Each is a small CLI:
+For a runnable example, see [`json`](examples/json.rs), a full JSON grammar
+following json.org. It's a small CLI:
 
 ```sh
 cargo run --example json -- bnf              # print the grammar as EBNF
@@ -23,8 +19,8 @@ echo '{"a": [1, true]}' | cargo run --example json -- parse   # parse, print the
 echo '{"a": 1}'         | cargo run --example json -- test    # check well-formed (exit 0/1)
 ```
 
-The optimized JSON grammar is also benchmarked (`cargo bench`) against the inputs
-in [`data/`](data/).
+The same grammar is benchmarked (`cargo bench`) against the inputs in
+[`data/`](data/).
 
 ## See Also
 

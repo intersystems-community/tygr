@@ -1,23 +1,17 @@
-//! Intermediate representation for BNF/EBNF generation with optimization.
-//!
-//! This module provides an AST for BNF expressions that can be built, optimized,
-//! and then formatted. This allows us to:
-//! - Simplify repetition patterns based on hidden elements
-//! - Detect and simplify enum-as-option patterns
-//!
-//! Formatted output follows Wirth syntax notation — see the crate-level
-//! `## Design` section for the exact notation and its citation.
+//! EBNF expressions (Wirth notation), simplified as they're built.
 
 use std::fmt;
 
-/// Intermediate representation of a BNF/EBNF expression.
-/// All instances are maintained in optimized form.
+/// An EBNF expression, kept simplified.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
-    /// A case-sensitive literal, formatted as `"text"`.
-    StringEq(String),
-    /// A case-insensitive literal, formatted as `"text"i`.
-    StringEqCI(String),
+    /// A token, formatted as `"text"` or `"text"i`.
+    Token {
+        /// The literal.
+        text: String,
+        /// Also matches other cases (`"text"i`).
+        case_insensitive: bool,
+    },
     /// A reference to another named rule.
     RuleRef(String),
     /// A character class, formatted as `'label'`.
@@ -45,9 +39,8 @@ enum Prec {
 }
 
 impl Expr {
-    /// Matches nothing; omitted from formatted output. Represented as an
-    /// empty [`Sequence`](Expr::Sequence) rather than its own variant, since
-    /// `format_list` already renders one as nothing.
+    /// Matches nothing and prints as nothing (an empty
+    /// [`Sequence`](Expr::Sequence)).
     pub fn empty() -> Expr {
         Expr::Sequence(vec![])
     }
@@ -57,9 +50,8 @@ impl Expr {
         matches!(self, Expr::Sequence(exprs) if exprs.is_empty())
     }
 
-    /// Create a sequence, automatically flattening nested sequences.
+    /// A flattened sequence.
     pub fn sequence(mut exprs: Vec<Expr>) -> Expr {
-        // flatten nested sequences
         exprs = exprs
             .into_iter()
             .flat_map(|expr| match expr {
@@ -73,7 +65,7 @@ impl Expr {
         }
     }
 
-    /// Create an alternation, automatically flattening.
+    /// A flattened alternation.
     pub fn alternation(mut exprs: Vec<Expr>) -> Expr {
         exprs = exprs
             .into_iter()
@@ -89,8 +81,7 @@ impl Expr {
         }
     }
 
-    /// Create a repetition, dropping any hidden (`Empty`) elements first; an
-    /// entirely-hidden inner expression vanishes rather than showing as `{ }`.
+    /// `{ expr }`, or nothing if `expr` is empty.
     pub fn repetition(expr: Expr) -> Expr {
         let expr = expr.remove_empties();
         if expr.is_empty() {
@@ -100,8 +91,7 @@ impl Expr {
         }
     }
 
-    /// Create an optional, dropping any hidden (`Empty`) elements first; an
-    /// entirely-hidden inner expression vanishes rather than showing as `[ ]`.
+    /// `[ expr ]`, or nothing if `expr` is empty.
     pub fn optional(expr: Expr) -> Expr {
         let expr = expr.remove_empties();
         if expr.is_empty() {
@@ -111,16 +101,13 @@ impl Expr {
         }
     }
 
-    /// Attach a side-condition to `expr`, reported as a numbered marker —
-    /// see [`Expr::side_conditions`].
+    /// `expr` with a footnoted side-condition.
     pub fn side_condition(expr: Expr, text: &'static str) -> Expr {
         Expr::SideCondition(Box::new(expr), text)
     }
 
-    /// This expression's [`SideCondition`](Expr::SideCondition) texts, deduplicated by string
-    /// equality, in first-occurrence order — the same order [`format`](
-    /// Self::format) numbers their `^1`, `^2`, ... markers. Callers print
-    /// these as footnotes after the formatted expression.
+    /// The side-condition texts, deduplicated, in the order
+    /// [`format`](Self::format) numbers them.
     pub fn side_conditions(&self) -> Vec<&'static str> {
         let mut notes = Vec::new();
         self.collect_side_conditions(&mut notes);
@@ -143,14 +130,11 @@ impl Expr {
             Expr::Repetition(inner) | Expr::Optional(inner) | Expr::NotFollowedBy(inner) => {
                 inner.collect_side_conditions(notes);
             }
-            Expr::StringEq(_) | Expr::StringEqCI(_) | Expr::RuleRef(_) | Expr::CharOf(_) => {}
+            Expr::Token { .. } | Expr::RuleRef(_) | Expr::CharOf(_) => {}
         }
     }
 
-    /// Format this expression as EBNF. Each [`SideCondition`](Expr::SideCondition) renders as a
-    /// numbered marker (`^1`, `^2`, ...) rather than its text — see
-    /// [`side_conditions`](Self::side_conditions) for the footnotes to print
-    /// alongside.
+    /// Write as EBNF; side-conditions become `^1`, `^2`, … markers.
     pub fn format(&self, f: &mut dyn fmt::Write) -> fmt::Result {
         let notes = self.side_conditions();
         self.format_internal(f, Prec::Alternation, &notes)
@@ -165,7 +149,7 @@ impl Expr {
         }
     }
 
-    /// Wrap in parens when this expression binds looser than the surrounding context.
+    /// Parenthesized when it binds looser than its context.
     fn format_internal(
         &self,
         f: &mut dyn fmt::Write,
@@ -177,8 +161,15 @@ impl Expr {
             write!(f, "( ")?;
         }
         match self {
-            Expr::StringEq(s) => write!(f, "\"{}\"", escape_string(s)),
-            Expr::StringEqCI(s) => write!(f, "\"{}\"i", escape_string(s)),
+            Expr::Token {
+                text,
+                case_insensitive,
+            } => write!(
+                f,
+                "\"{}\"{}",
+                escape_string(text),
+                if *case_insensitive { "i" } else { "" }
+            ),
             Expr::RuleRef(name) => write!(f, "{name}"),
             Expr::CharOf(name) => write!(f, "'{}'", escape_char_class(name)),
             Expr::Sequence(exprs) => Self::format_list(exprs, " ", Prec::Sequence, f, notes),

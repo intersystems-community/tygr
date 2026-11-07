@@ -1,3 +1,6 @@
+// Expected BNF spells default rule names; `bnf_names.rs` covers renaming.
+#![cfg(not(any(feature = "lower_bnf_name", feature = "upper_bnf_name")))]
+
 use std::str::FromStr;
 use tygr::*;
 
@@ -163,8 +166,8 @@ struct EvenNumber(u32);
 
 impl GrammarFrom for EvenNumber {
     type Source = StringOf1<IsDigit>;
-    fn print_to(&self, buf: &mut String) {
-        buf.push_str(&self.0.to_string());
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(self.0.to_string().as_bytes());
     }
 }
 
@@ -202,8 +205,8 @@ struct PositiveDoubled(u32);
 
 impl GrammarFrom for PositiveDoubled {
     type Source = StringOf1<IsDigit>;
-    fn print_to(&self, buf: &mut String) {
-        buf.push_str(&(self.0 / 2).to_string());
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        buf.extend_from_slice((self.0 / 2).to_string().as_bytes());
     }
 }
 

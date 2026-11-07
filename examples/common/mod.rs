@@ -18,7 +18,7 @@ fn read_stdin() -> String {
 }
 
 /// `parse`: parse stdin with `R` and print the `Debug` tree.
-pub fn parse<R: Grammar + Debug>() -> ExitCode {
+pub(crate) fn parse<R: Grammar + Debug>() -> ExitCode {
     let input = read_stdin();
     match R::parse(input.trim_end()) {
         Ok(value) => {
@@ -33,7 +33,7 @@ pub fn parse<R: Grammar + Debug>() -> ExitCode {
 }
 
 /// `test`: check that stdin is well-formed under `R`; print `ok` / `error`.
-pub fn test<R: Grammar>() -> ExitCode {
+pub(crate) fn test<R: Grammar>() -> ExitCode {
     let input = read_stdin();
     match R::scan(input.trim_end()) {
         Ok(()) => {
@@ -48,7 +48,7 @@ pub fn test<R: Grammar>() -> ExitCode {
 }
 
 /// Print a usage line naming the available verbs and exit with failure.
-pub fn usage(name: &str) -> ExitCode {
+pub(crate) fn usage(name: &str) -> ExitCode {
     eprintln!("usage: {name} <bnf|parse|test>");
     eprintln!("  bnf          print the grammar as EBNF");
     eprintln!("  parse        parse stdin, print the AST");

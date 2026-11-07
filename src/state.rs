@@ -2,10 +2,9 @@
 use core::str;
 #[cfg(feature = "trace_pos")]
 use std::cmp::Ordering;
-use std::{fmt::Display, marker::PhantomData};
+use std::{fmt::Display, marker::PhantomData, ops::Range};
 
-/// Threaded parse state: the error `History` and the call-stack `Context`.
-/// Both are behind feature flags, so `State` is a ZST when nothing is traced.
+/// Parse state threaded through `parse_at`; a ZST when nothing is traced.
 #[doc(hidden)]
 pub struct State<'a> {
     #[cfg(feature = "trace_pos")]
@@ -29,7 +28,7 @@ impl<'a> State<'a> {
         }
     }
 
-    /// Reborrow for a nested call. `State` isn't `Copy` because it holds `&mut`.
+    /// Reborrow for a nested call.
     pub fn reborrow(&mut self) -> State<'_> {
         State {
             #[cfg(feature = "trace_pos")]
@@ -40,7 +39,7 @@ impl<'a> State<'a> {
         }
     }
 
-    /// Push a rule frame onto the context path (a no-op unless `context` is on).
+    /// Enter rule `node` at `pos`.
     pub fn node(
         &mut self,
         #[allow(unused_variables)] node: &'static str,
@@ -55,7 +54,7 @@ impl<'a> State<'a> {
         }
     }
 
-    /// Record a failed expectation at `other_pos` (a no-op unless tracing).
+    /// Record what was expected at `other_pos`.
     #[cfg(feature = "trace_pos")]
     #[inline]
     pub fn expect(
@@ -72,9 +71,8 @@ impl<'a> State<'a> {
         );
     }
 
-    /// Probe with a throwaway history so a match or miss during lookahead
-    /// doesn't pollute the real error trace.
-    pub fn probe<R>(&mut self, f: impl FnOnce(State<'_>) -> R) -> R {
+    /// Run `f` with a throwaway history, so it leaves no trace.
+    pub(crate) fn probe<R>(&mut self, f: impl FnOnce(State<'_>) -> R) -> R {
         #[cfg(feature = "trace_pos")]
         let mut scratch = History::new();
         f(State::new(
@@ -90,10 +88,24 @@ impl<'a> State<'a> {
 #[derive(std::fmt::Debug, Default)]
 pub(crate) struct History {
     #[cfg(feature = "trace_one_node")]
-    traces: Vec<Trace>,
+    traces: Vec<Pending>,
     #[cfg(feature = "trace_pos")]
     pos: usize,
 }
+
+/// A recorded trace, with its context kept cheap until the parse fails.
+#[cfg(feature = "trace_one_node")]
+#[derive(std::fmt::Debug)]
+struct Pending {
+    frames: Frames,
+    expectation: Expectation,
+}
+
+/// The nearest rule, or (with `trace_all_nodes`) all of them, innermost first.
+#[cfg(all(feature = "trace_one_node", not(feature = "trace_all_nodes")))]
+type Frames = Option<Frame>;
+#[cfg(feature = "trace_all_nodes")]
+type Frames = Vec<Frame>;
 
 #[cfg(feature = "trace_pos")]
 impl History {
@@ -103,13 +115,23 @@ impl History {
 
     pub(crate) fn into_error(self) -> Error {
         #[cfg(feature = "trace_one_node")]
-        let traces = {
-            let mut traces = self.traces;
-            for trace in &mut traces {
-                trace.context.reverse()
-            }
-            traces
-        };
+        let traces = self
+            .traces
+            .into_iter()
+            .map(
+                |Pending {
+                     frames,
+                     expectation,
+                 }| {
+                    let mut context: Vec<Frame> = frames.into_iter().collect();
+                    context.reverse();
+                    Trace {
+                        context,
+                        expectation,
+                    }
+                },
+            )
+            .collect();
         Error {
             #[cfg(feature = "trace_one_node")]
             traces,
@@ -122,31 +144,21 @@ impl History {
 /// One candidate for what would have matched at a [`Trace`]'s recorded position.
 #[derive(std::fmt::Debug, PartialEq, Eq)]
 pub enum Expectation {
-    /// A case-sensitive literal (from `StringEq!`) didn't match.
-    StringEq(String, String),
-    /// A case-insensitive literal (from `StringEqCI!`) didn't match.
-    StringEqCI(String, String),
+    /// This literal (`StringEq!` / `StringEqCI!`) didn't match.
+    Token(&'static [u8]),
     /// No character satisfying this [`CharClass`](crate::CharClass) was found.
     CharClass(&'static str),
-    /// A `#[grammar(validated)]` type parsed successfully but
-    /// [`Validate::validate`](crate::Validate::validate) rejected it.
-    Valid {
-        /// The rejected type's own [`GrammarRule::NAME`](crate::GrammarRule::NAME).
+    /// A rule matched `range` but rejected the result: a
+    /// `#[grammar(validated)]` check or a `GrammarFrom*` conversion failed.
+    Rejected {
+        /// The rule's [`GrammarRule::NAME`](crate::GrammarRule::NAME).
         node: &'static str,
-        /// The raw text that was parsed and then rejected.
-        text: String,
-        /// The rejected type's [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT).
+        /// The bytes it matched.
+        range: Range<usize>,
+        /// What the result must do: a
+        /// [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT), or
+        /// `"be convertible"`.
         requirement: &'static str,
-    },
-    /// A `GrammarFromStr`/`GrammarFromOther`/`GrammarTryFromOther`-derived
-    /// type matched its source grammar but failed to convert.
-    GrammarFrom {
-        /// The raw text that matched the source grammar but failed to convert.
-        from: String,
-        /// The target type's own [`GrammarRule::NAME`](crate::GrammarRule::NAME).
-        into: &'static str,
-        /// The conversion error's `Display` text.
-        fail: String,
     },
 }
 
@@ -167,54 +179,24 @@ fn escape_string(s: &str) -> String {
 impl Display for Expectation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expectation::StringEq(partial, full) => {
-                // `partial` is always a suffix of `full`; equal length means
-                // no prefix was stripped, i.e. they're the same string.
-                if partial.len() == full.len() {
-                    write!(f, "\"{}\"", escape_string(full))
-                } else {
-                    write!(
-                        f,
-                        "\"{}\"'s \"{}\"",
-                        escape_string(full),
-                        escape_string(partial)
-                    )
-                }
-            }
-            Expectation::StringEqCI(partial, full) => {
-                if partial.len() == full.len() {
-                    write!(f, "\"{}\" (case-insensitive)", escape_string(full))
-                } else {
-                    write!(
-                        f,
-                        "\"{}\"'s \"{}\" (case-insensitive)",
-                        escape_string(full),
-                        escape_string(partial)
-                    )
-                }
+            Expectation::Token(t) => {
+                write!(f, "\"{}\"", escape_string(&String::from_utf8_lossy(t)))
             }
             Expectation::CharClass(c) => write!(f, "Char of {c}"),
-            Expectation::Valid {
+            Expectation::Rejected {
                 node,
-                text,
+                range,
                 requirement,
-            } => {
-                write!(f, "{node} \"{}\" must {requirement}", escape_string(text))
-            }
-            Expectation::GrammarFrom { from, into, fail } => {
-                write!(f, "From \"{}\" to {into}: {fail}", escape_string(from))
-            }
+            } => write!(f, "{node} at {range:?} must {requirement}"),
         }
     }
 }
 
-/// One recorded parse attempt at [`Error::pos`] — a rule call chain and what
-/// it expected to find there. Multiple `Trace`s at the same position are
-/// candidates: any one of them matching would have let the parse continue.
+/// One thing that would have let the parse continue at [`Error::pos`].
 #[derive(std::fmt::Debug, PartialEq, Eq)]
 pub struct Trace {
-    /// The nearest enclosing named rule(s), outermost first. Only ever more
-    /// than one element with `trace_all_nodes` enabled.
+    /// Enclosing rules, outermost first (all of them only with
+    /// `trace_all_nodes`).
     pub context: Vec<Frame>,
     /// What was expected at this position.
     pub expectation: Expectation,
@@ -222,29 +204,30 @@ pub struct Trace {
 
 #[cfg(feature = "trace_pos")]
 impl History {
-    pub fn expect(
+    #[inline]
+    fn expect(
         &mut self,
         #[cfg(feature = "trace_one_node")] context: Context<'_>,
         other_pos: usize,
         #[cfg(feature = "trace_one_node")] expectation: Expectation,
     ) {
         #[cfg(feature = "trace_one_node")]
-        let trace = || Trace {
-            context: context.to_vec(),
+        let trace = || Pending {
+            frames: context.frames(),
             expectation,
         };
         match self.pos.cmp(&other_pos) {
             Ordering::Equal => {
                 #[cfg(feature = "trace_one_node")]
-                {
-                    self.traces.push(trace())
-                }
+                self.traces.push(trace());
             }
             Ordering::Less => {
                 self.pos = other_pos;
                 #[cfg(feature = "trace_one_node")]
                 {
-                    self.traces = vec![trace()];
+                    // Reuse the buffer: superseded traces are dropped in place.
+                    self.traces.clear();
+                    self.traces.push(trace());
                 }
             }
             Ordering::Greater => (),
@@ -252,32 +235,27 @@ impl History {
     }
 }
 
-/// Immutable call-stack path threaded by value; a ZST unless `context` is on.
-#[doc(hidden)]
+/// The rule path to the current position.
+#[cfg(feature = "trace_one_node")]
 #[derive(Clone, Copy, Default)]
-pub struct Context<'a>(
-    #[cfg(feature = "trace_one_node")] Option<ContextNode<'a>>,
-    PhantomData<&'a ()>,
-);
+pub(crate) struct Context<'a>(Option<ContextNode<'a>>, PhantomData<&'a ()>);
 
 #[cfg(feature = "trace_one_node")]
 #[derive(Clone, Copy)]
 struct ContextNode<'a> {
     first: Frame,
-    #[cfg(feature = "trace_one_node")]
     _marker: PhantomData<&'a ()>,
     #[cfg(feature = "trace_all_nodes")]
     remaining: &'a Context<'a>,
 }
 
+#[cfg(feature = "trace_one_node")]
 impl<'a> Context<'a> {
-    #[cfg(feature = "trace_one_node")]
     pub(crate) fn new() -> Self {
         Self::default()
     }
 
-    #[cfg(feature = "trace_one_node")]
-    fn to_vec(self) -> Vec<Frame> {
+    fn frames(self) -> Frames {
         #[cfg(feature = "trace_all_nodes")]
         {
             let mut result = vec![];
@@ -290,16 +268,14 @@ impl<'a> Context<'a> {
         }
         #[cfg(not(feature = "trace_all_nodes"))]
         {
-            self.0.map(|node| vec![node.first]).unwrap_or_default()
+            self.0.map(|node| node.first)
         }
     }
 
-    #[cfg(feature = "trace_one_node")]
     fn node(&'a self, node: &'static str, pos: usize) -> Context<'a> {
         Context(
             Some(ContextNode {
                 first: Frame { node, pos },
-                #[cfg(feature = "trace_one_node")]
                 _marker: PhantomData,
                 #[cfg(feature = "trace_all_nodes")]
                 remaining: self,
@@ -309,19 +285,17 @@ impl<'a> Context<'a> {
     }
 }
 
-/// One named rule call in a [`Trace`]'s [`context`](Trace::context).
+/// One entry in a [`Trace`]'s [`context`](Trace::context).
 #[derive(Clone, Copy, std::fmt::Debug, PartialEq, Eq)]
 pub struct Frame {
     /// The rule's name, as in [`GrammarRule::NAME`](crate::GrammarRule::NAME).
     pub node: &'static str,
-    /// The position this rule was entered at.
+    /// Where it was entered.
     pub pos: usize,
 }
 
-/// A parse failure. Carries no detail unless the relevant `trace_*` feature
-/// is enabled (see the crate-level feature flag table); use [`Error::pos`]
-/// and [`Error::traces`] to inspect it rather than the fields directly, since
-/// those degrade gracefully across feature configurations.
+/// A parse failure. Its detail depends on the `trace_*` features; read it
+/// through [`Error::pos`] and [`Error::traces`].
 #[derive(PartialEq, Eq)]
 pub struct Error {
     #[cfg(feature = "trace_one_node")]
@@ -332,7 +306,7 @@ pub struct Error {
     pub pos: usize,
 }
 
-/// Build the parse `Error`. When `history` is off, `Error` carries no data.
+/// The `Error` for a finished parse.
 pub(crate) fn make_error(#[cfg(feature = "trace_pos")] history: History) -> Error {
     #[cfg(feature = "trace_pos")]
     {
@@ -345,8 +319,8 @@ pub(crate) fn make_error(#[cfg(feature = "trace_pos")] history: History) -> Erro
 }
 
 impl Error {
-    /// The candidate expectations recorded at the deepest position reached.
-    /// Empty unless `trace_one_node` is enabled.
+    /// What was expected at [`pos`](Self::pos). Empty without
+    /// `trace_one_node`.
     pub fn traces(&self) -> &[Trace] {
         #[cfg(feature = "trace_one_node")]
         {
@@ -358,8 +332,7 @@ impl Error {
         }
     }
 
-    /// The deepest byte offset the parser reached before giving up. `0`
-    /// unless `trace_pos` is enabled.
+    /// The deepest byte offset reached. `0` without `trace_pos`.
     pub fn pos(&self) -> usize {
         #[cfg(feature = "trace_pos")]
         {
@@ -388,12 +361,9 @@ impl Display for Error {
                          context,
                          expectation,
                      }| {
-                        if let Some(frame) = context.last()
-                            && frame.pos == self.pos
-                        {
-                            frame.node.to_string()
-                        } else {
-                            format!("{expectation}")
+                        match context.last() {
+                            Some(frame) if frame.pos == self.pos => frame.node.to_string(),
+                            _ => format!("{expectation}"),
                         }
                     },
                 )

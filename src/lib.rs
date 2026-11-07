@@ -22,9 +22,9 @@
 //! | [`NotFollowedBy<G>`] | negative lookahead (`!G`), consumes nothing |
 //! | [`FollowedBy<G>`] | positive lookahead (`!!G`), consumes nothing |
 //! | [`Hidden<T>`]  | parsed/printed, omitted from BNF |
-//! | [`Raw<T>`]     | parsed via `T`, kept as the raw matched text |
-//! | [`Range<T>`]   | parsed via `T`, kept alongside its `[start, end)` span |
-//! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | concatenation shorthands, [`Deref`]-ing to `T` |
+//! | [`Raw<T>`] | parsed via `T`, kept as the raw matched text |
+//! | [`Ranged<T>`] | parsed via `T`, kept alongside its `start..end` byte range |
+//! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | concatenation shorthands, [`Deref`](std::ops::Deref)-ing to `T` |
 //! | [`VecSep<T, S>`] | one-or-more repetition with separators (`T { S T }`) |
 //!
 //! For a type that isn't itself a direct concatenation/alternation of other
@@ -100,6 +100,7 @@
 //!
 //! let e = Expr::parse("1 + 2 * 3").unwrap();
 //! assert_eq!(e.print(), "1 + 2 * 3");
+//! # #[cfg(not(any(feature = "lower_bnf_name", feature = "upper_bnf_name")))]
 //! assert_eq!(
 //!     bnf_rules![Expr, Op1, Expr1, Op2, Expr2, Int].to_string(),
 //!     "Expr = Expr1 { Op1 Expr1 } .\n\
@@ -113,39 +114,40 @@
 #![warn(missing_docs)]
 
 pub mod bnf;
-mod char;
+mod combinators;
 pub mod first;
 mod grammar;
 mod olc;
 mod state;
+mod token;
+mod wrappers;
 
-use std::ops::Deref;
-
-pub use char::*;
+pub use combinators::*;
 pub use grammar::*;
 pub use olc::*;
 pub use state::*;
+pub use token::{CharClass, StringOf, StringOf1};
+pub use wrappers::*;
 
-// Re-exported so the `StringEq!()`/`StringEqCI!()` macro expansions can
-// reference them, but hidden from docs so users always reach for the macros
-// instead of naming these types directly. `StringEq`/`StringEqCI` here are
-// types (in the type namespace); the macros of the same name below live in
-// the macro namespace, so there's no conflict.
+// Paths the macros expand to, whatever the user has in scope.
 #[doc(hidden)]
-pub use char::{CharCIThen, CharThen, StringEq, StringEqCI};
+pub mod __private {
+    pub use crate::token::{
+        ByteEq, Literal, NonAsciiStart, Token, class_fail_at, class_parse_at, class_print_to,
+        class_scan_at, class_to_bnf,
+    };
+    pub use either::Either;
+    pub use tygr_derive::__default_name as default_name;
+}
 
-// Lets generated code inside this crate use `::tygr::...` paths, matching
-// how downstream crates refer to it.
+// Lets derived code inside this crate use `::tygr::` paths.
 #[doc(hidden)]
 extern crate self as tygr;
 
 pub use tygr_derive::Grammar;
 pub use tygr_derive::{GrammarFromOther, GrammarFromStr, GrammarTryFromOther};
 
-/// Expand a string literal into a literal-token type.
-///
-/// - Single character: `StringEq!(",")` → `StringEq<CharThen<',', ()>>`
-/// - Multiple characters: `StringEq!("->")` → `StringEq<CharThen<'-', CharThen<'>', ()>>>`
+/// A literal-string grammar: `StringEq!("->")` matches exactly `->`.
 ///
 /// ```
 /// # use tygr::*;
@@ -162,9 +164,8 @@ pub use tygr_derive::{GrammarFromOther, GrammarFromStr, GrammarTryFromOther};
 /// ```
 pub use tygr_derive::StringEq;
 
-/// Expand a string literal into a *case-insensitive* literal-token type.
-///
-/// Like [`StringEq!`], but matches both uppercase and lowercase variants.
+/// A case-insensitive [`StringEq!`]: each char also matches its Unicode
+/// lower/upper case mappings (`'é'` matches `"É"`, `'ß'` matches `"SS"`).
 ///
 /// ```
 /// # use tygr::*;
@@ -176,8 +177,6 @@ pub use tygr_derive::StringEq;
 /// }
 /// ```
 pub use tygr_derive::StringEqCI;
-
-// ── Macros ──────────────────────────────────────────────────────────────────
 
 /// Collect BNF rule definitions from one or more [`GrammarRule`] types.
 ///
@@ -203,287 +202,4 @@ macro_rules! bnf_rules {
         )+
         _buf
     }};
-}
-
-/// Define a [`CharClass`] in one line.
-///
-/// Three forms:
-///
-/// ```
-/// # use tygr::*;
-/// char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
-/// ```
-///
-/// A visibility qualifier is optional (defaults to private):
-///
-/// ```
-/// # use tygr::*;
-/// char_class!(pub IsDigit, "digit", |ch| ch.is_ascii_digit());
-/// ```
-///
-/// ```
-/// # use tygr::*;
-/// char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
-///
-/// #[derive(Grammar)]
-/// struct Num(StringOf1<IsDigit>);
-/// ```
-#[macro_export]
-macro_rules! char_class {
-    ($vis:vis $name:ident, $label:expr, |$ch:ident| $pred:expr) => {
-        $vis struct $name;
-        impl $crate::CharClass for $name {
-            fn matches($ch: char) -> bool { $pred }
-            fn name() -> &'static str { $label }
-        }
-    };
-}
-
-/// Post-parse validation for `#[grammar(validated)]` types.
-///
-/// Return `false` to reject the parsed value — the parse backtracks as if
-/// the grammar hadn't matched, and [`REQUIREMENT`](Validate::REQUIREMENT) is reported
-/// in traces as "must {REQUIREMENT}".
-pub trait Validate {
-    /// The property a value must satisfy — a fixed, per-type description,
-    /// not a per-value diagnostic, since it doesn't depend on `self`. Shown
-    /// in both error traces and generated BNF, so pick something concrete
-    /// rather than a generic placeholder.
-    const REQUIREMENT: &'static str;
-
-    /// Check the just-parsed value; return `false` to reject it.
-    fn validate(&self) -> bool;
-}
-
-// `pub`, not private: leaks into `VecSepSource`'s public `Grammar::First`
-// associated type through the `rest` field, so it must stay nameable (E0446).
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
-#[doc(hidden)]
-pub struct SepItem<S, T> {
-    sep: S,
-    item: T,
-}
-
-// The shape actually parsed (`T { S T }`); `VecSep` converts from this to
-// expose `items`/`seps` as plain vectors instead.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
-#[doc(hidden)]
-pub struct VecSepSource<T, S> {
-    head: Box<T>,
-    rest: Vec<SepItem<S, T>>,
-}
-
-/// One or more items, with a separator between each pair.
-#[derive(Debug, Clone, PartialEq, Eq, GrammarFromOther)]
-#[grammar(inline)]
-pub struct VecSep<T, S> {
-    /// The `T` items, in order.
-    pub items: Vec<T>,
-    /// The `S` separators, in order — always exactly one fewer than `items`.
-    pub seps: Vec<S>,
-}
-
-impl<T, S> From<VecSepSource<T, S>> for VecSep<T, S> {
-    fn from(source: VecSepSource<T, S>) -> Self {
-        let mut items = Vec::with_capacity(source.rest.len() + 1);
-        let mut seps = Vec::with_capacity(source.rest.len());
-        items.push(*source.head);
-        for sep_item in source.rest {
-            seps.push(sep_item.sep);
-            items.push(sep_item.item);
-        }
-        VecSep { items, seps }
-    }
-}
-
-impl<T: Grammar, S: Grammar> GrammarFrom for VecSep<T, S> {
-    type Source = VecSepSource<T, S>;
-
-    fn print_to(&self, buf: &mut String) {
-        let mut items = self.items.iter();
-        if let Some(first) = items.next() {
-            first.print_to(buf);
-        }
-        for (sep, item) in self.seps.iter().zip(items) {
-            sep.print_to(buf);
-            item.print_to(buf);
-        }
-    }
-}
-
-impl<T, S> VecSep<T, S> {
-    /// Consume into `(item, separator)` pairs, one per separator (the first
-    /// item is paired with the separator that follows it).
-    pub fn into_item_sep(self) -> impl Iterator<Item = (T, S)> {
-        self.items.into_iter().zip(self.seps)
-    }
-
-    /// The first `T` item.
-    pub fn first(&self) -> &T {
-        &self.items[0]
-    }
-
-    /// The last `T` item.
-    pub fn last(&self) -> &T {
-        self.items.last().unwrap()
-    }
-}
-
-/// Sequence of three grammars, [`Deref`]-ing to the middle one.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
-pub struct Wrap<L, T, R> {
-    /// The leading element.
-    pub before: L,
-    /// The wrapped value.
-    pub wrapped: T,
-    /// The trailing element.
-    pub after: R,
-}
-
-impl<L, T, R> Wrap<L, T, R> {
-    /// Construct a `Wrap` from its three parts.
-    pub fn new(before: L, wrapped: T, after: R) -> Self {
-        Self {
-            before,
-            wrapped,
-            after,
-        }
-    }
-
-    /// Apply `f` to the wrapped value, keeping `before`/`after` unchanged.
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Wrap<L, U, R> {
-        Wrap {
-            before: self.before,
-            wrapped: f(self.wrapped),
-            after: self.after,
-        }
-    }
-}
-
-impl<L, T, E, R> Wrap<L, Result<T, E>, R> {
-    /// Swap `Wrap<L, Result<T, E>, R>` for `Result<Wrap<L, T, R>, E>`.
-    pub fn transpose(self) -> Result<Wrap<L, T, R>, E> {
-        Ok(Wrap {
-            before: self.before,
-            wrapped: self.wrapped?,
-            after: self.after,
-        })
-    }
-}
-
-/// Sequence of two grammars, [`Deref`]-ing to the second.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
-pub struct Prefix<P, T> {
-    prefix: P,
-    /// The prefixed value.
-    pub prefixed: T,
-}
-
-/// Sequence of two grammars, [`Deref`]-ing to the first.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
-pub struct Suffix<T, S> {
-    suffixed: T,
-    suffix: S,
-}
-
-impl<L, T, R> Deref for Wrap<L, T, R> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.wrapped
-    }
-}
-
-impl<T, S> Deref for Suffix<T, S> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.suffixed
-    }
-}
-
-impl<P, T> Deref for Prefix<P, T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.prefixed
-    }
-}
-
-impl<P, T> Prefix<P, T> {
-    /// Construct a `Prefix` from its two parts.
-    pub fn new(prefix: P, prefixed: T) -> Self {
-        Self { prefix, prefixed }
-    }
-
-    /// Apply `f` to the prefixed value, keeping `prefix` unchanged.
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Prefix<P, U> {
-        Prefix {
-            prefix: self.prefix,
-            prefixed: f(self.prefixed),
-        }
-    }
-}
-
-impl<P, T, E> Prefix<P, Result<T, E>> {
-    /// Swap `Prefix<P, Result<T, E>>` for `Result<Prefix<P, T>, E>`.
-    pub fn transpose(self) -> Result<Prefix<P, T>, E> {
-        Ok(Prefix {
-            prefix: self.prefix,
-            prefixed: self.prefixed?,
-        })
-    }
-}
-
-impl<T, S> Suffix<T, S> {
-    /// Construct a `Suffix` from its two parts.
-    pub fn new(suffixed: T, suffix: S) -> Self {
-        Self { suffixed, suffix }
-    }
-
-    /// Apply `f` to the suffixed value, keeping `suffix` unchanged.
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Suffix<U, S> {
-        Suffix {
-            suffixed: f(self.suffixed),
-            suffix: self.suffix,
-        }
-    }
-}
-
-impl<T, S, E> Suffix<Result<T, E>, S> {
-    /// Swap `Suffix<Result<T, E>, S>` for `Result<Suffix<T, S>, E>`.
-    pub fn transpose(self) -> Result<Suffix<T, S>, E> {
-        Ok(Suffix {
-            suffixed: self.suffixed?,
-            suffix: self.suffix,
-        })
-    }
-}
-
-/// Unwrap a grammar wrapper (e.g. [`Wrap`], [`Prefix`], [`Suffix`]) to get
-/// at the value it wraps.
-pub trait IntoInner<T> {
-    /// Consume `self`, discarding whatever structure wrapped `T`.
-    fn into_inner(self) -> T;
-}
-
-impl<L, T, R> IntoInner<T> for Wrap<L, T, R> {
-    fn into_inner(self) -> T {
-        self.wrapped
-    }
-}
-
-impl<T, S> IntoInner<T> for Suffix<T, S> {
-    fn into_inner(self) -> T {
-        self.suffixed
-    }
-}
-
-impl<P, T> IntoInner<T> for Prefix<P, T> {
-    fn into_inner(self) -> T {
-        self.prefixed
-    }
 }

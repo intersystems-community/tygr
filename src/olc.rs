@@ -1,20 +1,15 @@
-//! Offset-Line-Character (OLC): converts between byte offsets (as reported by
-//! [`Error::pos`](crate::Error::pos)) and `(line, character)` positions,
-//! where `character` is a UTF-16 code-unit offset (as required by the
-//! Language Server Protocol's `Position.character`).
+//! Byte offsets ⇄ `(line, character)` positions, `character` in UTF-16
+//! code units (as in the Language Server Protocol).
 
-/// Converts between byte offsets and `(line, character)` positions in a
-/// fixed input string.
+/// Converts between byte offsets and `(line, character)` in one input.
 pub struct OLC {
-    // Per line: its starting byte offset, and a (byte, UTF-16) checkpoint
-    // after each non-ASCII char. Byte and UTF-16 offsets agree between
-    // checkpoints, so lookups never need the input text itself.
+    // Per line: start offset, and a (byte, UTF-16) checkpoint after each
+    // non-ASCII char; offsets agree between checkpoints.
     lines: Vec<(usize, Vec<(usize, usize)>)>,
 }
 
 impl OLC {
-    /// Index `input`'s line boundaries and non-ASCII characters, for later
-    /// offset/line-character conversions.
+    /// Index `input`.
     pub fn new(input: &str) -> Self {
         let mut lines = vec![];
         let mut line_start = 0;
@@ -38,8 +33,7 @@ impl OLC {
         Self { lines }
     }
 
-    /// Convert a byte offset into a zero-indexed `(line, character)` pair,
-    /// where `character` is a UTF-16 code-unit offset.
+    /// Byte offset → zero-indexed `(line, character)`.
     pub fn offset_to_line_character(&self, offset: usize) -> (usize, usize) {
         let line = self.lines.partition_point(|&(start, _)| start <= offset) - 1;
         let (line_start, checkpoints) = &self.lines[line];
@@ -54,8 +48,7 @@ impl OLC {
         (line, character)
     }
 
-    /// Convert a zero-indexed `(line, character)` pair — `character` a
-    /// UTF-16 code-unit offset — into a byte offset.
+    /// Zero-indexed `(line, character)` → byte offset.
     pub fn line_character_to_offset(&self, (line, character): (usize, usize)) -> usize {
         let (line_start, checkpoints) = &self.lines[line];
         let idx = checkpoints.partition_point(|&(_, cu)| cu <= character);

@@ -1,9 +1,18 @@
-#![cfg(feature = "trace_one_node")]
+// Expected output spells default rule names; `bnf_names.rs` covers renaming.
+#![cfg(all(
+    feature = "trace_one_node",
+    not(any(feature = "lower_bnf_name", feature = "upper_bnf_name"))
+))]
 
 use std::str::FromStr;
 use tygr::*;
 
 char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
+
+#[cfg(feature = "trace_one_node")]
+fn token(text: &'static str) -> Expectation {
+    Expectation::Token(text.as_bytes())
+}
 
 fn frame(node: &'static str, pos: usize) -> Frame {
     Frame { node, pos }
@@ -20,7 +29,7 @@ fn string_eq_records_literal() {
         Error {
             traces: vec![Trace {
                 context: vec![frame("Lit", 0)],
-                expectation: Expectation::StringEq("foo".to_string(), "foo".to_string()),
+                expectation: token("foo"),
             }],
             pos: 0,
         }
@@ -38,7 +47,7 @@ fn string_eq_ci_records_ci_literal() {
         Error {
             traces: vec![Trace {
                 context: vec![frame("LitCI", 0)],
-                expectation: Expectation::StringEqCI("foo".to_string(), "foo".to_string()),
+                expectation: token("foo"),
             }],
             pos: 0,
         }
@@ -49,16 +58,16 @@ fn string_eq_ci_records_ci_literal() {
 struct Arrow(StringEq!("->"));
 
 #[test]
-fn string_eq_partial_match_records_where_it_actually_failed() {
+fn string_eq_partial_match_records_at_its_start() {
     let err = Arrow::parse("-x").unwrap_err();
     assert_eq!(
         err,
         Error {
             traces: vec![Trace {
                 context: vec![frame("Arrow", 0)],
-                expectation: Expectation::StringEq(">".to_string(), "->".to_string()),
+                expectation: token("->"),
             }],
-            pos: 1,
+            pos: 0,
         }
     );
 }
@@ -86,8 +95,8 @@ struct SmallNumber(u8);
 
 impl GrammarFrom for SmallNumber {
     type Source = StringOf1<IsDigit>;
-    fn print_to(&self, buf: &mut String) {
-        buf.push_str(&self.0.to_string());
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(self.0.to_string().as_bytes());
     }
 }
 
@@ -111,10 +120,10 @@ fn conversion_records_from_str_error() {
                 },
                 Trace {
                     context: vec![],
-                    expectation: Expectation::GrammarFrom {
-                        from: "999".to_string(),
-                        into: "SmallNumber",
-                        fail: "number too large to fit in target type".to_string(),
+                    expectation: Expectation::Rejected {
+                        node: "SmallNumber",
+                        range: 0..3,
+                        requirement: "be convertible",
                     },
                 },
             ],
@@ -155,9 +164,9 @@ fn validated_records_requirement() {
                 },
                 Trace {
                     context: vec![frame("NonZero", 0)],
-                    expectation: Expectation::Valid {
+                    expectation: Expectation::Rejected {
                         node: "NonZero",
-                        text: "007".to_string(),
+                        range: 0..3,
                         requirement: "be non-zero",
                     },
                 },
@@ -172,7 +181,7 @@ fn display_includes_position_context_and_expectation() {
     let err = NonZero::parse("007").unwrap_err();
     assert_eq!(
         err.to_string(),
-        "parse error at byte 3, expected:\n\t- Char of digit\n\t- NonZero \"007\" must be non-zero\n"
+        "parse error at byte 3, expected:\n\t- Char of digit\n\t- NonZero at 0..3 must be non-zero\n"
     );
 }
 
@@ -193,11 +202,11 @@ fn display_shows_each_expectation_kind() {
         ),
         (
             SmallNumber::parse("999").unwrap_err(),
-            "parse error at byte 3, expected:\n\t- Char of digit\n\t- From \"999\" to SmallNumber: number too large to fit in target type\n",
+            "parse error at byte 3, expected:\n\t- Char of digit\n\t- SmallNumber at 0..3 must be convertible\n",
         ),
         (
             NonZero::parse("007").unwrap_err(),
-            "parse error at byte 3, expected:\n\t- Char of digit\n\t- NonZero \"007\" must be non-zero\n",
+            "parse error at byte 3, expected:\n\t- Char of digit\n\t- NonZero at 0..3 must be non-zero\n",
         ),
     ];
 
@@ -218,7 +227,7 @@ fn context_records_nearest_node() {
         Error {
             traces: vec![Trace {
                 context: vec![frame("Lit", 0)],
-                expectation: Expectation::StringEq("foo".to_string(), "foo".to_string()),
+                expectation: token("foo"),
             }],
             pos: 0,
         }
@@ -234,7 +243,7 @@ fn context_records_full_node_chain() {
         Error {
             traces: vec![Trace {
                 context: vec![frame("Wrapper", 0), frame("Lit", 0)],
-                expectation: Expectation::StringEq("foo".to_string(), "foo".to_string()),
+                expectation: token("foo"),
             }],
             pos: 0,
         }
@@ -260,19 +269,19 @@ fn enum_records_every_variant_when_first_matches_none() {
             traces: vec![
                 Trace {
                     context: vec![frame("Op", 0)],
-                    expectation: Expectation::StringEq("+".to_string(), "+".to_string()),
+                    expectation: token("+"),
                 },
                 Trace {
                     context: vec![frame("Op", 0)],
-                    expectation: Expectation::StringEq("-".to_string(), "-".to_string()),
+                    expectation: token("-"),
                 },
                 Trace {
                     context: vec![frame("Op", 0)],
-                    expectation: Expectation::StringEq("*".to_string(), "*".to_string()),
+                    expectation: token("*"),
                 },
                 Trace {
                     context: vec![frame("Op", 0)],
-                    expectation: Expectation::StringEq("/".to_string(), "/".to_string()),
+                    expectation: token("/"),
                 },
             ],
             pos: 0,
@@ -308,35 +317,35 @@ fn nullable_variant_traces() -> Vec<Trace> {
     vec![
         Trace {
             context: vec![frame("NullableOp", 0)],
-            expectation: Expectation::StringEq("+".to_string(), "+".to_string()),
+            expectation: token("+"),
         },
         Trace {
             context: vec![frame("NullableOp", 0)],
-            expectation: Expectation::StringEq("-".to_string(), "-".to_string()),
+            expectation: token("-"),
         },
         Trace {
             context: vec![frame("NullableOp", 0)],
-            expectation: Expectation::StringEq("*".to_string(), "*".to_string()),
+            expectation: token("*"),
         },
         Trace {
             context: vec![frame("NullableOp", 0)],
-            expectation: Expectation::StringEq("y".to_string(), "y".to_string()),
+            expectation: token("y"),
         },
         Trace {
             context: vec![frame("NullableOpThenTail", 0)],
-            expectation: Expectation::StringEq("TAIL".to_string(), "TAIL".to_string()),
+            expectation: token("TAIL"),
         },
         Trace {
             context: vec![frame("Outermost", 0)],
-            expectation: Expectation::StringEq("b".to_string(), "b".to_string()),
+            expectation: token("b"),
         },
         Trace {
             context: vec![frame("Outermost", 0)],
-            expectation: Expectation::StringEq("c".to_string(), "c".to_string()),
+            expectation: token("c"),
         },
         Trace {
             context: vec![frame("Outermost", 0)],
-            expectation: Expectation::StringEq("d".to_string(), "d".to_string()),
+            expectation: token("d"),
         },
     ]
 }
