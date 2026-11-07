@@ -68,6 +68,12 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
 - Removed `examples/json_optimized.rs`. `examples/json.rs` is the one JSON
   example, and `cargo bench --bench json` benchmarks the same grammar.
 - `char` is a grammar for any one char.
+- New `#[derive(GrammarFromStrInfallible)]`: like `GrammarFromStr`, but
+  `FromStr::Err` must be `Infallible`. The conversion can't fail, so
+  scanning only checks the source grammar and never converts, and parsing
+  converts the matched text in place.
+- `VecSep` reserves the usual amortized capacity on its first item, rather
+  than exactly one, so short lists no longer reallocate.
 - The name argument of `char_class!` is optional and defaults to the type
   name (following `lower_bnf_name`/`upper_bnf_name`, like
   `#[derive(Grammar)]`).
