@@ -3,12 +3,6 @@
 version = 4
 
 [[package]]
-name = "either"
-version = "1.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
-
-[[package]]
 name = "proc-macro2"
 version = "1.0.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -41,7 +35,6 @@ dependencies = [
 name = "tygr-derive"
 version = "0.6.2"
 dependencies = [
- "either",
  "proc-macro2",
  "quote",
  "syn",
