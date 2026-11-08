@@ -133,9 +133,13 @@ impl Expr {
         }
     }
 
-    /// `expr` with a footnoted side-condition.
+    /// `expr` with a footnoted side-condition, or `expr` if it's hidden.
     pub fn side_condition(expr: Expr, text: &'static str) -> Expr {
-        Expr::SideCondition(Box::new(expr), text)
+        if expr == Expr::Hidden {
+            expr
+        } else {
+            Expr::SideCondition(Box::new(expr), text)
+        }
     }
 
     /// The side-condition texts, deduplicated, in the order `Display`
@@ -235,8 +239,11 @@ impl Expr {
             }
             Expr::SideCondition(inner, text) => {
                 inner.format_internal(f, Prec::Atom, notes)?;
+                if !inner.is_blank() {
+                    write!(f, " ")?;
+                }
                 let index = notes.iter().position(|note| note == text).unwrap() + 1;
-                write!(f, " ^{index}")
+                write!(f, "^{index}")
             }
             Expr::Hidden => Ok(()),
         }?;
@@ -310,7 +317,11 @@ impl Rule {
 
 impl fmt::Display for Rule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} = {} .", self.name, self.expr)?;
+        write!(f, "{} =", self.name)?;
+        if !self.expr.is_blank() {
+            write!(f, " {}", self.expr)?;
+        }
+        write!(f, " .")?;
         for (i, text) in self.expr.side_conditions().into_iter().enumerate() {
             let sep = if i == 0 { "\n\n" } else { "\n" };
             write!(f, "{sep}^{}: {text}", i + 1)?;

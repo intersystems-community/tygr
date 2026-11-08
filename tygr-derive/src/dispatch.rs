@@ -21,7 +21,7 @@ pub(crate) fn dispatch(arms: &[TokenStream], firsts: &[TokenStream]) -> (TokenSt
         return (body, quote! {});
     }
     let output = quote! { Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> };
-    let cases: Vec<Ident> = (0..n).map(|k| format_ident!("parse_case_{k}")).collect();
+    let cases: Vec<Ident> = (0..n).map(|k| format_ident!("__parse_case_{k}")).collect();
     let nexts = cases
         .iter()
         .skip(1)
@@ -38,9 +38,9 @@ pub(crate) fn dispatch(arms: &[TokenStream], firsts: &[TokenStream]) -> (TokenSt
 
         // No variant can start here: report them all.
         #[inline]
-        fn parse_miss<__Mode: ::tygr::Mode>(_input: &[u8], pos: usize, state: ::tygr::State) -> #output {
+        fn __parse_miss<__Mode: ::tygr::Mode>(_input: &[u8], pos: usize, state: ::tygr::State) -> #output {
             if ::tygr::__private::TRACING {
-                Self::fail_at_variants(pos, state);
+                Self::__fail_at_variants(pos, state);
             }
             None
         }
@@ -51,13 +51,13 @@ pub(crate) fn dispatch(arms: &[TokenStream], firsts: &[TokenStream]) -> (TokenSt
         // Slots 0-255: the next byte; 256: end of input. One per mode.
         let table: &'static [#fn_ty; 257] = &const {
             let cases: [#fn_ty; #n] = [#(Self::#cases::<__Mode>),*];
-            let mut table: [#fn_ty; 257] = [Self::parse_miss::<__Mode>; 257];
+            let mut table: [#fn_ty; 257] = [Self::__parse_miss::<__Mode>; 257];
             let mut slot = 0;
             while slot < 257 {
                 let next = if slot < 256 { Some(slot as u8) } else { None };
                 table[slot] = #( if ::tygr::first::contains::<#firsts>(next) {
                     cases[#indices]
-                } else )* { Self::parse_miss::<__Mode> };
+                } else )* { Self::__parse_miss::<__Mode> };
                 slot += 1;
             }
             table

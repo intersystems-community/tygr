@@ -88,6 +88,21 @@ fn hidden_alternative_or_lookahead_vanishes() {
     assert!(UsesHiddenAlternative::parse(";x").is_ok());
 }
 
+#[derive(Parse)]
+struct UsesHiddenConversion(Digits, #[tygr(from_str = Semi)] String);
+
+#[derive(Parse)]
+struct Nothing;
+
+#[test]
+fn hidden_conversion_or_empty_rule_prints_cleanly() {
+    assert_eq!(
+        rule::<UsesHiddenConversion>(),
+        "UsesHiddenConversion = Digits ."
+    );
+    assert_eq!(rule::<Nothing>(), "Nothing = .");
+}
+
 #[derive(Grammar, Debug, PartialEq, Eq)]
 enum MaybeDigits {
     Digits(Digits),

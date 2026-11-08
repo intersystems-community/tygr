@@ -101,7 +101,8 @@ with the default tracing (6.6 → 82 MB/s) and about 3.5× faster without it
   combinator can be built by hand, e.g. to print.
 - `Error` implements `std::error::Error`, and `Expectation` is `Display`
   whatever the features.
-- A character class's name in BNF escapes only `'`, not `"`.
+- BNF: a character class's name escapes only `'`, not `"`; a hidden
+  conversion source drops its footnote; an empty rule prints as `X = .`.
 - `VecSep` reserves the usual amortized capacity on its first item, rather
   than exactly one, so short lists no longer reallocate.
 - The name argument of `char_class!` is optional and defaults to the type

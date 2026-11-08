@@ -241,8 +241,8 @@ fn context_records_full_node_chain() {
     );
 }
 
-// 4+ variants trips the derive's FIRST-set dispatch table (see DISPATCH_THRESHOLD
-// in tygr-derive), which is what the test below exercises.
+// 4+ variants trips the derive's FIRST-set dispatch table (see `THRESHOLD`
+// in tygr-derive's `dispatch.rs`), which the test below exercises.
 #[derive(Grammar, Debug, PartialEq, Eq)]
 enum Op {
     Add(StringEq!("+")),

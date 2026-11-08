@@ -42,7 +42,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
                     // Every variant reports (`&`, not `&&`); the enum is required only
                     // if all variants are.
                     #[inline]
-                    fn fail_at_variants(#[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> bool {
+                    fn __fail_at_variants(#[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> bool {
                         #((#fail_ats) &)* true
                     }
                 }
@@ -53,7 +53,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
                     |first, variant| quote! { <#first as ::tygr::first::First>::Alt<#variant> },
                 ),
                 parse_at,
-                quote! { Self::fail_at_variants(pos, state) },
+                quote! { Self::__fail_at_variants(pos, state) },
                 quote! { ::tygr::bnf::Expr::alternation(vec![#(#sequences),*]) },
                 inherent,
             )
