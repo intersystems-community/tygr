@@ -342,32 +342,53 @@ pub fn from<S: Grammar, T: From<S>, M: Mode>(
     Some((M::map(source, T::from), end))
 }
 
+/// What a fallible conversion requires, in errors and BNF.
+#[doc(hidden)]
+pub const CONVERTIBLE: &str = "be convertible";
+
 /// `#[tygr(try_from = S)]`: parse `S`, then convert it, even when
-/// scanning: the conversion can fail.
+/// scanning: the conversion can fail. A failure is `node`'s rejection.
 #[doc(hidden)]
 #[inline(always)]
 pub fn try_from<S: Grammar, T: TryFrom<S>, M: Mode>(
     input: &[u8],
     pos: usize,
-    state: State,
+    mut state: State,
+    node: &'static str,
 ) -> Option<(M::Output<T>, usize)> {
-    let (source, end) = S::parse_at::<Parse>(input, pos, state)?;
-    let value = T::try_from(source).ok()?;
+    let (source, end) = S::parse_at::<Parse>(input, pos, state.reborrow())?;
+    let value = converted(T::try_from(source), pos..end, state, node)?;
     Some((M::build(|_| value), end))
 }
 
 /// `#[tygr(from_str = S)]`: scan `S`, then convert its text, even when
-/// scanning: the conversion can fail.
+/// scanning: the conversion can fail. A failure is `node`'s rejection.
 #[doc(hidden)]
 #[inline(always)]
 pub fn from_str<S: Grammar, T: FromStr, M: Mode>(
     input: &[u8],
     pos: usize,
-    state: State,
+    mut state: State,
+    node: &'static str,
 ) -> Option<(M::Output<T>, usize)> {
-    let ((), end) = S::parse_at::<Scan>(input, pos, state)?;
-    let value = T::from_str(text(input, pos, end)).ok()?;
+    let ((), end) = S::parse_at::<Scan>(input, pos, state.reborrow())?;
+    let value = converted(T::from_str(text(input, pos, end)), pos..end, state, node)?;
     Some((M::build(|_| value), end))
+}
+
+/// The converted value, or `None` once `node`'s rejection of `range` is
+/// recorded.
+#[inline(always)]
+fn converted<T, E>(
+    result: Result<T, E>,
+    range: Range<usize>,
+    mut state: State,
+    node: &'static str,
+) -> Option<T> {
+    if result.is_err() {
+        state.reject(node, range, CONVERTIBLE);
+    }
+    result.ok()
 }
 
 /// `#[tygr(from_str_infallible = S)]`: scan `S`, then convert its text.

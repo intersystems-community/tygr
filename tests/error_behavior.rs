@@ -4,7 +4,6 @@
     not(any(feature = "lower_bnf_name", feature = "upper_bnf_name"))
 ))]
 
-use std::str::FromStr;
 use tygr::*;
 
 char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
@@ -89,22 +88,8 @@ fn char_class_records_class_name() {
     );
 }
 
-#[derive(Debug, PartialEq, Eq, GrammarFromStr)]
-struct SmallNumber(u8);
-
-impl GrammarFrom for SmallNumber {
-    type Source = StringOf1<IsDigit>;
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(self.0.to_string().as_bytes());
-    }
-}
-
-impl FromStr for SmallNumber {
-    type Err = std::num::ParseIntError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse::<u8>().map(SmallNumber)
-    }
-}
+#[derive(Grammar, Debug, PartialEq, Eq)]
+struct SmallNumber(#[tygr(from_str = StringOf1<IsDigit>)] u8);
 
 #[test]
 fn conversion_records_from_str_error() {
@@ -114,11 +99,11 @@ fn conversion_records_from_str_error() {
         Error {
             traces: vec![
                 Trace {
-                    context: vec![],
+                    context: vec![frame("SmallNumber", 0)],
                     expectation: Expectation::CharClass("digit"),
                 },
                 Trace {
-                    context: vec![],
+                    context: vec![frame("SmallNumber", 0)],
                     expectation: Expectation::Rejected {
                         node: "SmallNumber",
                         range: 0..3,

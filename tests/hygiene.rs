@@ -24,42 +24,12 @@ impl tygr::Validate for NonZero {
     }
 }
 
-#[derive(tygr::GrammarFromStr)]
-struct Num(u32);
-
-impl tygr::GrammarFrom for Num {
-    type Source = tygr::StringOf1<Digit>;
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(self.0.to_string().as_bytes());
-    }
-}
-
-impl std::str::FromStr for Num {
-    type Err = std::num::ParseIntError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse().map(Num)
-    }
-}
-
-#[derive(tygr::GrammarFromStrInfallible)]
-struct Text(String);
-
-impl tygr::GrammarFrom for Text {
-    type Source = tygr::StringOf1<Digit>;
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(self.0.as_bytes());
-    }
-}
-
-impl std::str::FromStr for Text {
-    type Err = std::convert::Infallible;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Text(s.to_string()))
-    }
-}
-
 #[derive(tygr::Grammar)]
-struct Field(#[tygr(from_str = tygr::StringOf1<Digit>)] u32);
+struct Field(
+    #[tygr(from_str = tygr::StringOf1<Digit>)] u32,
+    tygr::StringEq!(","),
+    #[tygr(from_str_infallible = tygr::StringOf1<Digit>)] String,
+);
 
 // Fields named like the derived code's own variables.
 #[derive(tygr::Grammar)]
@@ -85,9 +55,8 @@ fn derives_compile_and_parse_without_imports() {
     assert!(Kw::parse("if").is_ok());
     assert!(Op::parse("*").is_ok() && Op::parse("x").is_err());
     assert!(NonZero::parse("10").is_ok() && NonZero::parse("00").is_err());
-    assert_eq!(Num::parse("42").unwrap().0, 42);
-    assert_eq!(Text::parse("42").unwrap().0, "42");
-    assert_eq!(Field::parse("42").unwrap().0, 42);
+    let field = Field::parse("42,7").unwrap();
+    assert_eq!((field.0, field.2.as_str()), (42, "7"));
     assert!(Locals::parse("1,2;").is_ok());
     assert!(Generic::<Kw>::parse("if").is_ok() && Generic::<Kw>::scan("d").is_ok());
 }

@@ -12,6 +12,9 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
 ### Breaking Changes
 
 - The derive attribute is `#[tygr(...)]`, not `#[grammar(...)]`.
+- Removed `GrammarFrom` and its derives (`GrammarFromStr`,
+  `GrammarFromOther`, `GrammarTryFromOther`). Convert a field instead:
+  `struct Port(#[tygr(from_str = Digits)] u16);`.
 - `Grammar::scan_at` is merged into `parse_at::<M: Mode>`, which returns
   `M::Output<Self>`: the value in mode `Parse`, `()` in mode `Scan`.
   Hand-written grammars build outputs with `Mode::build`/`map`.
@@ -74,15 +77,13 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
   example, and `cargo bench --bench json` benchmarks the same grammar.
 - `char` is a grammar for any one char.
 - Field conversions: `#[tygr(from/try_from/from_str/from_str_infallible
-  = S)]` on a field parses `S` and converts it with the std trait. On a
-  unit variant, it matches `S` and keeps nothing.
+  = S)]` on a field parses `S` and converts it with the std trait. A
+  failed conversion backtracks and is recorded as `Rejected`; an
+  infallible one is skipped when scanning. On a unit variant, it matches
+  `S` and keeps nothing.
 - The `print` feature (default) gates printing: without it, derived
   grammars need no printing impls and panic if printed.
 - `Prefix` and `Suffix` fields are public, like `Wrap`'s.
-- New `#[derive(GrammarFromStrInfallible)]`: like `GrammarFromStr`, but
-  `FromStr::Err` must be `Infallible`. The conversion can't fail, so
-  scanning only checks the source grammar and never converts, and parsing
-  converts the matched text in place.
 - `VecSep` reserves the usual amortized capacity on its first item, rather
   than exactly one, so short lists no longer reallocate.
 - The name argument of `char_class!` is optional and defaults to the type

@@ -1,6 +1,6 @@
 //! The traits that describe a grammar: [`Grammar`] (parsing in a [`Mode`]),
-//! [`GrammarRule`], [`GrammarFrom`] and [`Validate`]. Parsing is ordered
-//! choice with backtracking; no left recursion.
+//! [`GrammarRule`] and [`Validate`]. Parsing is ordered choice with
+//! backtracking; no left recursion.
 
 use crate::first::First;
 use crate::state::run;
@@ -134,24 +134,6 @@ pub trait GrammarRule: Grammar {
             s.push_str(&format!("^{}: {text}", i + 1));
         }
         s
-    }
-}
-
-/// The source grammar of a type built by `GrammarFromStr`,
-/// `GrammarFromStrInfallible`, `GrammarFromOther` or `GrammarTryFromOther`,
-/// and how to print it back.
-pub trait GrammarFrom {
-    /// The grammar actually parsed.
-    type Source: Grammar;
-
-    /// Serialize `self` back to bytes (see [`Grammar::print_to`]); optional
-    /// without the `print` feature.
-    #[cfg(feature = "print")]
-    fn print_to(&self, buf: &mut Vec<u8>);
-    /// Panics: tygr's `print` feature is off.
-    #[cfg(not(feature = "print"))]
-    fn print_to(&self, _buf: &mut Vec<u8>) {
-        unimplemented!("tygr's `print` feature is off")
     }
 }
 

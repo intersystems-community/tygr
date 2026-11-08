@@ -71,6 +71,27 @@ impl<'a> State<'a> {
         );
     }
 
+    /// Record that rule `node` matched `range` but rejected the result,
+    /// which must `requirement`.
+    #[inline]
+    pub fn reject(
+        &mut self,
+        #[allow(unused_variables)] node: &'static str,
+        #[allow(unused_variables)] range: Range<usize>,
+        #[allow(unused_variables)] requirement: &'static str,
+    ) {
+        #[cfg(feature = "trace_pos")]
+        self.expect(
+            range.end,
+            #[cfg(feature = "trace_one_node")]
+            Expectation::Rejected {
+                node,
+                range,
+                requirement,
+            },
+        );
+    }
+
     /// Run `f` with a throwaway history, so it leaves no trace.
     pub(crate) fn probe<R>(&mut self, f: impl FnOnce(State<'_>) -> R) -> R {
         #[cfg(feature = "trace_pos")]
@@ -193,7 +214,7 @@ pub enum Expectation {
     /// No character satisfying this [`CharClass`](crate::CharClass) was found.
     CharClass(&'static str),
     /// A rule matched `range` but rejected the result: a
-    /// `#[tygr(validated)]` check or a `GrammarFrom*` conversion failed.
+    /// `#[tygr(validated)]` check or a field conversion failed.
     Rejected {
         /// The rule's [`GrammarRule::NAME`](crate::GrammarRule::NAME).
         node: &'static str,

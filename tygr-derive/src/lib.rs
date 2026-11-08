@@ -15,48 +15,6 @@ pub fn derive_grammar(input: TokenStream) -> TokenStream {
     derive(input, impl_grammar)
 }
 
-/// `Grammar` by parsing `GrammarFrom::Source` and calling
-/// [`FromStr`](std::str::FromStr) on the matched text; `Err` backtracks.
-/// Takes the same `#[tygr(...)]` options as `#[derive(Grammar)]`.
-#[proc_macro_derive(GrammarFromStr, attributes(tygr))]
-pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
-    derive(input, |input| impl_convert(input, Convert::FromStr))
-}
-
-/// `Grammar` by parsing `GrammarFrom::Source` and calling
-/// [`FromStr`](std::str::FromStr) on the matched text, whose `Err` must be
-/// [`Infallible`](std::convert::Infallible). It can't fail, so scanning skips
-/// the conversion. Takes the same `#[tygr(...)]` options as
-/// `#[derive(Grammar)]`.
-#[proc_macro_derive(GrammarFromStrInfallible, attributes(tygr))]
-pub fn derive_grammar_from_str_infallible(input: TokenStream) -> TokenStream {
-    derive(input, |input| {
-        impl_convert(input, Convert::FromStrInfallible)
-    })
-}
-
-/// `Grammar` by parsing `GrammarFrom::Source` and converting with
-/// [`From`]. Takes the same `#[tygr(...)]` options as `#[derive(Grammar)]`.
-#[proc_macro_derive(GrammarFromOther, attributes(tygr))]
-pub fn derive_grammar_from_source(input: TokenStream) -> TokenStream {
-    derive(input, |input| impl_convert(input, Convert::From))
-}
-
-/// `Grammar` by parsing `GrammarFrom::Source` and converting with
-/// [`TryFrom`]; `Err` backtracks. Takes the same `#[tygr(...)]` options as
-/// `#[derive(Grammar)]`.
-#[proc_macro_derive(GrammarTryFromOther, attributes(tygr))]
-pub fn derive_grammar_try_from_source(input: TokenStream) -> TokenStream {
-    derive(input, |input| impl_convert(input, Convert::TryFrom))
-}
-
-enum Convert {
-    FromStr,
-    FromStrInfallible,
-    From,
-    TryFrom,
-}
-
 /// Bound every type parameter by `Grammar`, then generate with `expand`.
 fn derive(
     input: TokenStream,
@@ -250,34 +208,11 @@ struct Field {
     bnf: TokenStream2,
 }
 
-/// Record that `start..end` was rejected for `requirement`.
-fn rejected(start: &str, end: &str, requirement: TokenStream2) -> TokenStream2 {
-    let (start, end) = (format_ident!("{start}"), format_ident!("{end}"));
-    if cfg!(feature = "trace") {
-        quote! {
-            state.expect(#end, ::tygr::Expectation::Rejected {
-                node: <Self as ::tygr::GrammarRule>::NAME,
-                range: #start..#end,
-                requirement: #requirement,
-            });
-        }
-    } else if cfg!(feature = "trace_pos") {
-        quote! { state.expect(#end); }
-    } else {
-        quote! {}
-    }
-}
-
-/// Reject `value` unless it passes `Validate`, recording `start..end`.
-fn validation(start: &str, end: &str) -> TokenStream2 {
-    let rejected = rejected(
-        start,
-        end,
-        quote! { <Self as ::tygr::Validate>::REQUIREMENT },
-    );
+/// Reject `value` unless it passes `Validate`, recording `start..pos`.
+fn validation() -> TokenStream2 {
     quote! {
         if !::tygr::Validate::validate(&value) {
-            #rejected
+            state.reject(<Self as ::tygr::GrammarRule>::NAME, start..pos, <Self as ::tygr::Validate>::REQUIREMENT);
             return None;
         }
     }
@@ -329,12 +264,13 @@ fn field(x: &Ident, field: &syn::Field, mode: &TokenStream2) -> syn::Result<Fiel
     };
     let helper = format_ident!("{kind}");
     let bnf = quote! { <#source as ::tygr::Grammar>::to_bnf() };
-    // A fallible conversion is footnoted in BNF.
-    let bnf = match kind.as_str() {
-        "try_from" | "from_str" => {
-            quote! { ::tygr::bnf::Expr::side_condition(#bnf, #CONVERTIBLE) }
-        }
-        _ => bnf,
+    // A fallible conversion records its rejections, and is footnoted in BNF.
+    let fallible = kind == "try_from" || kind == "from_str";
+    let node = fallible.then(|| quote! { <Self as ::tygr::GrammarRule>::NAME });
+    let bnf = if fallible {
+        quote! { ::tygr::bnf::Expr::side_condition(#bnf, ::tygr::__private::CONVERTIBLE) }
+    } else {
+        bnf
     };
     // A value prints back through its source; text through `Display`.
     let print = match kind.as_str() {
@@ -347,7 +283,7 @@ fn field(x: &Ident, field: &syn::Field, mode: &TokenStream2) -> syn::Result<Fiel
     };
     Ok(Field {
         parse: quote! {
-            let (#x, pos) = ::tygr::__private::#helper::<#source, #ty, #mode>(input, pos, state.reborrow())?;
+            let (#x, pos) = ::tygr::__private::#helper::<#source, #ty, #mode>(input, pos, state.reborrow(), #node)?;
         },
         source: quote! { #source },
         print,
@@ -414,9 +350,9 @@ fn parse_at(
 ) -> TokenStream2 {
     let steps = fields.iter().map(|field| &field.parse);
     if validated {
-        let validation = validation("start_pos", "pos");
+        let validation = validation();
         return quote! {
-            let start_pos = pos;
+            let start = pos;
             #(#steps)*
             let value = #constructor;
             #validation
@@ -505,9 +441,6 @@ fn printing(print_fn: TokenStream2, read_fields: TokenStream2) -> TokenStream2 {
     }
 }
 
-/// The requirement a `GrammarFrom*` conversion adds, in BNF and errors.
-const CONVERTIBLE: &str = "be convertible";
-
 /// The bodies of a derived `Grammar` and `GrammarRule`.
 struct Impls {
     name: String,
@@ -563,123 +496,6 @@ impl Impls {
             }
         }
     }
-}
-
-fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStream2> {
-    let GrammarAttr {
-        name,
-        hidden,
-        inline,
-        validated,
-    } = grammar_attr(input)?;
-    let ident = &input.ident;
-    let (_, ty_generics, _) = input.generics.split_for_impl();
-    let self_ty = quote! { #ident #ty_generics };
-    let source = quote! { <#self_ty as ::tygr::GrammarFrom>::Source };
-    let fallible = matches!(convert, Convert::FromStr | Convert::TryFrom);
-    // Converting before building means converting when scanning too.
-    let eager = fallible || validated;
-    let from_text = quote! {
-        let ((), end) = <#source as ::tygr::Grammar>::parse_at::<::tygr::Scan>(input, pos, state.reborrow())?;
-    };
-    // SAFETY: see the invariant on `Grammar::parse_at`.
-    let text = quote! { unsafe { ::core::str::from_utf8_unchecked(&input[pos..end]) } };
-    let source_mode = if eager {
-        quote! { ::tygr::Parse }
-    } else {
-        quote! { __Mode }
-    };
-    let from_source = quote! {
-        let (source, end) = <#source as ::tygr::Grammar>::parse_at::<#source_mode>(input, pos, state.reborrow())?;
-    };
-    let reject = rejected("pos", "end", quote! { #CONVERTIBLE });
-    // Match the source, then bind `value` or reject.
-    let (matched, converted) = match convert {
-        Convert::FromStr => (
-            from_text,
-            quote! {
-                let Ok(value) = <#self_ty as ::core::str::FromStr>::from_str(#text) else {
-                    #reject
-                    return None;
-                };
-            },
-        ),
-        Convert::FromStrInfallible => (
-            from_text,
-            quote! {
-                let result: ::core::result::Result<#self_ty, ::core::convert::Infallible> =
-                    <#self_ty as ::core::str::FromStr>::from_str(#text);
-                let Ok(value) = result;
-            },
-        ),
-        Convert::From => (
-            from_source,
-            quote! { let value = <#self_ty as ::core::convert::From<#source>>::from(source); },
-        ),
-        Convert::TryFrom => (
-            from_source,
-            quote! {
-                let Ok(value) = <#self_ty as ::core::convert::TryFrom<#source>>::try_from(source) else {
-                    #reject
-                    return None;
-                };
-            },
-        ),
-    };
-    let parse_at = if eager {
-        let validation = if validated {
-            validation("pos", "end")
-        } else {
-            quote! {}
-        };
-        quote! {
-            #matched
-            #converted
-            #validation
-            Some((<__Mode as ::tygr::Mode>::build(|_| value), end))
-        }
-    } else {
-        // Building converts, so scanning doesn't.
-        let (mode, get) = match convert {
-            Convert::From => (
-                quote! { mode },
-                quote! { let source = <__Mode as ::tygr::Mode>::get(mode, source); },
-            ),
-            _ => (quote! { _ }, quote! {}),
-        };
-        quote! {
-            #matched
-            Some((<__Mode as ::tygr::Mode>::build(|#mode| {
-                #get
-                #converted
-                value
-            }), end))
-        }
-    };
-    let to_bnf = quote! { <#source as ::tygr::Grammar>::to_bnf() };
-    // Side-conditions only on the rule's own definition, not references.
-    let to_bnf_def = if fallible {
-        quote! { ::tygr::bnf::Expr::side_condition(#to_bnf, #CONVERTIBLE) }
-    } else {
-        to_bnf.clone()
-    };
-    Ok(Impls {
-        to_bnf: bnf_ref(&name, hidden, &to_bnf, inline),
-        to_bnf_def: validated_bnf(validated, to_bnf_def),
-        name,
-        first: quote! { <#source as ::tygr::Grammar>::First },
-        parse_at,
-        print_to: printing(
-            quote! {
-                fn print_to(&self, buf: &mut ::std::vec::Vec<u8>) {
-                    <#self_ty as ::tygr::GrammarFrom>::print_to(self, buf);
-                }
-            },
-            quote! {},
-        ),
-        fail_at: quote! { <#source as ::tygr::Grammar>::fail_at(pos, state) },
-    }
-    .emit(input))
 }
 
 fn impl_struct(

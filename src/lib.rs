@@ -27,24 +27,17 @@
 //! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | concatenation shorthands, [`Deref`](std::ops::Deref)-ing to `T` |
 //! | [`VecSep<T, S>`] | one-or-more repetition with separators (`T { S T }`) |
 //!
-//! For a type that isn't itself a direct concatenation/alternation of other
-//! grammars, but is instead built *from* one (e.g. parsing digits into a
-//! `u32`), derive one of these instead. Each builds `Self` from a parsed
-//! [`GrammarFrom::Source`]:
-//! - [`GrammarFromStr`](derive@GrammarFromStr): `FromStr` on the matched text.
-//! - [`GrammarFromStrInfallible`](derive@GrammarFromStrInfallible): `FromStr`
-//!   with `Err = Infallible` on the matched text.
-//! - [`GrammarFromOther`](derive@GrammarFromOther): `From` the source value.
-//! - [`GrammarTryFromOther`](derive@GrammarTryFromOther): `TryFrom` the
-//!   source value.
+//! To parse a field as another grammar `S` and convert it, e.g. digits into
+//! a `u32`, give `S` in the field's `#[tygr(...)]`, naming the std trait:
+//! - `from = S`: `From` the parsed value.
+//! - `try_from = S`: `TryFrom` the parsed value.
+//! - `from_str = S`: `FromStr` on the matched text.
+//! - `from_str_infallible = S`: `FromStr` with `Err = Infallible` on the
+//!   matched text.
 //!
-//! An infallible, unvalidated conversion is skipped when scanning.
-//!
-//! To convert one field instead, e.g. to a type you don't own, give its source
-//! grammar: `#[tygr(from = S)]`, `try_from`, `from_str` or
-//! `from_str_infallible`, with the same std traits (printing goes back via
-//! `S: From<&T>` or `T: Display`). On a unit variant, it matches `S` and
-//! keeps nothing (printing `S::default()`).
+//! A failed conversion backtracks; an infallible one is skipped when
+//! scanning. Printing goes back via `S: From<&T>` or `T: Display`. On a
+//! unit variant, it matches `S` and keeps nothing (printing `S::default()`).
 //!
 //! ```
 //! # use tygr::*;
@@ -158,7 +151,7 @@ pub mod __private {
         ByteEq, Literal, NonAsciiStart, Token, class_fail_at, class_parse_at, class_print_to,
         class_to_bnf,
     };
-    pub use crate::wrappers::{from, from_str, from_str_infallible, try_from};
+    pub use crate::wrappers::{CONVERTIBLE, from, from_str, from_str_infallible, try_from};
     pub use either::Either;
     pub use tygr_derive::__default_name as default_name;
 }
@@ -167,9 +160,7 @@ pub mod __private {
 #[doc(hidden)]
 extern crate self as tygr;
 
-pub use tygr_derive::{
-    Grammar, GrammarFromOther, GrammarFromStr, GrammarFromStrInfallible, GrammarTryFromOther,
-};
+pub use tygr_derive::Grammar;
 
 /// A literal-string grammar: `StringEq!("->")` matches exactly `->`.
 ///
