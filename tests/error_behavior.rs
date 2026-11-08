@@ -140,7 +140,7 @@ fn conversion_bnf_shows_the_side_condition() {
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
-#[grammar(validated)]
+#[tygr(validated)]
 struct NonZero(StringOf1<IsDigit>);
 
 impl Validate for NonZero {

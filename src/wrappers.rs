@@ -24,17 +24,17 @@ pub trait IntoInner<T> {
 /// type Ws = Hidden<StringOf<IsSpace>>;
 /// ```
 ///
-/// Or use `#[grammar(hidden)]`:
+/// Or use `#[tygr(hidden)]`:
 ///
 /// ```
 /// # use tygr::*;
 /// # char_class!(IsSpace, "space", |ch| matches!(ch, ' ' | '\t'));
 /// #[derive(Grammar)]
-/// #[grammar(hidden)]
+/// #[tygr(hidden)]
 /// struct Ws(StringOf<IsSpace>);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Grammar)]
-#[grammar(hidden)]
+#[tygr(hidden)]
 pub struct Hidden<T>(T);
 
 impl<T> Deref for Hidden<T> {
@@ -63,7 +63,7 @@ impl<T> IntoInner<T> for Hidden<T> {
 /// # char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
 /// # char_class!(IsSpace, "space", |ch| matches!(ch, ' ' | '\t'));
 /// #[derive(Grammar)]
-/// #[grammar(name = "ws", hidden)]
+/// #[tygr(name = "ws", hidden)]
 /// struct Ws(StringOf<IsSpace>);
 ///
 /// # #[derive(Grammar)]
@@ -72,7 +72,7 @@ impl<T> IntoInner<T> for Hidden<T> {
 /// # struct AddOp(StringEq!("+"));
 /// // Whitespace stored as string
 /// #[derive(Grammar)]
-/// #[grammar(name = "expr")]
+/// #[tygr(name = "expr")]
 /// struct Expr(Term, Vec<(Raw<Ws>, AddOp, Raw<Ws>, Term)>);
 /// ```
 pub struct Raw<T>(pub String, PhantomData<T>);
@@ -330,7 +330,7 @@ fn text(input: &[u8], pos: usize, end: usize) -> &str {
     unsafe { std::str::from_utf8_unchecked(&input[pos..end]) }
 }
 
-/// `#[grammar(from = S)]`: parse `S`, then convert it.
+/// `#[tygr(from = S)]`: parse `S`, then convert it.
 #[doc(hidden)]
 #[inline(always)]
 pub fn from<S: Grammar, T: From<S>, M: Mode>(
@@ -342,7 +342,7 @@ pub fn from<S: Grammar, T: From<S>, M: Mode>(
     Some((M::map(source, T::from), end))
 }
 
-/// `#[grammar(try_from = S)]`: parse `S`, then convert it, even when
+/// `#[tygr(try_from = S)]`: parse `S`, then convert it, even when
 /// scanning: the conversion can fail.
 #[doc(hidden)]
 #[inline(always)]
@@ -356,7 +356,7 @@ pub fn try_from<S: Grammar, T: TryFrom<S>, M: Mode>(
     Some((M::build(|_| value), end))
 }
 
-/// `#[grammar(from_str = S)]`: scan `S`, then convert its text, even when
+/// `#[tygr(from_str = S)]`: scan `S`, then convert its text, even when
 /// scanning: the conversion can fail.
 #[doc(hidden)]
 #[inline(always)]
@@ -370,7 +370,7 @@ pub fn from_str<S: Grammar, T: FromStr, M: Mode>(
     Some((M::build(|_| value), end))
 }
 
-/// `#[grammar(from_str_infallible = S)]`: scan `S`, then convert its text.
+/// `#[tygr(from_str_infallible = S)]`: scan `S`, then convert its text.
 #[doc(hidden)]
 #[inline(always)]
 pub fn from_str_infallible<S: Grammar, T: FromStr<Err = Infallible>, M: Mode>(

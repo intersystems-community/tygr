@@ -77,10 +77,10 @@ fn literal_errors_report_the_whole_literal_at_its_start() {
 #[test]
 fn ci_marker_only_where_case_matters() {
     #[derive(Grammar)]
-    #[grammar(name = "Num")]
+    #[tygr(name = "Num")]
     struct Num(StringEqCI!("123"));
     #[derive(Grammar)]
-    #[grammar(name = "Kw")]
+    #[tygr(name = "Kw")]
     struct Kw(StringEqCI!("if"));
     assert_eq!(Num::bnf_rule(), "Num = \"123\" .");
     assert_eq!(Kw::bnf_rule(), "Kw = \"if\"i .");
@@ -98,7 +98,7 @@ fn char_class_computes_first_bytes() {
     assert!(!tygr::first::contains::<<Lower as Grammar>::First>(None));
 
     #[derive(Grammar, Debug)]
-    #[grammar(name = "Word")]
+    #[tygr(name = "Word")]
     struct Word(StringOf1<Lower>);
     #[cfg(feature = "print")]
     assert_eq!(Word::parse("abc").unwrap().print(), "abc");

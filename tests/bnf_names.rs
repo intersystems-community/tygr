@@ -8,7 +8,7 @@ char_class!(Digit, |ch| ch.is_ascii_digit());
 struct NumberList(StringOf1<Digit>, Vec<(StringEq!(","), Pinned)>);
 
 #[derive(Grammar)]
-#[grammar(name = "Pinned")]
+#[tygr(name = "Pinned")]
 struct Pinned(StringOf1<Digit>);
 
 /// `name` as the enabled feature renames a default name.

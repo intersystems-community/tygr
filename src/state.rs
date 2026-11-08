@@ -193,7 +193,7 @@ pub enum Expectation {
     /// No character satisfying this [`CharClass`](crate::CharClass) was found.
     CharClass(&'static str),
     /// A rule matched `range` but rejected the result: a
-    /// `#[grammar(validated)]` check or a `GrammarFrom*` conversion failed.
+    /// `#[tygr(validated)]` check or a `GrammarFrom*` conversion failed.
     Rejected {
         /// The rule's [`GrammarRule::NAME`](crate::GrammarRule::NAME).
         node: &'static str,

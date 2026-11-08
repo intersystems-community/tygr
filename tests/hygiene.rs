@@ -14,7 +14,7 @@ enum Op {
 tygr::char_class!(Digit, |ch| ch.is_ascii_digit());
 
 #[derive(tygr::Grammar)]
-#[grammar(validated)]
+#[tygr(validated)]
 struct NonZero(tygr::StringOf1<Digit>);
 
 impl tygr::Validate for NonZero {
@@ -59,7 +59,7 @@ impl std::str::FromStr for Text {
 }
 
 #[derive(tygr::Grammar)]
-struct Field(#[grammar(from_str = tygr::StringOf1<Digit>)] u32);
+struct Field(#[tygr(from_str = tygr::StringOf1<Digit>)] u32);
 
 // Fields named like the derived code's own variables.
 #[derive(tygr::Grammar)]

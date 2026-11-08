@@ -89,7 +89,7 @@ impl_grammar_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K);
 
 /// Sequence of three grammars, [`Deref`]-ing to the middle one.
 #[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
+#[tygr(inline)]
 pub struct Wrap<L, T, R> {
     /// The leading element.
     pub before: L,
@@ -137,7 +137,7 @@ impl<L, T, R> IntoInner<T> for Wrap<L, T, R> {
 
 /// Sequence of two grammars, [`Deref`]-ing to the second.
 #[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
+#[tygr(inline)]
 pub struct Prefix<P, T> {
     /// The leading element.
     pub prefix: P,
@@ -179,7 +179,7 @@ impl<P, T> IntoInner<T> for Prefix<P, T> {
 
 /// Sequence of two grammars, [`Deref`]-ing to the first.
 #[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
+#[tygr(inline)]
 pub struct Suffix<T, S> {
     /// The suffixed value.
     pub suffixed: T,
@@ -425,7 +425,7 @@ impl<T: Grammar, S: Grammar> Grammar for VecSep<T, S> {
     }
 }
 
-// As in 0.6, where it was derived with `#[grammar(inline)]`.
+// As in 0.6, where it was derived with `#[tygr(inline)]`.
 impl<T: Grammar, S: Grammar> GrammarRule for VecSep<T, S> {
     const NAME: &'static str = "VecSep";
 

@@ -263,7 +263,7 @@ mod private {
     impl Sealed for super::Scan {}
 }
 
-/// Post-parse validation for `#[grammar(validated)]` types.
+/// Post-parse validation for `#[tygr(validated)]` types.
 ///
 /// Rejecting a value backtracks as if the grammar hadn't matched.
 pub trait Validate {

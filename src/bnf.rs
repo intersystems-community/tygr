@@ -28,7 +28,7 @@ pub enum Expr {
     NotFollowedBy(Box<Expr>),
     /// A side-condition beyond the shown syntax: `A ^1` (see [`Expr::side_conditions`]).
     SideCondition(Box<Expr>, &'static str),
-    /// Left out ([`Hidden`](crate::Hidden), `#[grammar(hidden)]`): dropped
+    /// Left out ([`Hidden`](crate::Hidden), `#[tygr(hidden)]`): dropped
     /// from sequences and alternations.
     Hidden,
 }

@@ -6,19 +6,19 @@ use syn::{parse_quote, Data, DataEnum, DataStruct, DeriveInput, Fields, Ident};
 /// Derive `Grammar` (and `GrammarRule`) for a `struct` or `enum`.
 ///
 /// A `struct` is a sequence of its fields; an `enum` an alternation of its
-/// variants. `#[grammar(name = "…", hidden, inline, validated)]` are
+/// variants. `#[tygr(name = "…", hidden, inline, validated)]` are
 /// optional, as is converting a field with
-/// `#[grammar(from/try_from/from_str/from_str_infallible = S)]` (see `tygr`'s
+/// `#[tygr(from/try_from/from_str/from_str_infallible = S)]` (see `tygr`'s
 /// crate docs).
-#[proc_macro_derive(Grammar, attributes(grammar))]
+#[proc_macro_derive(Grammar, attributes(tygr))]
 pub fn derive_grammar(input: TokenStream) -> TokenStream {
     derive(input, impl_grammar)
 }
 
 /// `Grammar` by parsing `GrammarFrom::Source` and calling
 /// [`FromStr`](std::str::FromStr) on the matched text; `Err` backtracks.
-/// Takes the same `#[grammar(...)]` options as `#[derive(Grammar)]`.
-#[proc_macro_derive(GrammarFromStr, attributes(grammar))]
+/// Takes the same `#[tygr(...)]` options as `#[derive(Grammar)]`.
+#[proc_macro_derive(GrammarFromStr, attributes(tygr))]
 pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
     derive(input, |input| impl_convert(input, Convert::FromStr))
 }
@@ -26,9 +26,9 @@ pub fn derive_grammar_from_str(input: TokenStream) -> TokenStream {
 /// `Grammar` by parsing `GrammarFrom::Source` and calling
 /// [`FromStr`](std::str::FromStr) on the matched text, whose `Err` must be
 /// [`Infallible`](std::convert::Infallible). It can't fail, so scanning skips
-/// the conversion. Takes the same `#[grammar(...)]` options as
+/// the conversion. Takes the same `#[tygr(...)]` options as
 /// `#[derive(Grammar)]`.
-#[proc_macro_derive(GrammarFromStrInfallible, attributes(grammar))]
+#[proc_macro_derive(GrammarFromStrInfallible, attributes(tygr))]
 pub fn derive_grammar_from_str_infallible(input: TokenStream) -> TokenStream {
     derive(input, |input| {
         impl_convert(input, Convert::FromStrInfallible)
@@ -36,16 +36,16 @@ pub fn derive_grammar_from_str_infallible(input: TokenStream) -> TokenStream {
 }
 
 /// `Grammar` by parsing `GrammarFrom::Source` and converting with
-/// [`From`]. Takes the same `#[grammar(...)]` options as `#[derive(Grammar)]`.
-#[proc_macro_derive(GrammarFromOther, attributes(grammar))]
+/// [`From`]. Takes the same `#[tygr(...)]` options as `#[derive(Grammar)]`.
+#[proc_macro_derive(GrammarFromOther, attributes(tygr))]
 pub fn derive_grammar_from_source(input: TokenStream) -> TokenStream {
     derive(input, |input| impl_convert(input, Convert::From))
 }
 
 /// `Grammar` by parsing `GrammarFrom::Source` and converting with
-/// [`TryFrom`]; `Err` backtracks. Takes the same `#[grammar(...)]` options as
+/// [`TryFrom`]; `Err` backtracks. Takes the same `#[tygr(...)]` options as
 /// `#[derive(Grammar)]`.
-#[proc_macro_derive(GrammarTryFromOther, attributes(grammar))]
+#[proc_macro_derive(GrammarTryFromOther, attributes(tygr))]
 pub fn derive_grammar_try_from_source(input: TokenStream) -> TokenStream {
     derive(input, |input| impl_convert(input, Convert::TryFrom))
 }
@@ -178,7 +178,7 @@ pub fn __default_name(input: TokenStream) -> TokenStream {
     quote! { #name }.into()
 }
 
-/// The BNF rule name when `#[grammar(name = "...")]` isn't given.
+/// The BNF rule name when `#[tygr(name = "...")]` isn't given.
 fn default_name(ident: &Ident) -> String {
     let ident = ident.to_string();
     #[cfg(all(feature = "lower_bnf_name", not(feature = "upper_bnf_name")))]
@@ -200,7 +200,7 @@ fn impl_grammar(input: &DeriveInput) -> syn::Result<TokenStream2> {
     }
 }
 
-/// The type's `#[grammar(...)]` options.
+/// The type's `#[tygr(...)]` options.
 struct GrammarAttr {
     name: String,
     hidden: bool,
@@ -208,7 +208,7 @@ struct GrammarAttr {
     validated: bool,
 }
 
-/// Read all of the type's `#[grammar(...)]` attributes.
+/// Read all of the type's `#[tygr(...)]` attributes.
 fn grammar_attr(input: &DeriveInput) -> syn::Result<GrammarAttr> {
     let mut attr = GrammarAttr {
         name: default_name(&input.ident),
@@ -219,7 +219,7 @@ fn grammar_attr(input: &DeriveInput) -> syn::Result<GrammarAttr> {
     for grammar in input
         .attrs
         .iter()
-        .filter(|attr| attr.path().is_ident("grammar"))
+        .filter(|attr| attr.path().is_ident("tygr"))
     {
         grammar.parse_nested_meta(|meta| {
             if meta.path.is_ident("name") {
@@ -292,9 +292,9 @@ fn validated_bnf(validated: bool, bnf: TokenStream2) -> TokenStream2 {
     }
 }
 
-/// `#[grammar(<kind> = S)]`, if present.
+/// `#[tygr(<kind> = S)]`, if present.
 fn conversion(attrs: &[syn::Attribute]) -> syn::Result<Option<(String, syn::Type)>> {
-    let Some(attr) = attrs.iter().find(|attr| attr.path().is_ident("grammar")) else {
+    let Some(attr) = attrs.iter().find(|attr| attr.path().is_ident("tygr")) else {
         return Ok(None);
     };
     attr.parse_args_with(|input: syn::parse::ParseStream| {
@@ -314,7 +314,7 @@ fn conversion(attrs: &[syn::Attribute]) -> syn::Result<Option<(String, syn::Type
 }
 
 /// Field `x`, parsed in `mode` by its own type or converted from a source
-/// grammar (`#[grammar(from/try_from/from_str/from_str_infallible = S)]`).
+/// grammar (`#[tygr(from/try_from/from_str/from_str_infallible = S)]`).
 fn field(x: &Ident, field: &syn::Field, mode: &TokenStream2) -> syn::Result<Field> {
     let ty = &field.ty;
     let Some((kind, source)) = conversion(&field.attrs)? else {
@@ -355,7 +355,7 @@ fn field(x: &Ident, field: &syn::Field, mode: &TokenStream2) -> syn::Result<Fiel
     })
 }
 
-/// A unit variant's `#[grammar(<any kind> = S)]`: match `S`, keep nothing.
+/// A unit variant's `#[tygr(<any kind> = S)]`: match `S`, keep nothing.
 fn discarded(source: syn::Type) -> Field {
     Field {
         parse: quote! {
@@ -382,10 +382,10 @@ fn constructor_and_fields(
         let discarded = conversion(attrs)?.map(|(_, source)| discarded(source));
         return Ok((path, vec![], discarded.into_iter().collect()));
     }
-    if let Some(attr) = attrs.iter().find(|attr| attr.path().is_ident("grammar")) {
+    if let Some(attr) = attrs.iter().find(|attr| attr.path().is_ident("tygr")) {
         return Err(syn::Error::new_spanned(
             attr,
-            "only a unit variant takes `#[grammar(...)]`; put it on a field",
+            "only a unit variant takes `#[tygr(...)]`; put it on a field",
         ));
     }
     let xs: Vec<Ident> = (0..fields.len()).map(|i| format_ident!("_f{i}")).collect();

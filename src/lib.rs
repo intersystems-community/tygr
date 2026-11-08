@@ -41,7 +41,7 @@
 //! An infallible, unvalidated conversion is skipped when scanning.
 //!
 //! To convert one field instead, e.g. to a type you don't own, give its source
-//! grammar: `#[grammar(from = S)]`, `try_from`, `from_str` or
+//! grammar: `#[tygr(from = S)]`, `try_from`, `from_str` or
 //! `from_str_infallible`, with the same std traits (printing goes back via
 //! `S: From<&T>` or `T: Display`). On a unit variant, it matches `S` and
 //! keeps nothing (printing `S::default()`).
@@ -50,12 +50,12 @@
 //! # use tygr::*;
 //! # char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
 //! #[derive(Grammar)]
-//! struct Port(#[grammar(from_str = StringOf1<IsDigit>)] u16);
+//! struct Port(#[tygr(from_str = StringOf1<IsDigit>)] u16);
 //! assert_eq!(Port::parse("8080").unwrap().0, 8080);
 //! assert!(Port::parse("99999").is_err());
 //! ```
 //!
-//! `#[grammar(...)]` on a `#[derive(Grammar)]` type:
+//! `#[tygr(...)]` on a `#[derive(Grammar)]` type:
 //! - `name = "..."` — override the BNF rule name (defaults to the type name).
 //! - `hidden` — same effect as wrapping in [`Hidden<T>`], but on a whole struct/enum.
 //! - `inline` — splice this type's own definition wherever it's
@@ -116,7 +116,7 @@
 //! char_class!(pub IsSpace, "space", |ch| ch.is_ascii_whitespace());
 //!
 //! #[derive(Grammar)]
-//! #[grammar(hidden)]
+//! #[tygr(hidden)]
 //! pub struct Ws(pub StringOf<IsSpace>);
 //!
 //! let e = Expr::parse("1 + 2 * 3").unwrap();

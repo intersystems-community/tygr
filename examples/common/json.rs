@@ -129,7 +129,7 @@ pub(crate) enum Sign {
 pub(crate) struct Ws(Vec<W>);
 
 #[derive(Grammar, Debug)]
-#[grammar(inline)]
+#[tygr(inline)]
 pub(crate) enum W {
     C0020(StringEq!("\u{0020}")),
     C000A(StringEq!("\u{000A}")),

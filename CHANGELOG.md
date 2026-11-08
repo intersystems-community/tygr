@@ -11,6 +11,7 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
 
 ### Breaking Changes
 
+- The derive attribute is `#[tygr(...)]`, not `#[grammar(...)]`.
 - `Grammar::scan_at` is merged into `parse_at::<M: Mode>`, which returns
   `M::Output<Self>`: the value in mode `Parse`, `()` in mode `Scan`.
   Hand-written grammars build outputs with `Mode::build`/`map`.
@@ -29,7 +30,7 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
   predicates already qualify (`is_ascii_*`, `is_whitespace`, `matches!`);
   write `matches!(c, 'a'..='f')` rather than `('a'..='f').contains(&c)`.
   For a predicate that can't be `const`, such as `char::is_alphabetic`,
-  use a `#[grammar(validated)]` type wrapping `char`.
+  use a `#[tygr(validated)]` type wrapping `char`.
 - `StringOf<C>` and `StringOf1<C>` are type aliases for `Raw<Vec<C>>` and
   `Raw<Vec1<C>>`, so they `Debug`-print as `Raw(..)`.
 - Renamed `Range<T>` to `Ranged<T>`, freeing the name for
@@ -72,7 +73,7 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
 - Removed `examples/json_optimized.rs`. `examples/json.rs` is the one JSON
   example, and `cargo bench --bench json` benchmarks the same grammar.
 - `char` is a grammar for any one char.
-- Field conversions: `#[grammar(from/try_from/from_str/from_str_infallible
+- Field conversions: `#[tygr(from/try_from/from_str/from_str_infallible
   = S)]` on a field parses `S` and converts it with the std trait. On a
   unit variant, it matches `S` and keeps nothing.
 - The `print` feature (default) gates printing: without it, derived

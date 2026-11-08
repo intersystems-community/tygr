@@ -291,7 +291,7 @@ pub trait CharClass: Grammar + ByteSet {
 /// ```
 /// # use tygr::*;
 /// #[derive(Grammar)]
-/// #[grammar(validated)]
+/// #[tygr(validated)]
 /// struct Letter(char);
 ///
 /// impl Validate for Letter {

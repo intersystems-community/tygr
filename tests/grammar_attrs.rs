@@ -19,7 +19,7 @@ fn no_attribute_uses_type_name_and_references_by_rule() {
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
-#[grammar(name = "custom_name")]
+#[tygr(name = "custom_name")]
 struct Named(StringEq!("x"));
 
 #[test]
@@ -29,7 +29,7 @@ fn name_overrides_the_bnf_rule_name() {
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
-#[grammar(hidden)]
+#[tygr(hidden)]
 struct Semi(StringEq!(";"));
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
@@ -63,7 +63,7 @@ fn optional_or_repeated_hidden_field_vanishes_instead_of_showing_empty_brackets(
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
-#[grammar(inline)]
+#[tygr(inline)]
 enum MaybeSemi {
     Semi(Semi),
     Digits(Digits),
@@ -93,7 +93,7 @@ fn empty_alternative_makes_the_rest_optional() {
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
-#[grammar(inline)]
+#[tygr(inline)]
 struct Inlined(StringEq!("a"), StringEq!("b"));
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
@@ -109,8 +109,8 @@ fn inline_splices_fields_instead_of_referencing_by_rule() {
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
-#[grammar(name = "spliced")]
-#[grammar(inline)]
+#[tygr(name = "spliced")]
+#[tygr(inline)]
 struct TwoAttributes(StringEq!("a"));
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
@@ -126,7 +126,7 @@ fn separate_attributes_combine() {
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
-#[grammar(validated)]
+#[tygr(validated)]
 struct NonZero(StringOf1<IsDigit>);
 
 impl Validate for NonZero {
@@ -156,7 +156,7 @@ fn validated_bnf_shows_the_side_condition() {
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
-#[grammar(validated)]
+#[tygr(validated)]
 enum ValidatedEnum {
     A(StringEq!("a")),
     B(StringEq!("b")),
@@ -178,7 +178,7 @@ fn validated_enum_bnf_shows_the_side_condition_around_the_whole_alternation() {
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
-#[grammar(inline, validated)]
+#[tygr(inline, validated)]
 struct InlineNonZero(StringOf1<IsDigit>);
 
 impl Validate for InlineNonZero {
@@ -211,7 +211,7 @@ fn repeated_inline_validated_side_condition_gets_one_deduplicated_footnote() {
 }
 
 #[derive(Debug, GrammarFromStr)]
-#[grammar(validated)]
+#[tygr(validated)]
 struct EvenNumber(u32);
 
 impl GrammarFrom for EvenNumber {
@@ -250,7 +250,7 @@ fn validated_grammar_from_str_rejects_values_that_fail_validation() {
 }
 
 #[derive(Debug, GrammarFromOther)]
-#[grammar(validated)]
+#[tygr(validated)]
 struct PositiveDoubled(u32);
 
 impl GrammarFrom for PositiveDoubled {
@@ -320,7 +320,7 @@ fn grammar_from_str_infallible_converts_the_text_but_not_when_scanning() {
     assert!(Counted::parse("x").is_err());
 }
 
-// Field conversions: `#[grammar(<kind> = S)]`.
+// Field conversions: `#[tygr(<kind> = S)]`.
 
 #[derive(Debug, PartialEq, Grammar)]
 struct Digit(IsDigit);
@@ -352,15 +352,15 @@ impl From<&bool> for Digit {
 
 #[derive(Debug, PartialEq, Grammar)]
 enum Converted {
-    #[grammar(from = StringEq!("null"))]
+    #[tygr(from = StringEq!("null"))]
     Null,
     Fields(
-        #[grammar(from_str = StringOf1<IsDigit>)] u32,
+        #[tygr(from_str = StringOf1<IsDigit>)] u32,
         StringEq!(","),
-        #[grammar(from_str_infallible = StringOf1<IsDigit>)] String,
+        #[tygr(from_str_infallible = StringOf1<IsDigit>)] String,
         StringEq!(";"),
-        #[grammar(from = Digit)] u8,
-        #[grammar(try_from = Digit)] bool,
+        #[tygr(from = Digit)] u8,
+        #[tygr(try_from = Digit)] bool,
     ),
 }
 
