@@ -81,7 +81,7 @@ impl Model {
             Data::Union(_) => {
                 return Err(syn::Error::new_spanned(
                     ident,
-                    "Grammar cannot be derived for unions",
+                    "a grammar is a struct or an enum, not a union",
                 ))
             }
         };

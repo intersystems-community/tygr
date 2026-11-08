@@ -6,16 +6,20 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
 
 The parser now works on bytes, with string and character grammars built
 on top. On the JSON benchmark (`canada.json`), parsing is about 12× faster
-with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
-(33 → 105 MB/s).
+with the default tracing (6.6 → 82 MB/s) and about 3.5× faster without it
+(33 → 114 MB/s).
 
 ### Breaking Changes
 
+- The derive attribute is `#[tygr(...)]`, not `#[grammar(...)]`.
 - `Grammar` is split into `Parse` (parsing and BNF) and `Print`.
   `Grammar` is now `Parse + Print`, implemented for every type with both.
   `#[derive(Grammar)]` derives both; `#[derive(Parse)]` and
   `#[derive(Print)]` derive one, e.g. a grammar that is only parsed
   needs no printing.
+- Removed `GrammarFrom` and its derives (`GrammarFromStr`,
+  `GrammarFromOther`, `GrammarTryFromOther`). Convert a field instead:
+  `struct Port(#[tygr(from_str = Digits)] u16);`.
 - `scan` and `scan_prefix` are renamed `check` and `check_prefix`.
 - Removed `GrammarRule` and `bnf_rules!`. `Parse::bnf_rules()` collects a
   grammar's rules, each type's once, depth first, as `bnf::Rule`s to sort,
@@ -23,10 +27,6 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
 - `bnf::Expr::format` is replaced by `Display`.
 - Removed the `lower_bnf_name` and `upper_bnf_name` features, as features
   should be additive. Rename rules with `Rule::rename` instead.
-- The derive attribute is `#[tygr(...)]`, not `#[grammar(...)]`.
-- Removed `GrammarFrom` and its derives (`GrammarFromStr`,
-  `GrammarFromOther`, `GrammarTryFromOther`). Convert a field instead:
-  `struct Port(#[tygr(from_str = Digits)] u16);`.
 - `Grammar::scan_at` is merged into `Parse::parse_at::<M: Mode>`, which
   returns `M::Output<Self>`: the value in mode `Build`, `()` in mode
   `Check`. Hand-written grammars build outputs with `Mode::build`/`map`.

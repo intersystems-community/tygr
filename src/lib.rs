@@ -27,8 +27,19 @@
 //! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | concatenation shorthands, [`Deref`](std::ops::Deref)-ing to `T` |
 //! | [`VecSep<T, S>`] | one-or-more repetition with separators (`T { S T }`) |
 //!
-//! To parse a field as another grammar `S` and convert it, e.g. digits into
-//! a `u32`, give `S` in the field's `#[tygr(...)]`, naming how to convert:
+//! [`Parse::bnf_rules`] lists a grammar's rules, each once, to sort,
+//! [rename](bnf::Rule::rename) and print.
+//!
+//! `#[tygr(...)]` on a derived type:
+//! - `name = "..."` — override the BNF rule name (defaults to the type name).
+//! - `hidden` — same effect as wrapping in [`Hidden<T>`], but on a whole struct/enum.
+//! - `inline` — splice this type's own definition wherever it's
+//!   referenced, instead of a rule reference.
+//! - `validated` — after a successful parse, run [`Validate::validate`] on the
+//!   value; a rejection backtracks as if the grammar hadn't matched.
+//!
+//! `#[tygr(...)]` on a field parses another grammar `S` and converts it,
+//! e.g. digits into a `u32`, naming how:
 //! - `try_from = S`: `S: TryInto<T>`, on the parsed value.
 //! - `try_from_infallible = S`: the same with `Error = Infallible`, as for
 //!   every `From` conversion.
@@ -50,14 +61,6 @@
 //! assert!(Port::parse("99999").is_err());
 //! assert_eq!(Port(443).print(), "443");
 //! ```
-//!
-//! `#[tygr(...)]` on a derived type:
-//! - `name = "..."` — override the BNF rule name (defaults to the type name).
-//! - `hidden` — same effect as wrapping in [`Hidden<T>`], but on a whole struct/enum.
-//! - `inline` — splice this type's own definition wherever it's
-//!   referenced, instead of a rule reference.
-//! - `validated` — after a successful parse, run [`Validate::validate`] on the
-//!   value; a rejection backtracks as if the grammar hadn't matched.
 //!
 //! ## Feature Flags
 //!

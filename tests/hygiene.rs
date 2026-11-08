@@ -51,6 +51,8 @@ struct Locals {
     pos: tygr::StringEq!(","),
     state: tygr::StringOf1<Digit>,
     mode: tygr::StringEq!(";"),
+    buf: tygr::StringEq!("."),
+    rules: tygr::StringEq!("!"),
 }
 
 // Generic over an `M`, with enough variants for a dispatch table.
@@ -71,6 +73,8 @@ fn derives_compile_and_parse_without_imports() {
     let field = Field::parse("42,if").unwrap();
     assert_eq!(field.0, 42);
     assert_eq!(tygr::Print::print(&field), "42,if");
-    assert!(Locals::parse("1,2;").is_ok());
+    let locals = Locals::parse("1,2;.!").unwrap();
+    assert_eq!(tygr::Print::print(&locals), "1,2;.!");
+    assert_eq!(Locals::bnf_rules().len(), 1);
     assert!(Generic::<Kw>::parse("if").is_ok() && Generic::<Kw>::check("d").is_ok());
 }
