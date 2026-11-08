@@ -241,14 +241,11 @@ fn grammar_attr(input: &DeriveInput) -> syn::Result<GrammarAttr> {
     Ok(attr)
 }
 
-/// A field: its binding `x`, the grammar `source` that parses it (its own
-/// type unless converted), and the code that parses, scans, prints and
-/// describes it.
+/// A field: the grammar `source` that parses it (its own type unless
+/// converted), and the code that parses, prints and describes it.
 struct Field {
-    x: Ident,
     source: TokenStream2,
     parse: TokenStream2,
-    scan: TokenStream2,
     print: TokenStream2,
     bnf: TokenStream2,
 }
@@ -316,38 +313,28 @@ fn conversion(attrs: &[syn::Attribute]) -> syn::Result<Option<(String, syn::Type
     })
 }
 
-/// A field, parsed by its own type or converted from a source grammar
-/// (`#[grammar(from/try_from/from_str/from_str_infallible = S)]`).
-fn field(x: Ident, field: &syn::Field) -> syn::Result<Field> {
+/// Field `x`, parsed in `mode` by its own type or converted from a source
+/// grammar (`#[grammar(from/try_from/from_str/from_str_infallible = S)]`).
+fn field(x: &Ident, field: &syn::Field, mode: &TokenStream2) -> syn::Result<Field> {
     let ty = &field.ty;
     let Some((kind, source)) = conversion(&field.attrs)? else {
         return Ok(Field {
             source: quote! { #ty },
-            parse: quote! { let (#x, pos) = <#ty as ::tygr::Grammar>::parse_at(input, pos, state.reborrow())?; },
-            scan: quote! { let pos = <#ty as ::tygr::Grammar>::scan_at(input, pos, state.reborrow())?; },
+            parse: quote! {
+                let (#x, pos) = <#ty as ::tygr::Grammar>::parse_at::<#mode>(input, pos, state.reborrow())?;
+            },
             print: quote! { ::tygr::Grammar::print_to(#x, buf); },
             bnf: quote! { <#ty as ::tygr::Grammar>::to_bnf() },
-            x,
         });
     };
     let helper = format_ident!("{kind}");
-    // `pat` is `x` when parsing and `_` when scanning.
-    let convert = |pat: TokenStream2| {
-        quote! {
-            let (#pat, pos) = ::tygr::__private::#helper::<#source, #ty>(input, pos, state.reborrow())?;
-        }
-    };
     let bnf = quote! { <#source as ::tygr::Grammar>::to_bnf() };
-    // A fallible conversion must convert to scan, and is footnoted in BNF.
-    let (scan, bnf) = match kind.as_str() {
-        "try_from" | "from_str" => (
-            convert(quote! { _ }),
-            quote! { ::tygr::bnf::Expr::side_condition(#bnf, #CONVERTIBLE) },
-        ),
-        _ => (
-            quote! { let pos = <#source as ::tygr::Grammar>::scan_at(input, pos, state.reborrow())?; },
-            bnf,
-        ),
+    // A fallible conversion is footnoted in BNF.
+    let bnf = match kind.as_str() {
+        "try_from" | "from_str" => {
+            quote! { ::tygr::bnf::Expr::side_condition(#bnf, #CONVERTIBLE) }
+        }
+        _ => bnf,
     };
     // A value prints back through its source; text through `Display`.
     let print = match kind.as_str() {
@@ -359,23 +346,21 @@ fn field(x: Ident, field: &syn::Field) -> syn::Result<Field> {
         },
     };
     Ok(Field {
-        parse: convert(quote! { #x }),
+        parse: quote! {
+            let (#x, pos) = ::tygr::__private::#helper::<#source, #ty, #mode>(input, pos, state.reborrow())?;
+        },
         source: quote! { #source },
-        scan,
         print,
         bnf,
-        x,
     })
 }
 
 /// A unit variant's `#[grammar(<any kind> = S)]`: match `S`, keep nothing.
 fn discarded(source: syn::Type) -> Field {
-    let scan =
-        quote! { let pos = <#source as ::tygr::Grammar>::scan_at(input, pos, state.reborrow())?; };
     Field {
-        x: format_ident!("_unit"),
-        parse: scan.clone(),
-        scan,
+        parse: quote! {
+            let ((), pos) = <#source as ::tygr::Grammar>::parse_at::<::tygr::Scan>(input, pos, state.reborrow())?;
+        },
         print: quote! {
             ::tygr::Grammar::print_to(&<#source as ::core::default::Default>::default(), buf);
         },
@@ -385,15 +370,17 @@ fn discarded(source: syn::Type) -> Field {
 }
 
 /// `path`'s constructor, binding its fields as `_f0`, `_f1`, … so no field
-/// name clashes with the generated code, and the fields.
+/// name clashes with the generated code; those bindings; and the fields,
+/// parsed in `mode`.
 fn constructor_and_fields(
     path: TokenStream2,
     fields: &Fields,
     attrs: &[syn::Attribute],
-) -> syn::Result<(TokenStream2, Vec<Field>)> {
+    mode: &TokenStream2,
+) -> syn::Result<(TokenStream2, Vec<Ident>, Vec<Field>)> {
     if let Fields::Unit = fields {
         let discarded = conversion(attrs)?.map(|(_, source)| discarded(source));
-        return Ok((path, discarded.into_iter().collect()));
+        return Ok((path, vec![], discarded.into_iter().collect()));
     }
     if let Some(attr) = attrs.iter().find(|attr| attr.path().is_ident("grammar")) {
         return Err(syn::Error::new_spanned(
@@ -401,12 +388,12 @@ fn constructor_and_fields(
             "only a unit variant takes `#[grammar(...)]`; put it on a field",
         ));
     }
+    let xs: Vec<Ident> = (0..fields.len()).map(|i| format_ident!("_f{i}")).collect();
     let converted = fields
         .iter()
-        .enumerate()
-        .map(|(i, syntax)| field(format_ident!("_f{i}"), syntax))
+        .zip(&xs)
+        .map(|(syntax, x)| field(x, syntax, mode))
         .collect::<syn::Result<Vec<_>>>()?;
-    let xs = converted.iter().map(|field| &field.x);
     let constructor = match fields {
         Fields::Named(named) => {
             let names = named.named.iter().map(|field| &field.ident);
@@ -414,37 +401,40 @@ fn constructor_and_fields(
         }
         _ => quote! { #path ( #(#xs),* ) },
     };
-    Ok((constructor, converted))
+    Ok((constructor, xs, converted))
 }
 
-/// Parse each field, then build (and maybe validate) the value.
-fn parse_at(validated: bool, fields: &[Field], constructor: &TokenStream2) -> TokenStream2 {
+/// Parse each field (bound to `xs`), then build the value; or, if
+/// `validated`, build it whatever the mode and check it.
+fn parse_at(
+    validated: bool,
+    xs: &[Ident],
+    fields: &[Field],
+    constructor: &TokenStream2,
+) -> TokenStream2 {
     let steps = fields.iter().map(|field| &field.parse);
-    let (start_pos, validation) = if validated {
-        (
-            quote! { let start_pos = pos; },
-            validation("start_pos", "pos"),
-        )
+    if validated {
+        let validation = validation("start_pos", "pos");
+        return quote! {
+            let start_pos = pos;
+            #(#steps)*
+            let value = #constructor;
+            #validation
+            Some((<__Mode as ::tygr::Mode>::build(|_| value), pos))
+        };
+    }
+    let mode = if xs.is_empty() {
+        quote! { _ }
     } else {
-        (quote! {}, quote! {})
+        quote! { mode }
     };
     quote! {
-        #start_pos
         #(#steps)*
-        let value = #constructor;
-        #validation
-        Some((value, pos))
+        Some((<__Mode as ::tygr::Mode>::build(|#mode| {
+            #(let #xs = <__Mode as ::tygr::Mode>::get(mode, #xs);)*
+            #constructor
+        }), pos))
     }
-}
-
-/// Scan each field; validating needs the value, so that parses instead.
-fn scan_at(validated: bool, fields: &[Field], constructor: &TokenStream2) -> TokenStream2 {
-    if validated {
-        let parse_at = parse_at(true, fields, constructor);
-        return quote! { ({ #parse_at }).map(|(_, pos)| pos) };
-    }
-    let steps = fields.iter().map(|field| &field.scan);
-    quote! { #(#steps)* Some(pos) }
 }
 
 fn bnf_ref(grammar_name: &str, hidden: bool, to_bnf: &TokenStream2, inline: bool) -> TokenStream2 {
@@ -461,7 +451,6 @@ fn bnf_ref(grammar_name: &str, hidden: bool, to_bnf: &TokenStream2, inline: bool
 struct FieldsInfo {
     constructor: TokenStream2,
     parse_at: TokenStream2,
-    scan_at: TokenStream2,
     print_to: TokenStream2,
     to_bnf: TokenStream2,
     fail_at: TokenStream2,
@@ -475,13 +464,18 @@ impl FieldsInfo {
         fields: &Fields,
         attrs: &[syn::Attribute],
     ) -> syn::Result<Self> {
-        let (constructor, fields) = constructor_and_fields(path, fields, attrs)?;
+        // Validating needs the value, so then the fields always parse.
+        let mode = if validated {
+            quote! { ::tygr::Parse }
+        } else {
+            quote! { __Mode }
+        };
+        let (constructor, xs, fields) = constructor_and_fields(path, fields, attrs, &mode)?;
         let prints = fields.iter().map(|field| &field.print);
         let bnfs = fields.iter().map(|field| &field.bnf);
         let sources: Vec<_> = fields.iter().map(|field| &field.source).collect();
         Ok(Self {
-            parse_at: parse_at(validated, &fields, &constructor),
-            scan_at: scan_at(validated, &fields, &constructor),
+            parse_at: parse_at(validated, &xs, &fields, &constructor),
             print_to: quote! { #(#prints)* },
             to_bnf: quote! { ::tygr::bnf::Expr::sequence(vec![#(#bnfs),*]) },
             // Stops after the first required field.
@@ -519,7 +513,6 @@ struct Impls {
     name: String,
     first: TokenStream2,
     parse_at: TokenStream2,
-    scan_at: TokenStream2,
     /// The whole `print_to` fn, from [`printing`].
     print_to: TokenStream2,
     to_bnf: TokenStream2,
@@ -533,7 +526,6 @@ impl Impls {
             name,
             first,
             parse_at,
-            scan_at,
             print_to,
             to_bnf,
             fail_at,
@@ -541,18 +533,14 @@ impl Impls {
         } = self;
         let ident = &input.ident;
         let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+        // `__Mode`, not `M`, so it can't shadow a type parameter of the user's.
         quote! {
             impl #impl_generics ::tygr::Grammar for #ident #ty_generics #where_clause {
                 type First = #first;
 
                 #[inline(always)]
-                fn parse_at(input: &[u8], pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> Option<(Self, usize)> {
+                fn parse_at<__Mode: ::tygr::Mode>(input: &[u8], pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> {
                     #parse_at
-                }
-
-                #[inline(always)]
-                fn scan_at(input: &[u8], pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> Option<usize> {
-                    #scan_at
                 }
 
                 #print_to
@@ -588,64 +576,85 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
     let (_, ty_generics, _) = input.generics.split_for_impl();
     let self_ty = quote! { #ident #ty_generics };
     let source = quote! { <#self_ty as ::tygr::GrammarFrom>::Source };
-    let text = quote! {
-        let end = <#source as ::tygr::Grammar>::scan_at(input, pos, state.reborrow())?;
-        // SAFETY: see the invariant on `Grammar::parse_at`.
-        let text = unsafe { ::core::str::from_utf8_unchecked(&input[pos..end]) };
+    let fallible = matches!(convert, Convert::FromStr | Convert::TryFrom);
+    // Converting before building means converting when scanning too.
+    let eager = fallible || validated;
+    let from_text = quote! {
+        let ((), end) = <#source as ::tygr::Grammar>::parse_at::<::tygr::Scan>(input, pos, state.reborrow())?;
     };
-    let parsed = quote! {
-        let (source, end) = <#source as ::tygr::Grammar>::parse_at(input, pos, state.reborrow())?;
+    // SAFETY: see the invariant on `Grammar::parse_at`.
+    let text = quote! { unsafe { ::core::str::from_utf8_unchecked(&input[pos..end]) } };
+    let source_mode = if eager {
+        quote! { ::tygr::Parse }
+    } else {
+        quote! { __Mode }
+    };
+    let from_source = quote! {
+        let (source, end) = <#source as ::tygr::Grammar>::parse_at::<#source_mode>(input, pos, state.reborrow())?;
     };
     let reject = rejected("pos", "end", quote! { #CONVERTIBLE });
-    // Bind `value` and `end`, or reject.
-    let (converted, fallible) = match convert {
+    // Match the source, then bind `value` or reject.
+    let (matched, converted) = match convert {
         Convert::FromStr => (
+            from_text,
             quote! {
-                #text
-                let Ok(value) = <#self_ty as ::core::str::FromStr>::from_str(text) else {
+                let Ok(value) = <#self_ty as ::core::str::FromStr>::from_str(#text) else {
                     #reject
                     return None;
                 };
             },
-            true,
         ),
         Convert::FromStrInfallible => (
+            from_text,
             quote! {
-                #text
                 let result: ::core::result::Result<#self_ty, ::core::convert::Infallible> =
-                    <#self_ty as ::core::str::FromStr>::from_str(text);
+                    <#self_ty as ::core::str::FromStr>::from_str(#text);
                 let Ok(value) = result;
             },
-            false,
         ),
         Convert::From => (
-            quote! {
-                #parsed
-                let value = <#self_ty as ::core::convert::From<#source>>::from(source);
-            },
-            false,
+            from_source,
+            quote! { let value = <#self_ty as ::core::convert::From<#source>>::from(source); },
         ),
         Convert::TryFrom => (
+            from_source,
             quote! {
-                #parsed
                 let Ok(value) = <#self_ty as ::core::convert::TryFrom<#source>>::try_from(source) else {
                     #reject
                     return None;
                 };
             },
-            true,
         ),
     };
-    let validation = if validated {
-        validation("pos", "end")
+    let parse_at = if eager {
+        let validation = if validated {
+            validation("pos", "end")
+        } else {
+            quote! {}
+        };
+        quote! {
+            #matched
+            #converted
+            #validation
+            Some((<__Mode as ::tygr::Mode>::build(|_| value), end))
+        }
     } else {
-        quote! {}
-    };
-    // Only infallible, unvalidated conversions can scan without converting.
-    let scan_at = if fallible || validated {
-        quote! { Self::parse_at(input, pos, state).map(|(_, end)| end) }
-    } else {
-        quote! { <#source as ::tygr::Grammar>::scan_at(input, pos, state) }
+        // Building converts, so scanning doesn't.
+        let (mode, get) = match convert {
+            Convert::From => (
+                quote! { mode },
+                quote! { let source = <__Mode as ::tygr::Mode>::get(mode, source); },
+            ),
+            _ => (quote! { _ }, quote! {}),
+        };
+        quote! {
+            #matched
+            Some((<__Mode as ::tygr::Mode>::build(|#mode| {
+                #get
+                #converted
+                value
+            }), end))
+        }
     };
     let to_bnf = quote! { <#source as ::tygr::Grammar>::to_bnf() };
     // Side-conditions only on the rule's own definition, not references.
@@ -659,12 +668,7 @@ fn impl_convert(input: &DeriveInput, convert: Convert) -> syn::Result<TokenStrea
         to_bnf_def: validated_bnf(validated, to_bnf_def),
         name,
         first: quote! { <#source as ::tygr::Grammar>::First },
-        parse_at: quote! {
-            #converted
-            #validation
-            Some((value, end))
-        },
-        scan_at,
+        parse_at,
         print_to: printing(
             quote! {
                 fn print_to(&self, buf: &mut ::std::vec::Vec<u8>) {
@@ -693,7 +697,6 @@ fn impl_struct(
     let FieldsInfo {
         constructor,
         parse_at,
-        scan_at,
         print_to,
         to_bnf,
         fail_at,
@@ -706,7 +709,6 @@ fn impl_struct(
         name,
         first,
         parse_at: with_node(inline, parse_at),
-        scan_at: with_node(inline, scan_at),
         print_to: printing(
             quote! {
                 fn print_to(&self, buf: &mut ::std::vec::Vec<u8>) {
@@ -724,16 +726,10 @@ fn impl_struct(
 /// The variant count from which an enum dispatches on a table.
 const DISPATCH_THRESHOLD: usize = 4;
 
-/// The `parse_at` or `scan_at` body trying `arms` (one per variant, ending
-/// in `Some(output)`) in order, and the inherent items it needs. With enough
-/// variants, a table on the next byte skips to the first that can start
-/// there.
-fn dispatch(
-    kind: &str,
-    output: TokenStream2,
-    arms: &[&TokenStream2],
-    firsts: &[&TokenStream2],
-) -> (TokenStream2, TokenStream2) {
+/// The `parse_at` body trying `arms` (one per variant) in order, and the
+/// inherent fns it needs. With enough variants, a table on the next byte
+/// skips to the first variant that can start there.
+fn dispatch(arms: &[&TokenStream2], firsts: &[&TokenStream2]) -> (TokenStream2, TokenStream2) {
     let n = arms.len();
     if n < DISPATCH_THRESHOLD {
         let body = quote! {
@@ -742,26 +738,23 @@ fn dispatch(
         };
         return (body, quote! {});
     }
-    let cases: Vec<Ident> = (0..n).map(|k| format_ident!("{kind}_case_{k}")).collect();
+    let output = quote! { Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> };
+    let cases: Vec<Ident> = (0..n).map(|k| format_ident!("parse_case_{k}")).collect();
     let nexts = cases
         .iter()
         .skip(1)
-        .map(|next| quote! { Self::#next(input, pos, state) })
+        .map(|next| quote! { Self::#next::<__Mode>(input, pos, state) })
         .chain([quote! { None }]);
-    let miss = format_ident!("{kind}_miss");
-    let table = format_ident!("{}_TABLE", kind.to_uppercase());
-    let fn_ty = quote! { fn(&[u8], usize, ::tygr::State<'_>) -> Option<#output> };
     // `cfg!` here: a spliced `#[cfg]` would test the user's crate features.
     let report = if cfg!(feature = "trace_pos") {
         quote! { Self::fail_at_variants(pos, state); }
     } else {
         quote! {}
     };
-    let indices = 0..n;
     let items = quote! {
         #(
             #[inline]
-            fn #cases(input: &[u8], pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> Option<#output> {
+            fn #cases<__Mode: ::tygr::Mode>(input: &[u8], pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> #output {
                 if let Some(result) = (|| { #arms })() { return Some(result); }
                 #nexts
             }
@@ -769,28 +762,29 @@ fn dispatch(
 
         // No variant can start here: report them all.
         #[inline]
-        fn #miss(_input: &[u8], #[allow(unused_variables)] pos: usize, #[allow(unused_variables)] state: ::tygr::State) -> Option<#output> {
+        fn parse_miss<__Mode: ::tygr::Mode>(_input: &[u8], #[allow(unused_variables)] pos: usize, #[allow(unused_variables)] state: ::tygr::State) -> #output {
             #report
             None
         }
-
-        // Slots 0-255: the next byte; 256: end of input.
-        const #table: [#fn_ty; 257] = {
-            let cases: [#fn_ty; #n] = [#(Self::#cases),*];
-            let mut table: [#fn_ty; 257] = [Self::#miss; 257];
+    };
+    let fn_ty = quote! { fn(&[u8], usize, ::tygr::State<'_>) -> #output };
+    let indices = 0..n;
+    let body = quote! {
+        // Slots 0-255: the next byte; 256: end of input. One per mode.
+        let table: &'static [#fn_ty; 257] = &const {
+            let cases: [#fn_ty; #n] = [#(Self::#cases::<__Mode>),*];
+            let mut table: [#fn_ty; 257] = [Self::parse_miss::<__Mode>; 257];
             let mut slot = 0;
             while slot < 257 {
                 let next = if slot < 256 { Some(slot as u8) } else { None };
                 table[slot] = #( if ::tygr::first::contains::<#firsts>(next) {
                     cases[#indices]
-                } else )* { Self::#miss };
+                } else )* { Self::parse_miss::<__Mode> };
                 slot += 1;
             }
             table
         };
-    };
-    let body = quote! {
-        Self::#table[input.get(pos).map_or(256, |&byte| byte as usize)](input, pos, state)
+        table[input.get(pos).map_or(256, |&byte| byte as usize)](input, pos, state)
     };
     (body, items)
 }
@@ -816,14 +810,12 @@ fn impl_enum(input: &DeriveInput, attr: GrammarAttr, data: &DataEnum) -> syn::Re
         .iter()
         .map(|variant| &variant.constructor)
         .collect();
-    let parse_arms: Vec<_> = variants.iter().map(|variant| &variant.parse_at).collect();
-    let scan_arms: Vec<_> = variants.iter().map(|variant| &variant.scan_at).collect();
+    let arms: Vec<_> = variants.iter().map(|variant| &variant.parse_at).collect();
     let prints = variants.iter().map(|variant| &variant.print_to);
     let bnfs = variants.iter().map(|variant| &variant.to_bnf);
     let fail_ats = variants.iter().map(|variant| &variant.fail_at);
     let firsts: Vec<_> = variants.iter().map(|variant| &variant.first).collect();
-    let (parse_at, parse_items) = dispatch("parse", quote! { (Self, usize) }, &parse_arms, &firsts);
-    let (scan_at, scan_items) = dispatch("scan", quote! { usize }, &scan_arms, &firsts);
+    let (parse_at, items) = dispatch(&arms, &firsts);
     let to_bnf_def = validated_bnf(
         validated,
         quote! { ::tygr::bnf::Expr::alternation(vec![#(#bnfs),*]) },
@@ -837,7 +829,6 @@ fn impl_enum(input: &DeriveInput, attr: GrammarAttr, data: &DataEnum) -> syn::Re
             |first, variant| quote! { <#first as ::tygr::first::First>::Alt<#variant> },
         ),
         parse_at: with_node(inline, parse_at),
-        scan_at: with_node(inline, scan_at),
         print_to: printing(
             quote! {
                 fn print_to(&self, buf: &mut ::std::vec::Vec<u8>) {
@@ -854,8 +845,7 @@ fn impl_enum(input: &DeriveInput, attr: GrammarAttr, data: &DataEnum) -> syn::Re
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     Ok(quote! {
         impl #impl_generics #ident #ty_generics #where_clause {
-            #parse_items
-            #scan_items
+            #items
 
             // Every variant reports (`&`, not `&&`); the enum is required only
             // if all variants are.

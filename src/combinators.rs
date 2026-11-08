@@ -5,7 +5,7 @@ use crate::IntoInner;
 use crate::State;
 use crate::bnf::Expr;
 use crate::first::{First, Optional, byte_set};
-use crate::grammar::{Grammar, GrammarRule};
+use crate::grammar::{Grammar, GrammarRule, Mode, Scan};
 use either::Either::*;
 use std::fmt;
 use std::marker::PhantomData;
@@ -17,13 +17,12 @@ impl Grammar for () {
     type First = Optional<byte_set::Emp>;
 
     #[inline]
-    fn parse_at(_input: &[u8], pos: usize, _state: State) -> Option<(Self, usize)> {
-        Some(((), pos))
-    }
-
-    #[inline]
-    fn scan_at(_input: &[u8], pos: usize, _state: State) -> Option<usize> {
-        Some(pos)
+    fn parse_at<M: Mode>(
+        _input: &[u8],
+        pos: usize,
+        _state: State,
+    ) -> Option<(M::Output<Self>, usize)> {
+        Some((M::build(|_| ()), pos))
     }
 
     fn print_to(&self, _buf: &mut Vec<u8>) {}
@@ -50,18 +49,16 @@ macro_rules! impl_grammar_tuple {
             type First = concat_first!(Optional<byte_set::Emp>; $($T),+);
 
             #[inline]
-            fn parse_at(input: &[u8], pos: usize, mut state: State) -> Option<(Self, usize)> {
+            fn parse_at<M: Mode>(
+                input: &[u8],
+                pos: usize,
+                mut state: State,
+            ) -> Option<(M::Output<Self>, usize)> {
                 $(
                     #[allow(non_snake_case)]
-                    let ($T, pos) = <$T>::parse_at(input, pos, state.reborrow())?;
+                    let ($T, pos) = <$T>::parse_at::<M>(input, pos, state.reborrow())?;
                 )+
-                Some((($($T,)+), pos))
-            }
-
-            #[inline]
-            fn scan_at(input: &[u8], pos: usize, mut state: State) -> Option<usize> {
-                $(let pos = <$T>::scan_at(input, pos, state.reborrow())?;)+
-                Some(pos)
+                Some((M::build(|mode| ($(mode.get($T),)+)), pos))
             }
 
             fn print_to(&self, buf: &mut Vec<u8>) {
@@ -244,15 +241,16 @@ impl<A: Grammar, B: Grammar> Grammar for either::Either<A, B> {
     type First = <A::First as First>::Alt<B::First>;
 
     #[inline]
-    fn parse_at(input: &[u8], pos: usize, mut state: State) -> Option<(Self, usize)> {
-        A::parse_at(input, pos, state.reborrow())
-            .map(|(x, end_pos)| (Left(x), end_pos))
-            .or_else(|| B::parse_at(input, pos, state).map(|(x, end_pos)| (Right(x), end_pos)))
-    }
-
-    #[inline]
-    fn scan_at(input: &[u8], pos: usize, mut state: State) -> Option<usize> {
-        A::scan_at(input, pos, state.reborrow()).or_else(|| B::scan_at(input, pos, state))
+    fn parse_at<M: Mode>(
+        input: &[u8],
+        pos: usize,
+        mut state: State,
+    ) -> Option<(M::Output<Self>, usize)> {
+        if let Some((a, end)) = A::parse_at::<M>(input, pos, state.reborrow()) {
+            return Some((M::map(a, Left), end));
+        }
+        let (b, end) = B::parse_at::<M>(input, pos, state)?;
+        Some((M::map(b, Right), end))
     }
 
     fn print_to(&self, buf: &mut Vec<u8>) {
@@ -277,16 +275,15 @@ impl<T: Grammar> Grammar for Option<T> {
     type First = <T::First as First>::Opt;
 
     #[inline]
-    fn parse_at(input: &[u8], pos: usize, state: State) -> Option<(Self, usize)> {
-        match T::parse_at(input, pos, state) {
-            Some((val, end)) => Some((Some(val), end)),
-            None => Some((None, pos)),
-        }
-    }
-
-    #[inline]
-    fn scan_at(input: &[u8], pos: usize, state: State) -> Option<usize> {
-        Some(T::scan_at(input, pos, state).unwrap_or(pos))
+    fn parse_at<M: Mode>(
+        input: &[u8],
+        pos: usize,
+        state: State,
+    ) -> Option<(M::Output<Self>, usize)> {
+        Some(match T::parse_at::<M>(input, pos, state) {
+            Some((value, end)) => (M::map(value, Some), end),
+            None => (M::build(|_| None), pos),
+        })
     }
 
     fn print_to(&self, buf: &mut Vec<u8>) {
@@ -309,27 +306,21 @@ impl<T: Grammar> Grammar for Vec<T> {
     type First = <T::First as First>::Opt;
 
     #[inline]
-    fn parse_at(input: &[u8], mut pos: usize, mut state: State) -> Option<(Self, usize)> {
-        let mut items: Vec<T> = Vec::new();
-        while let Some((val, new_pos)) = T::parse_at(input, pos, state.reborrow()) {
-            if new_pos == pos {
-                break;
+    fn parse_at<M: Mode>(
+        input: &[u8],
+        mut pos: usize,
+        mut state: State,
+    ) -> Option<(M::Output<Self>, usize)> {
+        let mut items = M::build(|_| Vec::new());
+        while let Some((item, end)) = T::parse_at::<M>(input, pos, state.reborrow())
+            && end != pos
+        {
+            if let Some(mode) = M::parsing() {
+                mode.get_mut(&mut items).push(mode.get(item));
             }
-            items.push(val);
-            pos = new_pos;
+            pos = end;
         }
         Some((items, pos))
-    }
-
-    #[inline]
-    fn scan_at(input: &[u8], mut pos: usize, mut state: State) -> Option<usize> {
-        while let Some(new_pos) = T::scan_at(input, pos, state.reborrow()) {
-            if new_pos == pos {
-                break;
-            }
-            pos = new_pos;
-        }
-        Some(pos)
     }
 
     fn print_to(&self, buf: &mut Vec<u8>) {
@@ -363,16 +354,15 @@ impl<T> Deref for Vec1<T> {
 impl<T: Grammar> Grammar for Vec1<T> {
     type First = T::First;
 
+    // `Vec` stops at an item that matches empty, so an empty match is no items.
     #[inline]
-    fn parse_at(input: &[u8], pos: usize, state: State) -> Option<(Self, usize)> {
-        let (items, end) = <Vec<T>>::parse_at(input, pos, state)?;
-        (!items.is_empty()).then_some((Self(items), end))
-    }
-
-    #[inline]
-    fn scan_at(input: &[u8], pos: usize, state: State) -> Option<usize> {
-        let end = <Vec<T>>::scan_at(input, pos, state)?;
-        (end != pos).then_some(end)
+    fn parse_at<M: Mode>(
+        input: &[u8],
+        pos: usize,
+        state: State,
+    ) -> Option<(M::Output<Self>, usize)> {
+        let (items, end) = <Vec<T>>::parse_at::<M>(input, pos, state)?;
+        (end != pos).then(|| (M::map(items, Self), end))
     }
 
     fn print_to(&self, buf: &mut Vec<u8>) {
@@ -404,33 +394,33 @@ impl<T: Grammar, S: Grammar> Grammar for VecSep<T, S> {
     type First = <T::First as First>::Seq<Vec<(S, T)>>;
 
     #[inline]
-    fn parse_at(input: &[u8], pos: usize, mut state: State) -> Option<(Self, usize)> {
-        let (first, mut pos) = T::parse_at(input, pos, state.reborrow())?;
+    fn parse_at<M: Mode>(
+        input: &[u8],
+        pos: usize,
+        mut state: State,
+    ) -> Option<(M::Output<Self>, usize)> {
+        let (first, mut pos) = T::parse_at::<M>(input, pos, state.reborrow())?;
+        let mut vec_sep = M::build(|_| VecSep {
+            items: Vec::new(),
+            seps: Vec::new(),
+        });
         // `push`, not `vec![first]`, so the first allocation gets the
         // amortized capacity rather than exactly one.
-        let (mut items, mut seps) = (Vec::new(), Vec::new());
-        items.push(first);
-        while let Some((sep, after_sep)) = S::parse_at(input, pos, state.reborrow())
-            && let Some((item, end)) = T::parse_at(input, after_sep, state.reborrow())
+        if let Some(mode) = M::parsing() {
+            mode.get_mut(&mut vec_sep).items.push(mode.get(first));
+        }
+        while let Some((sep, after_sep)) = S::parse_at::<M>(input, pos, state.reborrow())
+            && let Some((item, end)) = T::parse_at::<M>(input, after_sep, state.reborrow())
             && end != pos
         {
-            seps.push(sep);
-            items.push(item);
+            if let Some(mode) = M::parsing() {
+                let VecSep { items, seps } = mode.get_mut(&mut vec_sep);
+                seps.push(mode.get(sep));
+                items.push(mode.get(item));
+            }
             pos = end;
         }
-        Some((VecSep { items, seps }, pos))
-    }
-
-    #[inline]
-    fn scan_at(input: &[u8], pos: usize, mut state: State) -> Option<usize> {
-        let mut pos = T::scan_at(input, pos, state.reborrow())?;
-        while let Some(after_sep) = S::scan_at(input, pos, state.reborrow())
-            && let Some(end) = T::scan_at(input, after_sep, state.reborrow())
-            && end != pos
-        {
-            pos = end;
-        }
-        Some(pos)
+        Some((vec_sep, pos))
     }
 
     fn print_to(&self, buf: &mut Vec<u8>) {
@@ -495,17 +485,15 @@ impl<G: Grammar> Grammar for NotFollowedBy<G> {
     type First = Optional<byte_set::Emp>;
 
     #[inline]
-    fn parse_at(input: &[u8], pos: usize, state: State) -> Option<(Self, usize)> {
-        let pos = Self::scan_at(input, pos, state)?;
-        Some((NotFollowedBy(PhantomData), pos))
-    }
-
-    #[inline]
-    fn scan_at(input: &[u8], pos: usize, mut state: State) -> Option<usize> {
+    fn parse_at<M: Mode>(
+        input: &[u8],
+        pos: usize,
+        mut state: State,
+    ) -> Option<(M::Output<Self>, usize)> {
         // Probe so the lookahead doesn't touch the error trace.
-        match state.probe(|state| G::scan_at(input, pos, state)) {
+        match state.probe(|state| G::parse_at::<Scan>(input, pos, state)) {
             Some(_) => None,
-            None => Some(pos),
+            None => Some((M::build(|_| NotFollowedBy(PhantomData)), pos)),
         }
     }
 

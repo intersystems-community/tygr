@@ -149,14 +149,14 @@ pub use grammar::*;
 pub use olc::*;
 pub use state::*;
 pub use token::{CharClass, StringOf, StringOf1};
-pub use wrappers::*;
+pub use wrappers::{Hidden, IntoInner, Ranged, Raw};
 
 // Paths the macros expand to, whatever the user has in scope.
 #[doc(hidden)]
 pub mod __private {
     pub use crate::token::{
         ByteEq, Literal, NonAsciiStart, Token, class_fail_at, class_parse_at, class_print_to,
-        class_scan_at, class_to_bnf,
+        class_to_bnf,
     };
     pub use crate::wrappers::{from, from_str, from_str_infallible, try_from};
     pub use either::Either;

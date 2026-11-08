@@ -1,6 +1,6 @@
-//! The traits that describe a grammar: [`Grammar`], [`GrammarRule`],
-//! [`GrammarFrom`] and [`Validate`]. Parsing is ordered choice with
-//! backtracking; no left recursion.
+//! The traits that describe a grammar: [`Grammar`] (parsing in a [`Mode`]),
+//! [`GrammarRule`], [`GrammarFrom`] and [`Validate`]. Parsing is ordered
+//! choice with backtracking; no left recursion.
 
 use crate::first::First;
 use crate::state::run;
@@ -40,7 +40,7 @@ pub trait Grammar: Sized + 'static {
     /// Parse the entire `input` as `Self`, failing if any input is left unconsumed.
     fn parse(input: &str) -> Result<Self, Error> {
         run(|state| {
-            let (value, end) = Self::parse_at(input.as_bytes(), 0, state)?;
+            let (value, end) = Self::parse_at::<Parse>(input.as_bytes(), 0, state)?;
             (end == input.len()).then_some(value)
         })
     }
@@ -48,29 +48,34 @@ pub trait Grammar: Sized + 'static {
     /// Like [`parse`](Self::parse), but may stop early; returns the end
     /// position too.
     fn parse_prefix(input: &str) -> Result<(Self, usize), Error> {
-        run(|state| Self::parse_at(input.as_bytes(), 0, state))
+        run(|state| Self::parse_at::<Parse>(input.as_bytes(), 0, state))
     }
 
     /// Like [`parse`](Self::parse), but only checks `input`.
     fn scan(input: &str) -> Result<(), Error> {
-        run(|state| (Self::scan_at(input.as_bytes(), 0, state)? == input.len()).then_some(()))
+        run(|state| {
+            let ((), end) = Self::parse_at::<Scan>(input.as_bytes(), 0, state)?;
+            (end == input.len()).then_some(())
+        })
     }
 
     /// Like [`scan`](Self::scan), but may stop early; returns the end
     /// position.
     fn scan_prefix(input: &str) -> Result<usize, Error> {
-        run(|state| Self::scan_at(input.as_bytes(), 0, state))
+        run(|state| Some(Self::parse_at::<Scan>(input.as_bytes(), 0, state)?.1))
     }
 
-    /// Parse `Self` at byte offset `pos`, returning it and the end offset.
+    /// Parse `Self` at byte offset `pos`, returning its output in mode `M`
+    /// (the value, or nothing when scanning) and the end offset.
     ///
     /// Invariant, relied on by `unsafe` UTF-8 conversions: `input` is valid
     /// UTF-8 and every position is a char boundary. Public grammars only
     /// advance by whole chars; byte-level ones (`ByteEq`) are internal.
-    fn parse_at(input: &[u8], pos: usize, state: State) -> Option<(Self, usize)>;
-
-    /// Like [`parse_at`](Self::parse_at), but returns only the end.
-    fn scan_at(input: &[u8], pos: usize, state: State) -> Option<usize>;
+    fn parse_at<M: Mode>(
+        input: &[u8],
+        pos: usize,
+        state: State,
+    ) -> Option<(M::Output<Self>, usize)>;
 
     /// Serialize `self` back to bytes, appending to `buf`. Without the
     /// `print` feature, derived impls panic here.
@@ -148,6 +153,114 @@ pub trait GrammarFrom {
     fn print_to(&self, _buf: &mut Vec<u8>) {
         unimplemented!("tygr's `print` feature is off")
     }
+}
+
+/// Whether [`Grammar::parse_at`] builds values ([`Parse`]) or only matches
+/// ([`Scan`]), so one function does both.
+///
+/// ```
+/// # use tygr::*;
+/// // A `T` in parentheses: `map` builds the value only when parsing.
+/// struct Paren<T>(T);
+///
+/// fn parse_paren<T: Grammar, M: Mode>(
+///     input: &[u8],
+///     pos: usize,
+///     mut state: State,
+/// ) -> Option<(M::Output<Paren<T>>, usize)> {
+///     let ((), pos) = <StringEq!("(")>::parse_at::<Scan>(input, pos, state.reborrow())?;
+///     let (inner, pos) = T::parse_at::<M>(input, pos, state.reborrow())?;
+///     let ((), pos) = <StringEq!(")")>::parse_at::<Scan>(input, pos, state)?;
+///     Some((M::map(inner, Paren), pos))
+/// }
+/// ```
+pub trait Mode: Copy + 'static + private::Sealed {
+    /// What parsing a `T` gives: the `T`, or `()`.
+    type Output<T>;
+
+    /// An output built by `f`. Only [`Parse`] calls it, passing itself to
+    /// [`get`](Self::get) the outputs it combines.
+    fn build<T>(f: impl FnOnce(Self) -> T) -> Self::Output<T>;
+
+    /// `output` with `f` applied to its value.
+    fn map<T, U>(output: Self::Output<T>, f: impl FnOnce(T) -> U) -> Self::Output<U>;
+
+    /// The mode when parsing, `None` when scanning: for updating an output
+    /// in place, such as pushing to a `Vec` in a loop.
+    fn parsing() -> Option<Self>;
+
+    /// The value in `output`.
+    fn get<T>(self, output: Self::Output<T>) -> T;
+
+    /// The value in `output`, mutably.
+    fn get_mut<T>(self, output: &mut Self::Output<T>) -> &mut T;
+}
+
+/// Builds values.
+#[derive(Debug, Clone, Copy)]
+pub struct Parse;
+
+/// Only matches: there are no `Scan` values, so nothing is built.
+#[derive(Debug, Clone, Copy)]
+pub enum Scan {}
+
+impl Mode for Parse {
+    type Output<T> = T;
+
+    #[inline(always)]
+    fn build<T>(f: impl FnOnce(Self) -> T) -> T {
+        f(Parse)
+    }
+
+    #[inline(always)]
+    fn map<T, U>(output: T, f: impl FnOnce(T) -> U) -> U {
+        f(output)
+    }
+
+    #[inline(always)]
+    fn parsing() -> Option<Self> {
+        Some(Parse)
+    }
+
+    #[inline(always)]
+    fn get<T>(self, output: T) -> T {
+        output
+    }
+
+    #[inline(always)]
+    fn get_mut<T>(self, output: &mut T) -> &mut T {
+        output
+    }
+}
+
+impl Mode for Scan {
+    type Output<T> = ();
+
+    #[inline(always)]
+    fn build<T>(_f: impl FnOnce(Self) -> T) {}
+
+    #[inline(always)]
+    fn map<T, U>((): (), _f: impl FnOnce(T) -> U) {}
+
+    #[inline(always)]
+    fn parsing() -> Option<Self> {
+        None
+    }
+
+    fn get<T>(self, (): ()) -> T {
+        match self {}
+    }
+
+    fn get_mut<T>(self, _output: &mut ()) -> &mut T {
+        match self {}
+    }
+}
+
+mod private {
+    /// Only [`Parse`](super::Parse) and [`Scan`](super::Scan) are modes.
+    pub trait Sealed {}
+    impl Sealed for super::Parse {}
+    impl Sealed for super::Scan {}
 }
 
 /// Post-parse validation for `#[grammar(validated)]` types.

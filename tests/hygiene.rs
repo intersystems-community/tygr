@@ -67,12 +67,13 @@ struct Locals {
     input: tygr::StringOf1<Digit>,
     pos: tygr::StringEq!(","),
     state: tygr::StringOf1<Digit>,
+    mode: tygr::StringEq!(";"),
 }
 
-// Generic, with enough variants for a dispatch table.
+// Generic over an `M`, with enough variants for a dispatch table.
 #[derive(tygr::Grammar)]
-enum Generic<T> {
-    A(T),
+enum Generic<M> {
+    A(M),
     B(tygr::StringEq!("b")),
     C(tygr::StringEq!("c")),
     D(tygr::StringEq!("d")),
@@ -87,6 +88,6 @@ fn derives_compile_and_parse_without_imports() {
     assert_eq!(Num::parse("42").unwrap().0, 42);
     assert_eq!(Text::parse("42").unwrap().0, "42");
     assert_eq!(Field::parse("42").unwrap().0, 42);
-    assert!(Locals::parse("1,2").is_ok());
-    assert!(Generic::<Kw>::parse("if").is_ok() && Generic::<Kw>::parse("d").is_ok());
+    assert!(Locals::parse("1,2;").is_ok());
+    assert!(Generic::<Kw>::parse("if").is_ok() && Generic::<Kw>::scan("d").is_ok());
 }

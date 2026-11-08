@@ -8,7 +8,7 @@ use std::fmt;
 use crate::Expectation;
 use crate::bnf::Expr;
 use crate::first::{ByteSet, Required, byte_set};
-use crate::grammar::Grammar;
+use crate::grammar::{Grammar, Mode};
 use crate::state::State;
 use crate::{Raw, Vec1};
 
@@ -20,15 +20,14 @@ pub struct ByteEq<const B: u8>;
 impl<const B: u8> Grammar for ByteEq<B> {
     type First = Required<byte_set::One<B>>;
 
-    #[inline(always)]
-    fn parse_at(input: &[u8], pos: usize, state: State) -> Option<(Self, usize)> {
-        Some((ByteEq, Self::scan_at(input, pos, state)?))
-    }
-
     // Records nothing on failure: its `Token` reports the whole literal.
     #[inline(always)]
-    fn scan_at(input: &[u8], pos: usize, _state: State) -> Option<usize> {
-        (input.get(pos) == Some(&B)).then_some(pos + 1)
+    fn parse_at<M: Mode>(
+        input: &[u8],
+        pos: usize,
+        _state: State,
+    ) -> Option<(M::Output<Self>, usize)> {
+        (input.get(pos) == Some(&B)).then(|| (M::build(|_| ByteEq), pos + 1))
     }
 
     fn print_to(&self, buf: &mut Vec<u8>) {
@@ -120,23 +119,18 @@ impl<G: Literal> Grammar for Token<G> {
     type First = G::First;
 
     #[inline(always)]
-    fn parse_at(input: &[u8], pos: usize, mut state: State) -> Option<(Self, usize)> {
-        match G::parse_at(input, pos, state.reborrow()) {
-            Some((matched, end)) => Some((Token(matched), end)),
+    fn parse_at<M: Mode>(
+        input: &[u8],
+        pos: usize,
+        mut state: State,
+    ) -> Option<(M::Output<Self>, usize)> {
+        match G::parse_at::<M>(input, pos, state.reborrow()) {
+            Some((matched, end)) => Some((M::map(matched, Token), end)),
             None => {
                 Self::fail_at(pos, state);
                 None
             }
         }
-    }
-
-    #[inline(always)]
-    fn scan_at(input: &[u8], pos: usize, mut state: State) -> Option<usize> {
-        let end = G::scan_at(input, pos, state.reborrow());
-        if end.is_none() {
-            Self::fail_at(pos, state);
-        }
-        end
     }
 
     fn print_to(&self, buf: &mut Vec<u8>) {
@@ -201,18 +195,18 @@ impl Grammar for char {
     type First = Required<CharStart>;
 
     #[inline(always)]
-    fn parse_at(input: &[u8], pos: usize, state: State) -> Option<(Self, usize)> {
-        if let Some((ch, end)) = decode_char(input, pos) {
-            Some((ch, end))
-        } else {
-            Self::fail_at(pos, state);
-            None
+    fn parse_at<M: Mode>(
+        input: &[u8],
+        pos: usize,
+        state: State,
+    ) -> Option<(M::Output<Self>, usize)> {
+        match decode_char(input, pos) {
+            Some((ch, end)) => Some((M::build(|_| ch), end)),
+            None => {
+                Self::fail_at(pos, state);
+                None
+            }
         }
-    }
-
-    #[inline(always)]
-    fn scan_at(input: &[u8], pos: usize, state: State) -> Option<usize> {
-        Self::parse_at(input, pos, state).map(|(_, end)| end)
     }
 
     fn print_to(&self, buf: &mut Vec<u8>) {
@@ -346,13 +340,12 @@ macro_rules! char_class {
             type First = $crate::first::Required<$name>;
 
             #[inline(always)]
-            fn parse_at(input: &[u8], pos: usize, state: $crate::State) -> Option<(Self, usize)> {
-                $crate::__private::class_parse_at(input, pos, state)
-            }
-
-            #[inline(always)]
-            fn scan_at(input: &[u8], pos: usize, state: $crate::State) -> Option<usize> {
-                $crate::__private::class_scan_at::<Self>(input, pos, state)
+            fn parse_at<M: $crate::Mode>(
+                input: &[u8],
+                pos: usize,
+                state: $crate::State,
+            ) -> Option<(M::Output<Self>, usize)> {
+                $crate::__private::class_parse_at::<Self, M>(input, pos, state)
             }
 
             fn print_to(&self, buf: &mut ::std::vec::Vec<u8>) {
@@ -373,44 +366,40 @@ macro_rules! char_class {
 /// `Grammar::parse_at` for a `char_class!` type.
 #[doc(hidden)]
 #[inline(always)]
-pub fn class_parse_at<M: CharClass>(input: &[u8], pos: usize, state: State) -> Option<(M, usize)> {
+pub fn class_parse_at<C: CharClass, M: Mode>(
+    input: &[u8],
+    pos: usize,
+    state: State,
+) -> Option<(M::Output<C>, usize)> {
     let matched = match input.get(pos) {
         // The byte set is exact for ASCII: no decoding or predicate needed.
-        Some(&b) if b.is_ascii() => M::BYTE_SET
-            .contains(b)
-            .then(|| (M::new(b as char), pos + 1)),
-        _ => decode_char(input, pos)
-            .filter(|&(ch, _)| M::matches(ch))
-            .map(|(ch, end)| (M::new(ch), end)),
+        Some(&b) if b.is_ascii() => C::BYTE_SET.contains(b).then_some((b as char, pos + 1)),
+        _ => decode_char(input, pos).filter(|&(ch, _)| C::matches(ch)),
     };
-    if matched.is_none() {
-        class_fail_at::<M>(pos, state);
+    match matched {
+        Some((ch, end)) => Some((M::build(|_| C::new(ch)), end)),
+        None => {
+            class_fail_at::<C>(pos, state);
+            None
+        }
     }
-    matched
-}
-
-/// `Grammar::scan_at` for a `char_class!` type.
-#[doc(hidden)]
-#[inline(always)]
-pub fn class_scan_at<M: CharClass>(input: &[u8], pos: usize, state: State) -> Option<usize> {
-    class_parse_at::<M>(input, pos, state).map(|(_, end)| end)
 }
 
 /// `Grammar::print_to` for a `char_class!` type.
 #[doc(hidden)]
-pub fn class_print_to<M: CharClass>(class: &M, buf: &mut Vec<u8>) {
+pub fn class_print_to<C: CharClass>(class: &C, buf: &mut Vec<u8>) {
     push_char(buf, class.value());
 }
 
 /// `Grammar::to_bnf` for a `char_class!` type.
 #[doc(hidden)]
-pub fn class_to_bnf<M: CharClass>() -> Expr {
-    Expr::CharOf(M::name().to_string())
+pub fn class_to_bnf<C: CharClass>() -> Expr {
+    Expr::CharOf(C::name().to_string())
 }
 
 /// `Grammar::fail_at` for a `char_class!` type.
 #[doc(hidden)]
-pub fn class_fail_at<M: CharClass>(
+pub fn class_fail_at<C: CharClass>(
     #[allow(unused_variables)] pos: usize,
     #[allow(unused_variables, unused_mut)] mut state: State,
 ) -> bool {
@@ -418,7 +407,7 @@ pub fn class_fail_at<M: CharClass>(
     state.expect(
         pos,
         #[cfg(feature = "trace_one_node")]
-        Expectation::CharClass(M::name()),
+        Expectation::CharClass(C::name()),
     );
     true
 }
