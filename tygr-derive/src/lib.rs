@@ -63,12 +63,3 @@ pub fn StringEq(input: TokenStream) -> TokenStream {
 pub fn StringEqCI(input: TokenStream) -> TokenStream {
     literal::expand(input, "StringEqCI", literal::char_eq_ci)
 }
-
-/// `default_name` as a string literal, for `tygr::char_class!`.
-#[doc(hidden)]
-#[proc_macro]
-pub fn __default_name(input: TokenStream) -> TokenStream {
-    let ident = syn::parse_macro_input!(input as syn::Ident);
-    let name = model::default_name(&ident);
-    quote! { #name }.into()
-}

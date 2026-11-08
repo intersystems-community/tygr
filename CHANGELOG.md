@@ -21,6 +21,8 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
   grammar's rules, each type's once, depth first, as `bnf::Rule`s to sort,
   `rename` and print. Hand-written grammars implement `visit_rules`.
 - `bnf::Expr::format` is replaced by `Display`.
+- Removed the `lower_bnf_name` and `upper_bnf_name` features, as features
+  should be additive. Rename rules with `Rule::rename` instead.
 - The derive attribute is `#[tygr(...)]`, not `#[grammar(...)]`.
 - Removed `GrammarFrom` and its derives (`GrammarFromStr`,
   `GrammarFromOther`, `GrammarTryFromOther`). Convert a field instead:
@@ -94,8 +96,7 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
 - `VecSep` reserves the usual amortized capacity on its first item, rather
   than exactly one, so short lists no longer reallocate.
 - The name argument of `char_class!` is optional and defaults to the type
-  name (following `lower_bnf_name`/`upper_bnf_name`, like
-  `#[derive(Grammar)]`).
+  name.
 - Fixed derived code failing to compile unless tygr's traits were in
   scope (e.g. with `use tygr::Grammar;` instead of `use tygr::*;`).
 - Failed literals, validations and conversions no longer allocate when

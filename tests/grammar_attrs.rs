@@ -1,6 +1,3 @@
-// Expected BNF spells default rule names; `bnf_names.rs` covers renaming.
-#![cfg(not(any(feature = "lower_bnf_name", feature = "upper_bnf_name")))]
-
 use std::fmt;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};

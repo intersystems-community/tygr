@@ -33,15 +33,6 @@ fn a_trailing_separator_is_left_unconsumed() {
 fn bnf_is_item_then_separated_items() {
     assert_eq!(
         rule::<List>(),
-        format!(
-            "List = '{d}' {{ '{d}' }} {{ \",\" '{d}' {{ '{d}' }} }} .",
-            d = if cfg!(feature = "lower_bnf_name") && !cfg!(feature = "upper_bnf_name") {
-                "digit"
-            } else if cfg!(feature = "upper_bnf_name") && !cfg!(feature = "lower_bnf_name") {
-                "DIGIT"
-            } else {
-                "Digit"
-            }
-        )
+        r#"List = 'Digit' { 'Digit' } { "," 'Digit' { 'Digit' } } ."#
     );
 }

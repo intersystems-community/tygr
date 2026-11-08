@@ -1,8 +1,4 @@
-// Expected output spells default rule names; `bnf_names.rs` covers renaming.
-#![cfg(all(
-    feature = "trace_one_node",
-    not(any(feature = "lower_bnf_name", feature = "upper_bnf_name"))
-))]
+#![cfg(feature = "trace_one_node")]
 
 use tygr::*;
 

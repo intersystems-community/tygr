@@ -13,9 +13,3 @@ proc-macro = true
 syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
-
-[features]
-default = []
-trace_pos = []
-lower_bnf_name = []
-upper_bnf_name = []

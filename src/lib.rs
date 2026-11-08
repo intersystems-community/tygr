@@ -68,8 +68,6 @@
 //! | `trace_pos` | Traces parser positions. |
 //! | `trace_one_node` | Traces only the nearest grammar node for each attempt. |
 //! | `trace_all_nodes` | Traces the complete grammar node chain for each attempt. |
-//! | `lower_bnf_name` | Converts generated BNF names to lowercase. |
-//! | `upper_bnf_name` | Converts generated BNF names to uppercase. |
 //!
 //! ## Quick Example
 //!
@@ -115,7 +113,6 @@
 //! assert_eq!(e.print(), "1 + 2 * 3");
 //!
 //! let bnf: Vec<String> = Expr::bnf_rules().iter().map(ToString::to_string).collect();
-//! # #[cfg(not(any(feature = "lower_bnf_name", feature = "upper_bnf_name")))]
 //! assert_eq!(bnf.join("\n"), r#"Expr = Expr1 { Op1 Expr1 } .
 //! Expr1 = Expr2 { Op2 Expr2 } .
 //! Expr2 = "(" Expr ")" | Int .
@@ -150,7 +147,9 @@ pub mod __private {
     };
     pub use crate::wrappers::{CONVERTIBLE, from, from_str, from_str_infallible, try_from};
     pub use either::Either;
-    pub use tygr_derive::__default_name as default_name;
+
+    /// Whether failures are traced, so derived code can skip reporting.
+    pub const TRACING: bool = cfg!(feature = "trace_pos");
 }
 
 // Lets derived code inside this crate use `::tygr::` paths.

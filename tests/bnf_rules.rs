@@ -1,5 +1,4 @@
 //! `Parse::bnf_rules`: each type's rule once, depth first.
-#![cfg(not(any(feature = "lower_bnf_name", feature = "upper_bnf_name")))]
 
 use tygr::*;
 

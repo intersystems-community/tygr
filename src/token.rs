@@ -316,7 +316,7 @@ pub trait CharClass: Grammar + ByteSet {
 #[macro_export]
 macro_rules! char_class {
     ($vis:vis $name:ident, |$ch:ident| $pred:expr) => {
-        $crate::char_class!($vis $name, $crate::__private::default_name!($name), |$ch| $pred);
+        $crate::char_class!($vis $name, stringify!($name), |$ch| $pred);
     };
     ($vis:vis $name:ident, $label:expr, |$ch:ident| $pred:expr) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

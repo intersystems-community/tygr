@@ -27,12 +27,6 @@ pub(crate) fn dispatch(arms: &[TokenStream], firsts: &[TokenStream]) -> (TokenSt
         .skip(1)
         .map(|next| quote! { Self::#next::<__Mode>(input, pos, state) })
         .chain([quote! { None }]);
-    // `cfg!` here: a spliced `#[cfg]` would test the user's crate features.
-    let report = if cfg!(feature = "trace_pos") {
-        quote! { Self::fail_at_variants(pos, state); }
-    } else {
-        quote! {}
-    };
     let items = quote! {
         #(
             #[inline]
@@ -44,8 +38,10 @@ pub(crate) fn dispatch(arms: &[TokenStream], firsts: &[TokenStream]) -> (TokenSt
 
         // No variant can start here: report them all.
         #[inline]
-        fn parse_miss<__Mode: ::tygr::Mode>(_input: &[u8], #[allow(unused_variables)] pos: usize, #[allow(unused_variables)] state: ::tygr::State) -> #output {
-            #report
+        fn parse_miss<__Mode: ::tygr::Mode>(_input: &[u8], pos: usize, state: ::tygr::State) -> #output {
+            if ::tygr::__private::TRACING {
+                Self::fail_at_variants(pos, state);
+            }
             None
         }
     };

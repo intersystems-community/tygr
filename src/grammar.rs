@@ -105,7 +105,6 @@ pub trait Parse: Sized + 'static {
     /// struct Number(StringOf1<Digit>);
     ///
     /// let rules: Vec<String> = Pair::bnf_rules().iter().map(ToString::to_string).collect();
-    /// # #[cfg(not(any(feature = "lower_bnf_name", feature = "upper_bnf_name")))]
     /// assert_eq!(rules, ["Pair = Number \",\" Number .", "Number = 'digit' { 'digit' } ."]);
     /// ```
     fn bnf_rules() -> Vec<Rule> {

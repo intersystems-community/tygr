@@ -86,7 +86,7 @@ impl Model {
         let mut model = Model {
             ident: ident.clone(),
             generics: input.generics.clone(),
-            name: default_name(ident),
+            name: ident.to_string(),
             hidden: false,
             inline: false,
             validated: false,
@@ -256,14 +256,4 @@ fn conversion(attrs: &[Attribute]) -> syn::Result<Option<Conversion>> {
 /// The `#[tygr(...)]` attributes among `attrs`.
 fn tygr_attrs(attrs: &[Attribute]) -> impl Iterator<Item = &Attribute> {
     attrs.iter().filter(|attr| attr.path().is_ident("tygr"))
-}
-
-/// The BNF rule name when `#[tygr(name = "...")]` isn't given.
-pub(crate) fn default_name(ident: &Ident) -> String {
-    let ident = ident.to_string();
-    #[cfg(all(feature = "lower_bnf_name", not(feature = "upper_bnf_name")))]
-    let ident = ident.to_ascii_lowercase();
-    #[cfg(all(feature = "upper_bnf_name", not(feature = "lower_bnf_name")))]
-    let ident = ident.to_ascii_uppercase();
-    ident
 }
