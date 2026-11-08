@@ -8,7 +8,7 @@ use std::fmt;
 use crate::Expectation;
 use crate::bnf::Expr;
 use crate::first::{ByteSet, Required, byte_set};
-use crate::grammar::{Grammar, Mode};
+use crate::grammar::{Grammar, Mode, Parse, Print};
 use crate::state::State;
 use crate::{Raw, Vec1};
 
@@ -17,7 +17,7 @@ use crate::{Raw, Vec1};
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ByteEq<const B: u8>;
 
-impl<const B: u8> Grammar for ByteEq<B> {
+impl<const B: u8> Parse for ByteEq<B> {
     type First = Required<byte_set::One<B>>;
 
     // Records nothing on failure: its `Token` reports the whole literal.
@@ -30,16 +30,18 @@ impl<const B: u8> Grammar for ByteEq<B> {
         (input.get(pos) == Some(&B)).then(|| (M::build(|_| ByteEq), pos + 1))
     }
 
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        buf.push(B);
-    }
-
     fn to_bnf() -> Expr {
         unreachable!("internal: literal wrappers provide BNF")
     }
 
     fn fail_at(_pos: usize, _state: State) -> bool {
         true
+    }
+}
+
+impl<const B: u8> Print for ByteEq<B> {
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        buf.push(B);
     }
 }
 
@@ -115,7 +117,7 @@ impl<A: Literal, B: Literal> Literal for Either<A, B> {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Token<G: Literal>(G);
 
-impl<G: Literal> Grammar for Token<G> {
+impl<G: Literal> Parse for Token<G> {
     type First = G::First;
 
     #[inline(always)]
@@ -131,10 +133,6 @@ impl<G: Literal> Grammar for Token<G> {
                 None
             }
         }
-    }
-
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        self.0.print_to(buf);
     }
 
     fn to_bnf() -> Expr {
@@ -158,6 +156,12 @@ impl<G: Literal> Grammar for Token<G> {
     }
 }
 
+impl<G: Literal> Print for Token<G> {
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        self.0.print_to(buf);
+    }
+}
+
 impl<G: Literal> Token<G> {
     const BYTES: &[u8] = G::BYTES;
 
@@ -174,9 +178,7 @@ impl<G: Literal> Default for Token<G> {
 
 impl<G: Literal> fmt::Debug for Token<G> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Token")
-            .field(&String::from_utf8_lossy(&self.print_bytes()))
-            .finish()
+        f.debug_tuple("Token").field(&self.print()).finish()
     }
 }
 
@@ -191,7 +193,7 @@ pub(crate) type CharStart = byte_set::Union<byte_set::Between<0x00, 0x7F>, NonAs
 const ANY_CHAR: &str = "any";
 
 /// Any one char. Fails only at end of input.
-impl Grammar for char {
+impl Parse for char {
     type First = Required<CharStart>;
 
     #[inline(always)]
@@ -207,10 +209,6 @@ impl Grammar for char {
                 None
             }
         }
-    }
-
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        push_char(buf, *self);
     }
 
     fn to_bnf() -> Expr {
@@ -231,10 +229,16 @@ impl Grammar for char {
     }
 }
 
+impl Print for char {
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        push_char(buf, *self);
+    }
+}
+
 /// The char at `pos` and its end; `None` at end of input.
 #[inline(always)]
 fn decode_char(input: &[u8], pos: usize) -> Option<(char, usize)> {
-    // SAFETY: see the invariant on `Grammar::parse_at`.
+    // SAFETY: see the invariant on `Parse::parse_at`.
     let ch = unsafe { std::str::from_utf8_unchecked(input.get(pos..)?) }
         .chars()
         .next()?;
@@ -336,7 +340,7 @@ macro_rules! char_class {
             };
         }
 
-        impl $crate::Grammar for $name {
+        impl $crate::Parse for $name {
             type First = $crate::first::Required<$name>;
 
             #[inline(always)]
@@ -348,10 +352,6 @@ macro_rules! char_class {
                 $crate::__private::class_parse_at::<Self, M>(input, pos, state)
             }
 
-            fn print_to(&self, buf: &mut ::std::vec::Vec<u8>) {
-                $crate::__private::class_print_to(self, buf)
-            }
-
             fn to_bnf() -> $crate::bnf::Expr {
                 $crate::__private::class_to_bnf::<Self>()
             }
@@ -360,10 +360,16 @@ macro_rules! char_class {
                 $crate::__private::class_fail_at::<Self>(pos, state)
             }
         }
+
+        impl $crate::Print for $name {
+            fn print_to(&self, buf: &mut ::std::vec::Vec<u8>) {
+                $crate::__private::class_print_to(self, buf)
+            }
+        }
     };
 }
 
-/// `Grammar::parse_at` for a `char_class!` type.
+/// `Parse::parse_at` for a `char_class!` type.
 #[doc(hidden)]
 #[inline(always)]
 pub fn class_parse_at<C: CharClass, M: Mode>(
@@ -385,19 +391,19 @@ pub fn class_parse_at<C: CharClass, M: Mode>(
     }
 }
 
-/// `Grammar::print_to` for a `char_class!` type.
+/// `Print::print_to` for a `char_class!` type.
 #[doc(hidden)]
 pub fn class_print_to<C: CharClass>(class: &C, buf: &mut Vec<u8>) {
     push_char(buf, class.value());
 }
 
-/// `Grammar::to_bnf` for a `char_class!` type.
+/// `Parse::to_bnf` for a `char_class!` type.
 #[doc(hidden)]
 pub fn class_to_bnf<C: CharClass>() -> Expr {
     Expr::CharOf(C::name().to_string())
 }
 
-/// `Grammar::fail_at` for a `char_class!` type.
+/// `Parse::fail_at` for a `char_class!` type.
 #[doc(hidden)]
 pub fn class_fail_at<C: CharClass>(
     #[allow(unused_variables)] pos: usize,
@@ -438,17 +444,23 @@ mod tests {
 
     type Bom = (ByteEq<0xEF>, (ByteEq<0xBB>, ByteEq<0xBF>));
 
+    fn printed(grammar: &impl Print) -> Vec<u8> {
+        let mut buf = Vec::new();
+        grammar.print_to(&mut buf);
+        buf
+    }
+
     #[test]
     fn byte_eq_matches_and_prints_exact_bytes() {
         let bom = Bom::parse("\u{FEFF}").unwrap();
-        assert_eq!(bom.print_bytes(), b"\xEF\xBB\xBF");
+        assert_eq!(printed(&bom), b"\xEF\xBB\xBF");
         assert!(Bom::parse("x").is_err());
     }
 
     #[test]
     fn print_is_lossy_on_invalid_utf8() {
         let (lead, _) = ByteEq::<0xC3>::parse_prefix("é").unwrap();
-        assert_eq!(lead.print_bytes(), b"\xC3");
+        assert_eq!(printed(&lead), b"\xC3");
         assert_eq!(lead.print(), "\u{FFFD}");
     }
 

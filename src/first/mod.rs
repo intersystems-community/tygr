@@ -1,7 +1,7 @@
 //! Type-level FIRST sets: which bytes (and whether empty input) a grammar
-//! could start with. See [`Grammar::First`] for how to build one.
+//! could start with. See [`Parse::First`] for how to build one.
 
-use crate::grammar::Grammar;
+use crate::grammar::Parse;
 use std::marker::PhantomData;
 
 pub mod byte_set;
@@ -20,7 +20,7 @@ pub struct Optional<T: ByteSet>(PhantomData<T>);
 /// skip what follows a `Required`; that keeps recursive grammars finite.
 pub trait First {
     /// `Self` followed by grammar `G` (looked at only if `Self` is optional).
-    type Seq<G: Grammar>: First;
+    type Seq<G: Parse>: First;
     /// `Self` or `X`.
     type Alt<X: First>: First;
     /// `Self`, or empty input.
@@ -46,7 +46,7 @@ pub const fn contains<F: First>(next: Option<u8>) -> bool {
 }
 
 impl<T: ByteSet> First for Required<T> {
-    type Seq<G: Grammar> = Self;
+    type Seq<G: Parse> = Self;
     type Alt<X: First> = X::MapUnion<T>;
     type Opt = Optional<T>;
     type MapUnion<B: ByteSet> = Required<byte_set::Union<T, B>>;
@@ -55,7 +55,7 @@ impl<T: ByteSet> First for Required<T> {
 }
 
 impl<T: ByteSet> First for Optional<T> {
-    type Seq<G: Grammar> = <G::First as First>::MapUnion<T>;
+    type Seq<G: Parse> = <G::First as First>::MapUnion<T>;
     type Alt<X: First> = <X::Opt as First>::MapUnion<T>;
     type Opt = Self;
     type MapUnion<B: ByteSet> = Optional<byte_set::Union<T, B>>;
@@ -93,11 +93,11 @@ mod tests {
 
     #[test]
     fn recursion_stays_lazy() {
-        type P = <Paren as crate::Grammar>::First;
+        type P = <Paren as crate::Parse>::First;
         assert!(contains::<P>(Some(b'(')) && !contains::<P>(Some(b')')));
         assert!(!contains::<P>(None));
 
-        type S = <Signed as crate::Grammar>::First;
+        type S = <Signed as crate::Parse>::First;
         assert!(contains::<S>(Some(b'-')) && contains::<S>(Some(b'(')));
         assert!(!contains::<S>(None));
     }

@@ -2,7 +2,7 @@
 
 use crate::State;
 use crate::bnf::Expr;
-use crate::grammar::{Grammar, Mode, Parse, Scan};
+use crate::grammar::{Build, Check, Mode, Parse, Print};
 use std::convert::Infallible;
 use std::fmt;
 use std::marker::PhantomData;
@@ -89,7 +89,7 @@ impl<T> Raw<T> {
     }
 }
 
-impl<T: Grammar> Grammar for Raw<T> {
+impl<T: Parse> Parse for Raw<T> {
     type First = T::First;
 
     #[inline]
@@ -98,12 +98,8 @@ impl<T: Grammar> Grammar for Raw<T> {
         pos: usize,
         state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        let ((), end) = T::parse_at::<Scan>(input, pos, state)?;
+        let ((), end) = T::parse_at::<Check>(input, pos, state)?;
         Some((M::build(|_| Raw::from(text(input, pos, end))), end))
-    }
-
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(self.0.as_bytes());
     }
 
     fn to_bnf() -> Expr {
@@ -116,6 +112,12 @@ impl<T: Grammar> Grammar for Raw<T> {
 }
 
 // Not derived: only the text matters, so no bounds on `T`.
+
+impl<T> Print for Raw<T> {
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        buf.extend_from_slice(self.0.as_bytes());
+    }
+}
 
 impl<T> fmt::Debug for Raw<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -247,7 +249,7 @@ impl<T, E> Ranged<Result<T, E>> {
     }
 }
 
-impl<T: Grammar> Grammar for Ranged<T> {
+impl<T: Parse> Parse for Ranged<T> {
     type First = T::First;
 
     #[inline]
@@ -260,10 +262,6 @@ impl<T: Grammar> Grammar for Ranged<T> {
         Some((M::map(ranged, |ranged| Ranged::new(pos, ranged, end)), end))
     }
 
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        self.ranged.print_to(buf);
-    }
-
     fn to_bnf() -> Expr {
         T::to_bnf()
     }
@@ -273,7 +271,13 @@ impl<T: Grammar> Grammar for Ranged<T> {
     }
 }
 
-impl<T: Grammar> Grammar for Box<T> {
+impl<T: Print> Print for Ranged<T> {
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        self.ranged.print_to(buf);
+    }
+}
+
+impl<T: Parse> Parse for Box<T> {
     type First = T::First;
 
     fn parse_at<M: Mode>(
@@ -285,10 +289,6 @@ impl<T: Grammar> Grammar for Box<T> {
         Some((M::map(value, Box::new), end))
     }
 
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        (**self).print_to(buf);
-    }
-
     fn to_bnf() -> Expr {
         T::to_bnf()
     }
@@ -298,8 +298,14 @@ impl<T: Grammar> Grammar for Box<T> {
     }
 }
 
+impl<T: Print> Print for Box<T> {
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        (**self).print_to(buf);
+    }
+}
+
 /// Matches `T` and discards it; prints nothing.
-impl<T: Grammar> Grammar for PhantomData<T> {
+impl<T: Parse> Parse for PhantomData<T> {
     type First = T::First;
 
     #[inline]
@@ -308,11 +314,9 @@ impl<T: Grammar> Grammar for PhantomData<T> {
         pos: usize,
         state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        let ((), end) = T::parse_at::<Scan>(input, pos, state)?;
+        let ((), end) = T::parse_at::<Check>(input, pos, state)?;
         Some((M::build(|_| PhantomData), end))
     }
-
-    fn print_to(&self, _buf: &mut Vec<u8>) {}
 
     fn to_bnf() -> Expr {
         T::to_bnf()
@@ -323,17 +327,21 @@ impl<T: Grammar> Grammar for PhantomData<T> {
     }
 }
 
+impl<T> Print for PhantomData<T> {
+    fn print_to(&self, _buf: &mut Vec<u8>) {}
+}
+
 /// The text of `input[pos..end]`.
 #[inline(always)]
 fn text(input: &[u8], pos: usize, end: usize) -> &str {
-    // SAFETY: see the invariant on `Grammar::parse_at`.
+    // SAFETY: see the invariant on `Parse::parse_at`.
     unsafe { std::str::from_utf8_unchecked(&input[pos..end]) }
 }
 
 /// `#[tygr(from = S)]`: parse `S`, then convert it.
 #[doc(hidden)]
 #[inline(always)]
-pub fn from<S: Grammar, T: From<S>, M: Mode>(
+pub fn from<S: Parse, T: From<S>, M: Mode>(
     input: &[u8],
     pos: usize,
     state: State,
@@ -347,31 +355,31 @@ pub fn from<S: Grammar, T: From<S>, M: Mode>(
 pub const CONVERTIBLE: &str = "be convertible";
 
 /// `#[tygr(try_from = S)]`: parse `S`, then convert it, even when
-/// scanning: the conversion can fail. A failure is `node`'s rejection.
+/// checking: the conversion can fail. A failure is `node`'s rejection.
 #[doc(hidden)]
 #[inline(always)]
-pub fn try_from<S: Grammar, T: TryFrom<S>, M: Mode>(
+pub fn try_from<S: Parse, T: TryFrom<S>, M: Mode>(
     input: &[u8],
     pos: usize,
     mut state: State,
     node: &'static str,
 ) -> Option<(M::Output<T>, usize)> {
-    let (source, end) = S::parse_at::<Parse>(input, pos, state.reborrow())?;
+    let (source, end) = S::parse_at::<Build>(input, pos, state.reborrow())?;
     let value = converted(T::try_from(source), pos..end, state, node)?;
     Some((M::build(|_| value), end))
 }
 
-/// `#[tygr(from_str = S)]`: scan `S`, then convert its text, even when
-/// scanning: the conversion can fail. A failure is `node`'s rejection.
+/// `#[tygr(from_str = S)]`: check `S`, then convert its text, even when
+/// checking: the conversion can fail. A failure is `node`'s rejection.
 #[doc(hidden)]
 #[inline(always)]
-pub fn from_str<S: Grammar, T: FromStr, M: Mode>(
+pub fn from_str<S: Parse, T: FromStr, M: Mode>(
     input: &[u8],
     pos: usize,
     mut state: State,
     node: &'static str,
 ) -> Option<(M::Output<T>, usize)> {
-    let ((), end) = S::parse_at::<Scan>(input, pos, state.reborrow())?;
+    let ((), end) = S::parse_at::<Check>(input, pos, state.reborrow())?;
     let value = converted(T::from_str(text(input, pos, end)), pos..end, state, node)?;
     Some((M::build(|_| value), end))
 }
@@ -391,15 +399,15 @@ fn converted<T, E>(
     result.ok()
 }
 
-/// `#[tygr(from_str_infallible = S)]`: scan `S`, then convert its text.
+/// `#[tygr(from_str_infallible = S)]`: check `S`, then convert its text.
 #[doc(hidden)]
 #[inline(always)]
-pub fn from_str_infallible<S: Grammar, T: FromStr<Err = Infallible>, M: Mode>(
+pub fn from_str_infallible<S: Parse, T: FromStr<Err = Infallible>, M: Mode>(
     input: &[u8],
     pos: usize,
     state: State,
 ) -> Option<(M::Output<T>, usize)> {
-    let ((), end) = S::parse_at::<Scan>(input, pos, state)?;
+    let ((), end) = S::parse_at::<Check>(input, pos, state)?;
     Some((
         M::build(|_| {
             let Ok(value) = T::from_str(text(input, pos, end));

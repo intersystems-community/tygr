@@ -8,20 +8,43 @@ mod print;
 
 use model::Model;
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 
-/// Derive `Grammar` (and `GrammarRule`) for a `struct` or `enum`.
+/// Derive `Parse` and `Print` for a `struct` or `enum`: a `struct` is a
+/// sequence of its fields, an `enum` an alternation of its variants.
 ///
-/// A `struct` is a sequence of its fields; an `enum` an alternation of its
-/// variants. `#[tygr(name = "…", hidden, inline, validated)]` are
-/// optional, as is converting a field with
-/// `#[tygr(from/try_from/from_str/from_str_infallible = S)]` (see `tygr`'s
-/// crate docs).
+/// `#[tygr(name = "…", hidden, inline, validated)]` on the type and
+/// `#[tygr(from/try_from/from_str/from_str_infallible = S)]` on a field are
+/// optional (see `tygr`'s crate docs).
 #[proc_macro_derive(Grammar, attributes(tygr))]
 pub fn derive_grammar(input: TokenStream) -> TokenStream {
+    derive(input, |model| {
+        let (parse, print) = (parse::expand(model), print::expand(model));
+        quote! { #parse #print }
+    })
+}
+
+/// Derive `Parse` (and `GrammarRule`) alone, as `Grammar` does.
+#[proc_macro_derive(Parse, attributes(tygr))]
+pub fn derive_parse(input: TokenStream) -> TokenStream {
+    derive(input, |model| {
+        let (parse, read_fields) = (parse::expand(model), parse::read_fields(model));
+        quote! { #parse #read_fields }
+    })
+}
+
+/// Derive `Print` alone, as `Grammar` does.
+#[proc_macro_derive(Print, attributes(tygr))]
+pub fn derive_print(input: TokenStream) -> TokenStream {
+    derive(input, print::expand)
+}
+
+/// Read `input` into a model, then generate with `expand`.
+fn derive(input: TokenStream, expand: impl FnOnce(&Model) -> TokenStream2) -> TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     Model::new(&input)
-        .map(|model| parse::expand(&model, print::print_to(&model)))
+        .map(|model| expand(&model))
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

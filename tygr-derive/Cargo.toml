@@ -17,6 +17,5 @@ proc-macro2 = "1"
 [features]
 default = []
 trace_pos = []
-print = []
 lower_bnf_name = []
 upper_bnf_name = []

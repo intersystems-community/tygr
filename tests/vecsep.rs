@@ -13,7 +13,6 @@ fn items_and_separators_line_up() {
     let items: Vec<&str> = list.0.items.iter().map(|item| item.as_str()).collect();
     assert_eq!(items, ["1", "22", "3"]);
     assert_eq!(list.0.seps.len(), 2);
-    #[cfg(feature = "print")]
     assert_eq!(list.print(), "1,22,3");
 }
 

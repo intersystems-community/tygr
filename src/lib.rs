@@ -6,8 +6,8 @@
 //! ## Design
 //!
 //! Derive [`Grammar`] on a `struct` or `enum` to get a parser, a printer, and
-//! a BNF presentation for free. Each supported Rust construct maps to an
-//! EBNF concept.
+//! a BNF presentation for free, or derive only [`Parse`] (the parser and BNF)
+//! or [`Print`]. Each supported Rust construct maps to an EBNF concept.
 //!
 //! | Rust construct | EBNF ([Wirth 1977](https://doi.org/10.1145/359863.359883)) |
 //! |----------------|-------------------------------|
@@ -36,7 +36,7 @@
 //!   matched text.
 //!
 //! A failed conversion backtracks; an infallible one is skipped when
-//! scanning. Printing goes back via `S: From<&T>` or `T: Display`. On a
+//! checking. Printing goes back via `S: From<&T>` or `T: Display`. On a
 //! unit variant, it matches `S` and keeps nothing (printing `S::default()`).
 //!
 //! ```
@@ -48,7 +48,7 @@
 //! assert!(Port::parse("99999").is_err());
 //! ```
 //!
-//! `#[tygr(...)]` on a `#[derive(Grammar)]` type:
+//! `#[tygr(...)]` on a derived type:
 //! - `name = "..."` — override the BNF rule name (defaults to the type name).
 //! - `hidden` — same effect as wrapping in [`Hidden<T>`], but on a whole struct/enum.
 //! - `inline` — splice this type's own definition wherever it's
@@ -58,13 +58,12 @@
 //!
 //! ## Feature Flags
 //!
-//! The `tygr` crate enables the `trace_one_node` and `print` features by default.
+//! The `tygr` crate enables the `trace_one_node` feature by default.
 //! Available features are:
 //!
 //! | Feature | Description |
 //! | ------- | ----------- |
-//! | `default` | Enables `trace_one_node` and `print`. |
-//! | `print` | Derived grammars print. Without it, they need no printing impls or bounds, and panic if printed. |
+//! | `default` | Enables `trace_one_node`. |
 //! | `trace` | Enables all tracing features. |
 //! | `trace_pos` | Traces parser positions. |
 //! | `trace_one_node` | Traces only the nearest grammar node for each attempt. |
@@ -113,7 +112,6 @@
 //! pub struct Ws(pub StringOf<IsSpace>);
 //!
 //! let e = Expr::parse("1 + 2 * 3").unwrap();
-//! # #[cfg(feature = "print")]
 //! assert_eq!(e.print(), "1 + 2 * 3");
 //! # #[cfg(not(any(feature = "lower_bnf_name", feature = "upper_bnf_name")))]
 //! assert_eq!(
@@ -160,7 +158,7 @@ pub mod __private {
 #[doc(hidden)]
 extern crate self as tygr;
 
-pub use tygr_derive::Grammar;
+pub use tygr_derive::{Grammar, Parse, Print};
 
 /// A literal-string grammar: `StringEq!("->")` matches exactly `->`.
 ///

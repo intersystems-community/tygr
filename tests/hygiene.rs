@@ -51,12 +51,12 @@ enum Generic<M> {
 
 #[test]
 fn derives_compile_and_parse_without_imports() {
-    use tygr::Grammar as _;
+    use tygr::Parse as _;
     assert!(Kw::parse("if").is_ok());
     assert!(Op::parse("*").is_ok() && Op::parse("x").is_err());
     assert!(NonZero::parse("10").is_ok() && NonZero::parse("00").is_err());
     let field = Field::parse("42,7").unwrap();
     assert_eq!((field.0, field.2.as_str()), (42, "7"));
     assert!(Locals::parse("1,2;").is_ok());
-    assert!(Generic::<Kw>::parse("if").is_ok() && Generic::<Kw>::scan("d").is_ok());
+    assert!(Generic::<Kw>::parse("if").is_ok() && Generic::<Kw>::check("d").is_ok());
 }

@@ -14,9 +14,7 @@ fn token(text: &'static str) -> Expectation {
 
 #[test]
 fn string_eq_ci_matches_unicode_case_variants() {
-    #[cfg(feature = "print")]
     assert_eq!(Accent::parse("é").unwrap().print(), "é");
-    #[cfg(feature = "print")]
     assert_eq!(Accent::parse("É").unwrap().print(), "É");
     assert!(Accent::parse("e").is_err());
 }
@@ -27,7 +25,6 @@ struct Strasse(StringEqCI!("straße"));
 #[test]
 fn string_eq_ci_variant_can_change_length() {
     // 'ß' uppercases to "SS".
-    #[cfg(feature = "print")]
     assert_eq!(Strasse::parse("STRASSE").unwrap().print(), "STRASSE");
     assert!(Strasse::parse("Straße").is_ok());
 }
@@ -89,25 +86,24 @@ fn ci_marker_only_where_case_matters() {
 #[test]
 fn char_class_computes_first_bytes() {
     char_class!(Lower, |ch| ch.is_ascii_lowercase());
-    let starts = |b| tygr::first::contains::<<Lower as Grammar>::First>(Some(b));
+    let starts = |b| tygr::first::contains::<<Lower as Parse>::First>(Some(b));
     assert!(starts(b'a') && starts(b'z'));
     assert!(!starts(b'A') && !starts(b'0'));
     // UTF-8 lead bytes are kept (the predicate isn't evaluated beyond
     // ASCII); continuation bytes can't start a char.
     assert!(starts(0xC3) && !starts(0x80));
-    assert!(!tygr::first::contains::<<Lower as Grammar>::First>(None));
+    assert!(!tygr::first::contains::<<Lower as Parse>::First>(None));
 
     #[derive(Grammar, Debug)]
     #[tygr(name = "Word")]
     struct Word(StringOf1<Lower>);
-    #[cfg(feature = "print")]
     assert_eq!(Word::parse("abc").unwrap().print(), "abc");
     assert!(Word::parse("aBc").is_err());
 }
 
 #[test]
 fn char_first_is_ascii_and_lead_bytes() {
-    let starts = |b| tygr::first::contains::<<char as Grammar>::First>(Some(b));
+    let starts = |b| tygr::first::contains::<<char as Parse>::First>(Some(b));
     assert!(starts(b'a') && starts(0x00) && starts(0x7F));
     assert!(starts(0xC2) && starts(0xE4) && starts(0xF4));
     assert!(!starts(0x80) && !starts(0xBF) && !starts(0xC1));

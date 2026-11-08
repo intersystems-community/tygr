@@ -38,11 +38,9 @@ struct Semi(StringEq!(";"));
 struct UsesHidden(Digits, Semi);
 
 #[test]
-#[cfg_attr(not(feature = "print"), allow(unused_variables))]
 fn hidden_field_vanishes_from_the_outer_rule_but_still_parses_and_prints() {
     assert_eq!(UsesHidden::bnf_rule(), "UsesHidden = Digits .");
     let v = UsesHidden::parse("1;").unwrap();
-    #[cfg(feature = "print")]
     assert_eq!(v.print(), "1;");
 }
 
@@ -140,7 +138,6 @@ impl Validate for NonZero {
 
 #[test]
 fn validated_accepts_values_that_pass_validation() {
-    #[cfg(feature = "print")]
     assert_eq!(NonZero::parse("123").unwrap().print(), "123");
 }
 
@@ -264,14 +261,13 @@ fn field_conversions() {
     };
     assert_eq!((n, text.as_str(), digit, flag), (42, "07", 5, true));
     assert_eq!(Converted::parse("null").unwrap(), Converted::Null);
-    #[cfg(feature = "print")]
     assert_eq!(Converted::parse("42,07;51").unwrap().print(), "42,07;51");
     assert_eq!(
         Converted::bnf_rule(),
         "Converted = \"null\" | ( ( 'digit' { 'digit' } ) ^1 ) \",\" 'digit' { 'digit' } \";\" Digit ( Digit ^1 ) .\n\n^1: be convertible"
     );
     for bad in ["42,07;52", "99999999999,07;51", "nul"] {
-        assert!(Converted::parse(bad).is_err() && Converted::scan(bad).is_err());
+        assert!(Converted::parse(bad).is_err() && Converted::check(bad).is_err());
     }
 }
 
@@ -316,10 +312,10 @@ fn validated_infallible_conversion_bnf_shows_only_the_validation() {
 }
 
 #[test]
-fn validated_conversion_rejects_when_scanning_too() {
+fn validated_conversion_rejects_when_checking_too() {
     assert!(NonZeroDigit::parse("5").is_ok());
     assert!(NonZeroDigit::parse("0").is_err());
-    assert!(NonZeroDigit::scan("0").is_err());
+    assert!(NonZeroDigit::check("0").is_err());
 }
 
 static CONVERSIONS: AtomicUsize = AtomicUsize::new(0);
@@ -346,14 +342,29 @@ impl fmt::Display for Counted {
 struct UsesCounted(#[tygr(from_str_infallible = StringOf1<IsDigit>)] Counted);
 
 #[test]
-fn infallible_conversion_is_skipped_when_scanning() {
+fn infallible_conversion_is_skipped_when_checking() {
     assert_eq!(
         UsesCounted::bnf_rule(),
         "UsesCounted = 'digit' { 'digit' } ."
     );
     let before = CONVERSIONS.load(Relaxed);
-    assert!(UsesCounted::scan("123").is_ok());
+    assert!(UsesCounted::check("123").is_ok());
     assert_eq!(CONVERSIONS.load(Relaxed), before);
     assert_eq!(UsesCounted::parse("123").unwrap().0, Counted("123".into()));
     assert_eq!(CONVERSIONS.load(Relaxed), before + 1);
+}
+
+/// Parsed only: a `u32` doesn't print.
+#[derive(Parse)]
+struct ParsedOnly(#[tygr(from_str = StringOf1<IsDigit>)] u32);
+
+/// Printed only, as when built by hand.
+#[derive(Print)]
+struct PrintedOnly(StringEq!("#"), Digits);
+
+#[test]
+fn parse_and_print_derive_separately() {
+    assert_eq!(ParsedOnly::parse("42").unwrap().0, 42);
+    let printed = PrintedOnly(Default::default(), Digits(Raw::new("42")));
+    assert_eq!(printed.print(), "#42");
 }

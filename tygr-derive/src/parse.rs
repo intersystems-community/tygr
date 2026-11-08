@@ -1,12 +1,12 @@
-//! The parsing half of a derived `Grammar`, and its `GrammarRule`.
+//! A derived `Parse`, and its `GrammarRule`.
 
 use crate::dispatch::dispatch;
 use crate::model::{Conversion, Field, Model, Shape, Variant};
 use proc_macro2::TokenStream;
 use quote::quote;
 
-/// The `Grammar` and `GrammarRule` impls, given `print_to`.
-pub(crate) fn expand(model: &Model, print_to: TokenStream) -> TokenStream {
+/// The `Parse` and `GrammarRule` impls.
+pub(crate) fn expand(model: &Model) -> TokenStream {
     let Model {
         ident,
         name,
@@ -16,7 +16,7 @@ pub(crate) fn expand(model: &Model, print_to: TokenStream) -> TokenStream {
         shape,
         ..
     } = model;
-    let generics = model.bounded(quote! { ::tygr::Grammar });
+    let generics = model.bounded(quote! { ::tygr::Parse });
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let (first, parse_at, fail_at, def, inherent) = match shape {
         Shape::Struct(variant) => (
@@ -76,15 +76,13 @@ pub(crate) fn expand(model: &Model, print_to: TokenStream) -> TokenStream {
     quote! {
         #inherent
 
-        impl #impl_generics ::tygr::Grammar for #ident #ty_generics #where_clause {
+        impl #impl_generics ::tygr::Parse for #ident #ty_generics #where_clause {
             type First = #first;
 
             #[inline(always)]
             fn parse_at<__Mode: ::tygr::Mode>(input: &[u8], pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> {
                 #parse_at
             }
-
-            #print_to
 
             fn to_bnf() -> ::tygr::bnf::Expr {
                 #to_bnf
@@ -130,7 +128,7 @@ fn first(variant: &Variant) -> TokenStream {
 fn parse(model: &Model, variant: &Variant) -> TokenStream {
     // Validating needs the value, so then the fields always build.
     let mode = if model.validated {
-        quote! { ::tygr::Parse }
+        quote! { ::tygr::Build }
     } else {
         quote! { __Mode }
     };
@@ -171,7 +169,7 @@ fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
             ty,
             conversion: None,
         } => quote! {
-            let (#binding, pos) = <#ty as ::tygr::Grammar>::parse_at::<#mode>(input, pos, state.reborrow())?;
+            let (#binding, pos) = <#ty as ::tygr::Parse>::parse_at::<#mode>(input, pos, state.reborrow())?;
         },
         Field::Kept {
             binding,
@@ -188,7 +186,7 @@ fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
             }
         }
         Field::Dropped(source) => quote! {
-            let ((), pos) = <#source as ::tygr::Grammar>::parse_at::<::tygr::Scan>(input, pos, state.reborrow())?;
+            let ((), pos) = <#source as ::tygr::Parse>::parse_at::<::tygr::Check>(input, pos, state.reborrow())?;
         },
     }
 }
@@ -197,7 +195,7 @@ fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
 fn fail_at(variant: &Variant) -> TokenStream {
     let sources = variant.fields.iter().map(Field::source);
     quote! {
-        #(<#sources as ::tygr::Grammar>::fail_at(pos, state.reborrow()) ||)* false
+        #(<#sources as ::tygr::Parse>::fail_at(pos, state.reborrow()) ||)* false
     }
 }
 
@@ -205,7 +203,7 @@ fn fail_at(variant: &Variant) -> TokenStream {
 fn sequence(variant: &Variant) -> TokenStream {
     let bnfs = variant.fields.iter().map(|field| {
         let source = field.source();
-        let bnf = quote! { <#source as ::tygr::Grammar>::to_bnf() };
+        let bnf = quote! { <#source as ::tygr::Parse>::to_bnf() };
         if field.fallible() {
             quote! { ::tygr::bnf::Expr::side_condition(#bnf, ::tygr::__private::CONVERTIBLE) }
         } else {
@@ -213,4 +211,22 @@ fn sequence(variant: &Variant) -> TokenStream {
         }
     });
     quote! { ::tygr::bnf::Expr::sequence(vec![#(#bnfs),*]) }
+}
+
+/// Reads every field, as a derived `Print` would: a grammar's fields are
+/// its syntax, so the dead-code lint shouldn't flag them as never read.
+pub(crate) fn read_fields(model: &Model) -> TokenStream {
+    let ident = &model.ident;
+    let (impl_generics, ty_generics, where_clause) = model.generics.split_for_impl();
+    let constructors = model.variants().iter().map(|variant| &variant.constructor);
+    quote! {
+        const _: () = {
+            #[allow(dead_code)]
+            fn read_fields #impl_generics (value: &#ident #ty_generics) #where_clause {
+                match value {
+                    #(#constructors => {})*
+                }
+            }
+        };
+    }
 }

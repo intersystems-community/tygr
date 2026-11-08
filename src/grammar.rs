@@ -1,16 +1,17 @@
-//! The traits that describe a grammar: [`Grammar`] (parsing in a [`Mode`]),
-//! [`GrammarRule`] and [`Validate`]. Parsing is ordered choice with
-//! backtracking; no left recursion.
+//! The traits that describe a grammar: [`Parse`] (in a [`Mode`]), [`Print`],
+//! both as [`Grammar`], [`GrammarRule`] and [`Validate`]. Parsing is
+//! ordered choice with backtracking; no left recursion.
 
 use crate::first::First;
 use crate::state::run;
 use crate::{Error, State, bnf::Expr};
 
-/// Parse, print, and describe (as BNF) a grammar element.
+/// Parse and describe (as BNF) a grammar element.
 ///
 /// Implement this by hand only for leaf/wrapper types; for `struct`s and
-/// `enum`s, `#[derive(Grammar)]` generates it (see the crate-level docs).
-pub trait Grammar: Sized + 'static {
+/// `enum`s, `#[derive(Parse)]` or `#[derive(Grammar)]` generates it (see
+/// the crate-level docs).
+pub trait Parse: Sized + 'static {
     /// The bytes (and whether empty input) this grammar can start with, used
     /// to skip alternatives that can't match. A manual impl delegates
     /// (`T::First`), combines ([`Seq`](crate::first::First::Seq) /
@@ -40,7 +41,7 @@ pub trait Grammar: Sized + 'static {
     /// Parse the entire `input` as `Self`, failing if any input is left unconsumed.
     fn parse(input: &str) -> Result<Self, Error> {
         run(|state| {
-            let (value, end) = Self::parse_at::<Parse>(input.as_bytes(), 0, state)?;
+            let (value, end) = Self::parse_at::<Build>(input.as_bytes(), 0, state)?;
             (end == input.len()).then_some(value)
         })
     }
@@ -48,25 +49,25 @@ pub trait Grammar: Sized + 'static {
     /// Like [`parse`](Self::parse), but may stop early; returns the end
     /// position too.
     fn parse_prefix(input: &str) -> Result<(Self, usize), Error> {
-        run(|state| Self::parse_at::<Parse>(input.as_bytes(), 0, state))
+        run(|state| Self::parse_at::<Build>(input.as_bytes(), 0, state))
     }
 
     /// Like [`parse`](Self::parse), but only checks `input`.
-    fn scan(input: &str) -> Result<(), Error> {
+    fn check(input: &str) -> Result<(), Error> {
         run(|state| {
-            let ((), end) = Self::parse_at::<Scan>(input.as_bytes(), 0, state)?;
+            let ((), end) = Self::parse_at::<Check>(input.as_bytes(), 0, state)?;
             (end == input.len()).then_some(())
         })
     }
 
-    /// Like [`scan`](Self::scan), but may stop early; returns the end
+    /// Like [`check`](Self::check), but may stop early; returns the end
     /// position.
-    fn scan_prefix(input: &str) -> Result<usize, Error> {
-        run(|state| Some(Self::parse_at::<Scan>(input.as_bytes(), 0, state)?.1))
+    fn check_prefix(input: &str) -> Result<usize, Error> {
+        run(|state| Some(Self::parse_at::<Check>(input.as_bytes(), 0, state)?.1))
     }
 
     /// Parse `Self` at byte offset `pos`, returning its output in mode `M`
-    /// (the value, or nothing when scanning) and the end offset.
+    /// (the value, or nothing when checking) and the end offset.
     ///
     /// Invariant, relied on by `unsafe` UTF-8 conversions: `input` is valid
     /// UTF-8 and every position is a char boundary. Public grammars only
@@ -77,16 +78,6 @@ pub trait Grammar: Sized + 'static {
         state: State,
     ) -> Option<(M::Output<Self>, usize)>;
 
-    /// Serialize `self` back to bytes, appending to `buf`. Without the
-    /// `print` feature, derived impls panic here.
-    #[cfg(feature = "print")]
-    fn print_to(&self, buf: &mut Vec<u8>);
-    /// Panics: tygr's `print` feature is off.
-    #[cfg(not(feature = "print"))]
-    fn print_to(&self, _buf: &mut Vec<u8>) {
-        unimplemented!("tygr's `print` feature is off")
-    }
-
     /// This grammar as an EBNF expression, as other rules refer to it.
     fn to_bnf() -> Expr;
 
@@ -94,30 +85,39 @@ pub trait Grammar: Sized + 'static {
     /// when `First` already ruled it out). Returns whether it's required
     /// (not nullable), so a sequence can stop reporting after it.
     fn fail_at(pos: usize, state: State) -> bool;
+}
 
-    /// Serialize `self` to a new byte vector; see [`print_to`](Self::print_to).
-    fn print_bytes(&self) -> Vec<u8> {
+/// Print a grammar element back as text.
+///
+/// Implemented for tygr's own grammars; for `struct`s and `enum`s,
+/// `#[derive(Print)]` or `#[derive(Grammar)]` generates it.
+pub trait Print {
+    /// Append `self`'s text to `buf`.
+    fn print_to(&self, buf: &mut Vec<u8>);
+
+    /// `self`'s text as a new `String` (invalid UTF-8 becomes `U+FFFD`).
+    fn print(&self) -> String {
         let mut buf = Vec::new();
         self.print_to(&mut buf);
-        buf
-    }
-
-    /// Serialize `self` to a new `String` (invalid UTF-8 becomes `U+FFFD`).
-    fn print(&self) -> String {
-        match String::from_utf8(self.print_bytes()) {
+        match String::from_utf8(buf) {
             Ok(text) => text,
             Err(err) => String::from_utf8_lossy(err.as_bytes()).into_owned(),
         }
     }
 }
 
-/// A named [`Grammar`] with its own BNF rule (see
+/// A grammar that both parses and prints, as `#[derive(Grammar)]` makes.
+pub trait Grammar: Parse + Print {}
+
+impl<T: Parse + Print> Grammar for T {}
+
+/// A named [`Parse`] grammar with its own BNF rule (see
 /// [`bnf_rules!`](crate::bnf_rules)).
-pub trait GrammarRule: Grammar {
+pub trait GrammarRule: Parse {
     /// The rule's name in BNF output; defaults to the type name.
     const NAME: &'static str;
 
-    /// This rule's definition ([`to_bnf`](Grammar::to_bnf) is how others
+    /// This rule's definition ([`to_bnf`](Parse::to_bnf) is how others
     /// refer to it).
     fn to_bnf_def() -> Expr;
 
@@ -137,22 +137,22 @@ pub trait GrammarRule: Grammar {
     }
 }
 
-/// Whether [`Grammar::parse_at`] builds values ([`Parse`]) or only matches
-/// ([`Scan`]), so one function does both.
+/// Whether [`Parse::parse_at`] builds values ([`Build`]) or only matches
+/// ([`Check`]), so one function does both.
 ///
 /// ```
 /// # use tygr::*;
-/// // A `T` in parentheses: `map` builds the value only when parsing.
+/// // A `T` in parentheses: `map` builds the value only when building.
 /// struct Paren<T>(T);
 ///
-/// fn parse_paren<T: Grammar, M: Mode>(
+/// fn parse_paren<T: Parse, M: Mode>(
 ///     input: &[u8],
 ///     pos: usize,
 ///     mut state: State,
 /// ) -> Option<(M::Output<Paren<T>>, usize)> {
-///     let ((), pos) = <StringEq!("(")>::parse_at::<Scan>(input, pos, state.reborrow())?;
+///     let ((), pos) = <StringEq!("(")>::parse_at::<Check>(input, pos, state.reborrow())?;
 ///     let (inner, pos) = T::parse_at::<M>(input, pos, state.reborrow())?;
-///     let ((), pos) = <StringEq!(")")>::parse_at::<Scan>(input, pos, state)?;
+///     let ((), pos) = <StringEq!(")")>::parse_at::<Check>(input, pos, state)?;
 ///     Some((M::map(inner, Paren), pos))
 /// }
 /// ```
@@ -160,16 +160,16 @@ pub trait Mode: Copy + 'static + private::Sealed {
     /// What parsing a `T` gives: the `T`, or `()`.
     type Output<T>;
 
-    /// An output built by `f`. Only [`Parse`] calls it, passing itself to
+    /// An output built by `f`. Only [`Build`] calls it, passing itself to
     /// [`get`](Self::get) the outputs it combines.
     fn build<T>(f: impl FnOnce(Self) -> T) -> Self::Output<T>;
 
     /// `output` with `f` applied to its value.
     fn map<T, U>(output: Self::Output<T>, f: impl FnOnce(T) -> U) -> Self::Output<U>;
 
-    /// The mode when parsing, `None` when scanning: for updating an output
+    /// The mode when building, `None` when checking: for updating an output
     /// in place, such as pushing to a `Vec` in a loop.
-    fn parsing() -> Option<Self>;
+    fn building() -> Option<Self>;
 
     /// The value in `output`.
     fn get<T>(self, output: Self::Output<T>) -> T;
@@ -180,18 +180,18 @@ pub trait Mode: Copy + 'static + private::Sealed {
 
 /// Builds values.
 #[derive(Debug, Clone, Copy)]
-pub struct Parse;
+pub struct Build;
 
-/// Only matches: there are no `Scan` values, so nothing is built.
+/// Only matches: there are no `Check` values, so nothing is built.
 #[derive(Debug, Clone, Copy)]
-pub enum Scan {}
+pub enum Check {}
 
-impl Mode for Parse {
+impl Mode for Build {
     type Output<T> = T;
 
     #[inline(always)]
     fn build<T>(f: impl FnOnce(Self) -> T) -> T {
-        f(Parse)
+        f(Build)
     }
 
     #[inline(always)]
@@ -200,8 +200,8 @@ impl Mode for Parse {
     }
 
     #[inline(always)]
-    fn parsing() -> Option<Self> {
-        Some(Parse)
+    fn building() -> Option<Self> {
+        Some(Build)
     }
 
     #[inline(always)]
@@ -215,7 +215,7 @@ impl Mode for Parse {
     }
 }
 
-impl Mode for Scan {
+impl Mode for Check {
     type Output<T> = ();
 
     #[inline(always)]
@@ -225,7 +225,7 @@ impl Mode for Scan {
     fn map<T, U>((): (), _f: impl FnOnce(T) -> U) {}
 
     #[inline(always)]
-    fn parsing() -> Option<Self> {
+    fn building() -> Option<Self> {
         None
     }
 
@@ -239,10 +239,10 @@ impl Mode for Scan {
 }
 
 mod private {
-    /// Only [`Parse`](super::Parse) and [`Scan`](super::Scan) are modes.
+    /// Only [`Build`](super::Build) and [`Check`](super::Check) are modes.
     pub trait Sealed {}
-    impl Sealed for super::Parse {}
-    impl Sealed for super::Scan {}
+    impl Sealed for super::Build {}
+    impl Sealed for super::Check {}
 }
 
 /// Post-parse validation for `#[tygr(validated)]` types.

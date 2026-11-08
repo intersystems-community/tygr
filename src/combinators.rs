@@ -5,7 +5,7 @@ use crate::IntoInner;
 use crate::State;
 use crate::bnf::Expr;
 use crate::first::{First, Optional, byte_set};
-use crate::grammar::{Grammar, GrammarRule, Mode, Scan};
+use crate::grammar::{Check, GrammarRule, Mode, Parse, Print};
 use either::Either::*;
 use std::fmt;
 use std::marker::PhantomData;
@@ -13,7 +13,7 @@ use std::ops::Deref;
 use tygr_derive::Grammar;
 
 // `()`: the empty sequence.
-impl Grammar for () {
+impl Parse for () {
     type First = Optional<byte_set::Emp>;
 
     #[inline]
@@ -25,8 +25,6 @@ impl Grammar for () {
         Some((M::build(|_| ()), pos))
     }
 
-    fn print_to(&self, _buf: &mut Vec<u8>) {}
-
     fn to_bnf() -> Expr {
         Expr::empty()
     }
@@ -36,6 +34,10 @@ impl Grammar for () {
     }
 }
 
+impl Print for () {
+    fn print_to(&self, _buf: &mut Vec<u8>) {}
+}
+
 macro_rules! concat_first {
     ($acc:ty;) => { $acc };
     ($acc:ty; $T:ident $(, $rest:ident)*) => {
@@ -43,9 +45,9 @@ macro_rules! concat_first {
     };
 }
 
-macro_rules! impl_grammar_tuple {
+macro_rules! impl_tuple {
     ($($idx:tt $T:ident),+) => {
-        impl<$($T: Grammar),+> Grammar for ($($T,)+) {
+        impl<$($T: Parse),+> Parse for ($($T,)+) {
             type First = concat_first!(Optional<byte_set::Emp>; $($T),+);
 
             #[inline]
@@ -61,10 +63,6 @@ macro_rules! impl_grammar_tuple {
                 Some((M::build(|mode| ($(mode.get($T),)+)), pos))
             }
 
-            fn print_to(&self, buf: &mut Vec<u8>) {
-                $(self.$idx.print_to(buf);)+
-            }
-
             fn to_bnf() -> Expr {
                 Expr::sequence(vec![$(<$T>::to_bnf()),+])
             }
@@ -73,19 +71,25 @@ macro_rules! impl_grammar_tuple {
                 $( <$T>::fail_at(pos, state.reborrow()) || )+ false
             }
         }
+
+        impl<$($T: Print),+> Print for ($($T,)+) {
+            fn print_to(&self, buf: &mut Vec<u8>) {
+                $(self.$idx.print_to(buf);)+
+            }
+        }
     };
 }
 
-impl_grammar_tuple!(0 A, 1 B);
-impl_grammar_tuple!(0 A, 1 B, 2 C);
-impl_grammar_tuple!(0 A, 1 B, 2 C, 3 D);
-impl_grammar_tuple!(0 A, 1 B, 2 C, 3 D, 4 E);
-impl_grammar_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F);
-impl_grammar_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G);
-impl_grammar_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H);
-impl_grammar_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I);
-impl_grammar_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J);
-impl_grammar_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K);
+impl_tuple!(0 A, 1 B);
+impl_tuple!(0 A, 1 B, 2 C);
+impl_tuple!(0 A, 1 B, 2 C, 3 D);
+impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E);
+impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F);
+impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G);
+impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H);
+impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I);
+impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J);
+impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K);
 
 /// Sequence of three grammars, [`Deref`]-ing to the middle one.
 #[derive(Debug, Clone, PartialEq, Eq, Grammar)]
@@ -219,7 +223,7 @@ impl<T, S> IntoInner<T> for Suffix<T, S> {
     }
 }
 
-impl<A: Grammar, B: Grammar> Grammar for either::Either<A, B> {
+impl<A: Parse, B: Parse> Parse for either::Either<A, B> {
     type First = <A::First as First>::Alt<B::First>;
 
     #[inline]
@@ -235,13 +239,6 @@ impl<A: Grammar, B: Grammar> Grammar for either::Either<A, B> {
         Some((M::map(b, Right), end))
     }
 
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        match self {
-            Left(a) => a.print_to(buf),
-            Right(b) => b.print_to(buf),
-        }
-    }
-
     fn to_bnf() -> Expr {
         Expr::alternation(vec![A::to_bnf(), B::to_bnf()])
     }
@@ -253,7 +250,16 @@ impl<A: Grammar, B: Grammar> Grammar for either::Either<A, B> {
     }
 }
 
-impl<T: Grammar> Grammar for Option<T> {
+impl<A: Print, B: Print> Print for either::Either<A, B> {
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        match self {
+            Left(a) => a.print_to(buf),
+            Right(b) => b.print_to(buf),
+        }
+    }
+}
+
+impl<T: Parse> Parse for Option<T> {
     type First = <T::First as First>::Opt;
 
     #[inline]
@@ -268,12 +274,6 @@ impl<T: Grammar> Grammar for Option<T> {
         })
     }
 
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        if let Some(val) = self {
-            val.print_to(buf);
-        }
-    }
-
     fn to_bnf() -> Expr {
         Expr::optional(T::to_bnf())
     }
@@ -284,7 +284,15 @@ impl<T: Grammar> Grammar for Option<T> {
     }
 }
 
-impl<T: Grammar> Grammar for Vec<T> {
+impl<T: Print> Print for Option<T> {
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        if let Some(value) = self {
+            value.print_to(buf);
+        }
+    }
+}
+
+impl<T: Parse> Parse for Vec<T> {
     type First = <T::First as First>::Opt;
 
     #[inline]
@@ -297,18 +305,12 @@ impl<T: Grammar> Grammar for Vec<T> {
         while let Some((item, end)) = T::parse_at::<M>(input, pos, state.reborrow())
             && end != pos
         {
-            if let Some(mode) = M::parsing() {
+            if let Some(mode) = M::building() {
                 mode.get_mut(&mut items).push(mode.get(item));
             }
             pos = end;
         }
         Some((items, pos))
-    }
-
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        for item in self {
-            item.print_to(buf);
-        }
     }
 
     fn to_bnf() -> Expr {
@@ -318,6 +320,14 @@ impl<T: Grammar> Grammar for Vec<T> {
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state);
         false
+    }
+}
+
+impl<T: Print> Print for Vec<T> {
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        for item in self {
+            item.print_to(buf);
+        }
     }
 }
 
@@ -333,7 +343,7 @@ impl<T> Deref for Vec1<T> {
     }
 }
 
-impl<T: Grammar> Grammar for Vec1<T> {
+impl<T: Parse> Parse for Vec1<T> {
     type First = T::First;
 
     // `Vec` stops at an item that matches empty, so an empty match is no items.
@@ -347,18 +357,18 @@ impl<T: Grammar> Grammar for Vec1<T> {
         (end != pos).then(|| (M::map(items, Self), end))
     }
 
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        for t in self.iter() {
-            t.print_to(buf);
-        }
-    }
-
     fn to_bnf() -> Expr {
         Expr::sequence(vec![T::to_bnf(), <Vec<T>>::to_bnf()])
     }
 
     fn fail_at(pos: usize, mut state: State) -> bool {
         T::fail_at(pos, state.reborrow()) || <Vec<T>>::fail_at(pos, state)
+    }
+}
+
+impl<T: Print> Print for Vec1<T> {
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        self.0.print_to(buf);
     }
 }
 
@@ -372,7 +382,7 @@ pub struct VecSep<T, S> {
 }
 
 // By hand, so items and separators are pushed straight into their vectors.
-impl<T: Grammar, S: Grammar> Grammar for VecSep<T, S> {
+impl<T: Parse, S: Parse> Parse for VecSep<T, S> {
     type First = <T::First as First>::Seq<Vec<(S, T)>>;
 
     #[inline]
@@ -388,14 +398,14 @@ impl<T: Grammar, S: Grammar> Grammar for VecSep<T, S> {
         });
         // `push`, not `vec![first]`, so the first allocation gets the
         // amortized capacity rather than exactly one.
-        if let Some(mode) = M::parsing() {
+        if let Some(mode) = M::building() {
             mode.get_mut(&mut vec_sep).items.push(mode.get(first));
         }
         while let Some((sep, after_sep)) = S::parse_at::<M>(input, pos, state.reborrow())
             && let Some((item, end)) = T::parse_at::<M>(input, after_sep, state.reborrow())
             && end != pos
         {
-            if let Some(mode) = M::parsing() {
+            if let Some(mode) = M::building() {
                 let VecSep { items, seps } = mode.get_mut(&mut vec_sep);
                 seps.push(mode.get(sep));
                 items.push(mode.get(item));
@@ -403,17 +413,6 @@ impl<T: Grammar, S: Grammar> Grammar for VecSep<T, S> {
             pos = end;
         }
         Some((vec_sep, pos))
-    }
-
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        let mut items = self.items.iter();
-        if let Some(first) = items.next() {
-            first.print_to(buf);
-        }
-        for (sep, item) in self.seps.iter().zip(items) {
-            sep.print_to(buf);
-            item.print_to(buf);
-        }
     }
 
     fn to_bnf() -> Expr {
@@ -425,8 +424,21 @@ impl<T: Grammar, S: Grammar> Grammar for VecSep<T, S> {
     }
 }
 
+impl<T: Print, S: Print> Print for VecSep<T, S> {
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        let mut items = self.items.iter();
+        if let Some(first) = items.next() {
+            first.print_to(buf);
+        }
+        for (sep, item) in self.seps.iter().zip(items) {
+            sep.print_to(buf);
+            item.print_to(buf);
+        }
+    }
+}
+
 // As in 0.6, where it was derived with `#[tygr(inline)]`.
-impl<T: Grammar, S: Grammar> GrammarRule for VecSep<T, S> {
+impl<T: Parse, S: Parse> GrammarRule for VecSep<T, S> {
     const NAME: &'static str = "VecSep";
 
     fn to_bnf_def() -> Expr {
@@ -463,7 +475,7 @@ impl<T, S> VecSep<T, S> {
 /// ```
 pub struct NotFollowedBy<G>(PhantomData<G>);
 
-impl<G: Grammar> Grammar for NotFollowedBy<G> {
+impl<G: Parse> Parse for NotFollowedBy<G> {
     type First = Optional<byte_set::Emp>;
 
     #[inline]
@@ -473,13 +485,11 @@ impl<G: Grammar> Grammar for NotFollowedBy<G> {
         mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
         // Probe so the lookahead doesn't touch the error trace.
-        match state.probe(|state| G::parse_at::<Scan>(input, pos, state)) {
+        match state.probe(|state| G::parse_at::<Check>(input, pos, state)) {
             Some(_) => None,
             None => Some((M::build(|_| NotFollowedBy(PhantomData)), pos)),
         }
     }
-
-    fn print_to(&self, _buf: &mut Vec<u8>) {}
 
     fn to_bnf() -> Expr {
         Expr::not_followed_by(G::to_bnf())
@@ -488,6 +498,10 @@ impl<G: Grammar> Grammar for NotFollowedBy<G> {
     fn fail_at(_pos: usize, _state: State) -> bool {
         false
     }
+}
+
+impl<G> Print for NotFollowedBy<G> {
+    fn print_to(&self, _buf: &mut Vec<u8>) {}
 }
 
 // Not derived: `G` is phantom, so no bounds on it.

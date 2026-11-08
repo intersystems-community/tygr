@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use std::io::{self, Read};
 use std::process::ExitCode;
 
-use tygr::Grammar;
+use tygr::Parse;
 
 /// Read all of stdin into a `String`.
 fn read_stdin() -> String {
@@ -18,7 +18,7 @@ fn read_stdin() -> String {
 }
 
 /// `parse`: parse stdin with `R` and print the `Debug` tree.
-pub(crate) fn parse<R: Grammar + Debug>() -> ExitCode {
+pub(crate) fn parse<R: Parse + Debug>() -> ExitCode {
     let input = read_stdin();
     match R::parse(input.trim_end()) {
         Ok(value) => {
@@ -33,9 +33,9 @@ pub(crate) fn parse<R: Grammar + Debug>() -> ExitCode {
 }
 
 /// `test`: check that stdin is well-formed under `R`; print `ok` / `error`.
-pub(crate) fn test<R: Grammar>() -> ExitCode {
+pub(crate) fn test<R: Parse>() -> ExitCode {
     let input = read_stdin();
-    match R::scan(input.trim_end()) {
+    match R::check(input.trim_end()) {
         Ok(()) => {
             println!("ok");
             ExitCode::SUCCESS
