@@ -449,7 +449,7 @@ fn scan_at(validated: bool, fields: &[Field], constructor: &TokenStream2) -> Tok
 
 fn bnf_ref(grammar_name: &str, hidden: bool, to_bnf: &TokenStream2, inline: bool) -> TokenStream2 {
     if hidden {
-        quote! { ::tygr::bnf::Expr::empty() }
+        quote! { ::tygr::bnf::Expr::Hidden }
     } else if inline {
         quote! { #to_bnf }
     } else {

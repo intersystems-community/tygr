@@ -64,6 +64,36 @@ fn optional_or_repeated_hidden_field_vanishes_instead_of_showing_empty_brackets(
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
 #[grammar(inline)]
+enum MaybeSemi {
+    Semi(Semi),
+    Digits(Digits),
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+struct UsesHiddenAlternative(MaybeSemi, Named, NotFollowedBy<Semi>);
+
+#[test]
+fn hidden_alternative_or_lookahead_vanishes() {
+    assert_eq!(
+        UsesHiddenAlternative::bnf_rule(),
+        "UsesHiddenAlternative = Digits custom_name ."
+    );
+    assert!(UsesHiddenAlternative::parse(";x").is_ok());
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+enum MaybeDigits {
+    Digits(Digits),
+    Nothing,
+}
+
+#[test]
+fn empty_alternative_makes_the_rest_optional() {
+    assert_eq!(MaybeDigits::bnf_rule(), "MaybeDigits = [ Digits ] .");
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+#[grammar(inline)]
 struct Inlined(StringEq!("a"), StringEq!("b"));
 
 #[derive(Grammar, Debug, PartialEq, Eq)]

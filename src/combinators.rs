@@ -512,7 +512,7 @@ impl<G: Grammar> Grammar for NotFollowedBy<G> {
     fn print_to(&self, _buf: &mut Vec<u8>) {}
 
     fn to_bnf() -> Expr {
-        Expr::NotFollowedBy(Box::new(G::to_bnf()))
+        Expr::not_followed_by(G::to_bnf())
     }
 
     fn fail_at(_pos: usize, _state: State) -> bool {

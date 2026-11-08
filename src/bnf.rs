@@ -28,6 +28,9 @@ pub enum Expr {
     NotFollowedBy(Box<Expr>),
     /// A side-condition beyond the shown syntax: `A ^1` (see [`Expr::side_conditions`]).
     SideCondition(Box<Expr>, &'static str),
+    /// Left out ([`Hidden`](crate::Hidden), `#[grammar(hidden)]`): dropped
+    /// from sequences and alternations.
+    Hidden,
 }
 
 /// Binding tightness, from loosest to tightest.
@@ -39,8 +42,7 @@ enum Prec {
 }
 
 impl Expr {
-    /// Matches nothing and prints as nothing (an empty
-    /// [`Sequence`](Expr::Sequence)).
+    /// The empty [`Sequence`](Expr::Sequence), which consumes nothing.
     pub fn empty() -> Expr {
         Expr::Sequence(vec![])
     }
@@ -50,54 +52,79 @@ impl Expr {
         matches!(self, Expr::Sequence(exprs) if exprs.is_empty())
     }
 
-    /// A flattened sequence.
-    pub fn sequence(mut exprs: Vec<Expr>) -> Expr {
-        exprs = exprs
-            .into_iter()
-            .flat_map(|expr| match expr {
-                Expr::Sequence(inner) => inner,
-                _ => vec![expr],
-            })
-            .collect();
-        match exprs.len() {
-            1 => exprs.into_iter().next().unwrap(),
-            _ => Expr::Sequence(exprs),
+    /// Empty or hidden.
+    fn is_blank(&self) -> bool {
+        self.is_empty() || *self == Expr::Hidden
+    }
+
+    /// A flattened sequence without its hidden parts (hidden if all are).
+    pub fn sequence(exprs: Vec<Expr>) -> Expr {
+        let mut hidden = false;
+        let mut parts = Vec::new();
+        for expr in exprs {
+            match expr {
+                Expr::Sequence(inner) => parts.extend(inner),
+                Expr::Hidden => hidden = true,
+                _ => parts.push(expr),
+            }
+        }
+        match parts.len() {
+            0 if hidden => Expr::Hidden,
+            1 => parts.pop().unwrap(),
+            _ => Expr::Sequence(parts),
         }
     }
 
-    /// A flattened alternation.
-    pub fn alternation(mut exprs: Vec<Expr>) -> Expr {
-        exprs = exprs
-            .into_iter()
-            .flat_map(|expr| match expr {
-                Expr::Alternation(inner) => inner,
-                _ => vec![expr],
-            })
-            .collect();
-
-        match exprs.len() {
-            1 => exprs.into_iter().next().unwrap(),
-            _ => Expr::Alternation(exprs),
+    /// A flattened alternation without its hidden alternatives (hidden if
+    /// all are); an empty alternative makes the rest optional.
+    pub fn alternation(exprs: Vec<Expr>) -> Expr {
+        let (mut hidden, mut empty) = (false, false);
+        let mut alternatives = Vec::new();
+        for expr in exprs {
+            match expr {
+                Expr::Alternation(inner) => alternatives.extend(inner),
+                Expr::Hidden => hidden = true,
+                _ if expr.is_empty() => empty = true,
+                _ => alternatives.push(expr),
+            }
+        }
+        let alternation = match alternatives.len() {
+            0 if hidden && !empty => Expr::Hidden,
+            0 => Expr::empty(),
+            1 => alternatives.pop().unwrap(),
+            _ => Expr::Alternation(alternatives),
+        };
+        if empty {
+            Expr::optional(alternation)
+        } else {
+            alternation
         }
     }
 
-    /// `{ expr }`, or nothing if `expr` is empty.
+    /// `{ expr }`, or `expr` if it's empty or hidden.
     pub fn repetition(expr: Expr) -> Expr {
-        let expr = expr.remove_empties();
-        if expr.is_empty() {
+        if expr.is_blank() {
             expr
         } else {
             Expr::Repetition(Box::new(expr))
         }
     }
 
-    /// `[ expr ]`, or nothing if `expr` is empty.
+    /// `[ expr ]`, or `expr` if it's empty or hidden.
     pub fn optional(expr: Expr) -> Expr {
-        let expr = expr.remove_empties();
-        if expr.is_empty() {
+        if expr.is_blank() {
             expr
         } else {
             Expr::Optional(Box::new(expr))
+        }
+    }
+
+    /// `!expr`, or `expr` if it's hidden.
+    pub fn not_followed_by(expr: Expr) -> Expr {
+        if expr == Expr::Hidden {
+            expr
+        } else {
+            Expr::NotFollowedBy(Box::new(expr))
         }
     }
 
@@ -130,7 +157,7 @@ impl Expr {
             Expr::Repetition(inner) | Expr::Optional(inner) | Expr::NotFollowedBy(inner) => {
                 inner.collect_side_conditions(notes);
             }
-            Expr::Token { .. } | Expr::RuleRef(_) | Expr::CharOf(_) => {}
+            Expr::Token { .. } | Expr::RuleRef(_) | Expr::CharOf(_) | Expr::Hidden => {}
         }
     }
 
@@ -142,7 +169,7 @@ impl Expr {
 
     fn prec(&self) -> Prec {
         match self {
-            _ if self.is_empty() => Prec::Atom,
+            _ if self.is_blank() => Prec::Atom,
             Expr::Alternation(_) | Expr::SideCondition(..) => Prec::Alternation,
             Expr::Sequence(_) => Prec::Sequence,
             _ => Prec::Atom,
@@ -195,6 +222,7 @@ impl Expr {
                 let index = notes.iter().position(|note| note == text).unwrap() + 1;
                 write!(f, " ^{index}")
             }
+            Expr::Hidden => Ok(()),
         }?;
         if paren {
             write!(f, " )")?;
@@ -211,7 +239,7 @@ impl Expr {
     ) -> fmt::Result {
         let mut first = true;
         for expr in exprs {
-            if !expr.is_empty() {
+            if !expr.is_blank() {
                 if !first {
                     write!(f, "{sep}")?;
                 }
@@ -220,19 +248,6 @@ impl Expr {
             }
         }
         Ok(())
-    }
-
-    fn remove_empties(self) -> Expr {
-        if let Expr::Sequence(mut exprs) = self {
-            exprs.retain(|expr| !expr.is_empty());
-            match exprs.len() {
-                0 => Expr::empty(),
-                1 => exprs.pop().unwrap(),
-                _ => Expr::Sequence(exprs),
-            }
-        } else {
-            self
-        }
     }
 }
 
