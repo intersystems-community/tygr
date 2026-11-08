@@ -25,7 +25,7 @@ pub fn derive_grammar(input: TokenStream) -> TokenStream {
     })
 }
 
-/// Derive `Parse` (and `GrammarRule`) alone, as `Grammar` does.
+/// Derive `Parse` alone, as `Grammar` does.
 #[proc_macro_derive(Parse, attributes(tygr))]
 pub fn derive_parse(input: TokenStream) -> TokenStream {
     derive(input, |model| {

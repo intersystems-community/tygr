@@ -2,6 +2,11 @@
 
 use tygr::*;
 
+/// `G`'s own rule, as printed.
+fn rule<G: Parse>() -> String {
+    G::bnf_rules()[0].to_string()
+}
+
 char_class!(Digit, |ch| ch.is_ascii_digit());
 
 #[derive(Grammar)]
@@ -26,11 +31,11 @@ fn default(name: &str) -> String {
 fn default_names_follow_the_feature_explicit_names_do_not() {
     let (list, digit) = (default("NumberList"), default("Digit"));
     assert_eq!(
-        NumberList::bnf_rule(),
+        rule::<NumberList>(),
         format!("{list} = '{digit}' {{ '{digit}' }} {{ \",\" Pinned }} .")
     );
     assert_eq!(
-        Pinned::bnf_rule(),
+        rule::<Pinned>(),
         format!("Pinned = '{digit}' {{ '{digit}' }} .")
     );
 }

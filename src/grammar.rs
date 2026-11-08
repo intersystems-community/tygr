@@ -1,10 +1,11 @@
 //! The traits that describe a grammar: [`Parse`] (in a [`Mode`]), [`Print`],
-//! both as [`Grammar`], [`GrammarRule`] and [`Validate`]. Parsing is
-//! ordered choice with backtracking; no left recursion.
+//! both as [`Grammar`], and [`Validate`]. Parsing is ordered choice with
+//! backtracking; no left recursion.
 
+use crate::bnf::{self, Expr, Rule, Rules};
 use crate::first::First;
 use crate::state::run;
-use crate::{Error, State, bnf::Expr};
+use crate::{Error, State};
 
 /// Parse and describe (as BNF) a grammar element.
 ///
@@ -85,6 +86,31 @@ pub trait Parse: Sized + 'static {
     /// when `First` already ruled it out). Returns whether it's required
     /// (not nullable), so a sequence can stop reporting after it.
     fn fail_at(pos: usize, state: State) -> bool;
+
+    /// Visit the named rules [`to_bnf`](Self::to_bnf) refers to: a named
+    /// grammar [inserts](Rules::insert) its own, then, if it's new, visits
+    /// its parts'.
+    fn visit_rules(rules: &mut Rules);
+
+    /// This grammar's rule (unless inline or hidden), then each rule it
+    /// refers to, depth first, once per type: to sort or
+    /// [rename](Rule::rename), then print.
+    ///
+    /// ```
+    /// # use tygr::*;
+    /// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
+    /// #[derive(Parse)]
+    /// struct Pair(Number, StringEq!(","), Number);
+    /// #[derive(Parse)]
+    /// struct Number(StringOf1<Digit>);
+    ///
+    /// let rules: Vec<String> = Pair::bnf_rules().iter().map(ToString::to_string).collect();
+    /// # #[cfg(not(any(feature = "lower_bnf_name", feature = "upper_bnf_name")))]
+    /// assert_eq!(rules, ["Pair = Number \",\" Number .", "Number = 'digit' { 'digit' } ."]);
+    /// ```
+    fn bnf_rules() -> Vec<Rule> {
+        bnf::rules::<Self>()
+    }
 }
 
 /// Print a grammar element back as text.
@@ -110,32 +136,6 @@ pub trait Print {
 pub trait Grammar: Parse + Print {}
 
 impl<T: Parse + Print> Grammar for T {}
-
-/// A named [`Parse`] grammar with its own BNF rule (see
-/// [`bnf_rules!`](crate::bnf_rules)).
-pub trait GrammarRule: Parse {
-    /// The rule's name in BNF output; defaults to the type name.
-    const NAME: &'static str;
-
-    /// This rule's definition ([`to_bnf`](Parse::to_bnf) is how others
-    /// refer to it).
-    fn to_bnf_def() -> Expr;
-
-    /// Format this rule as a complete BNF line: `NAME = <definition> .`.
-    fn bnf_rule() -> String {
-        let mut s = String::new();
-        s.push_str(Self::NAME);
-        s.push_str(" = ");
-        let expr = Self::to_bnf_def();
-        expr.format(&mut s).unwrap();
-        s.push_str(" .");
-        for (i, text) in expr.side_conditions().into_iter().enumerate() {
-            s.push_str(if i == 0 { "\n\n" } else { "\n" });
-            s.push_str(&format!("^{}: {text}", i + 1));
-        }
-        s
-    }
-}
 
 /// Whether [`Parse::parse_at`] builds values ([`Build`]) or only matches
 /// ([`Check`]), so one function does both.

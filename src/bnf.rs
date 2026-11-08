@@ -1,5 +1,9 @@
-//! EBNF expressions (Wirth notation), simplified as they're built.
+//! EBNF (Wirth notation): expressions, simplified as they're built, and the
+//! named rules a grammar collects.
 
+use crate::Parse;
+use std::any::TypeId;
+use std::collections::HashSet;
 use std::fmt;
 
 /// An EBNF expression, kept simplified.
@@ -26,7 +30,8 @@ pub enum Expr {
     Optional(Box<Expr>),
     /// Negative lookahead: `!A`.
     NotFollowedBy(Box<Expr>),
-    /// A side-condition beyond the shown syntax: `A ^1` (see [`Expr::side_conditions`]).
+    /// A side-condition beyond the shown syntax: `A ^1` (see
+    /// [`Expr::side_conditions`]).
     SideCondition(Box<Expr>, &'static str),
     /// Left out ([`Hidden`](crate::Hidden), `#[tygr(hidden)]`): dropped
     /// from sequences and alternations.
@@ -133,8 +138,8 @@ impl Expr {
         Expr::SideCondition(Box::new(expr), text)
     }
 
-    /// The side-condition texts, deduplicated, in the order
-    /// [`format`](Self::format) numbers them.
+    /// The side-condition texts, deduplicated, in the order `Display`
+    /// numbers them.
     pub fn side_conditions(&self) -> Vec<&'static str> {
         let mut notes = Vec::new();
         self.collect_side_conditions(&mut notes);
@@ -161,10 +166,21 @@ impl Expr {
         }
     }
 
-    /// Write as EBNF; side-conditions become `^1`, `^2`, … markers.
-    pub fn format(&self, f: &mut dyn fmt::Write) -> fmt::Result {
-        let notes = self.side_conditions();
-        self.format_internal(f, Prec::Alternation, &notes)
+    /// Rename each rule this refers to with `f`.
+    fn rename(&mut self, f: &impl Fn(&str) -> String) {
+        match self {
+            Expr::RuleRef(name) => *name = f(name),
+            Expr::Sequence(exprs) | Expr::Alternation(exprs) => {
+                for expr in exprs {
+                    expr.rename(f);
+                }
+            }
+            Expr::Repetition(inner)
+            | Expr::Optional(inner)
+            | Expr::NotFollowedBy(inner)
+            | Expr::SideCondition(inner, _) => inner.rename(f),
+            Expr::Token { .. } | Expr::CharOf(_) | Expr::Hidden => {}
+        }
     }
 
     fn prec(&self) -> Prec {
@@ -249,6 +265,89 @@ impl Expr {
         }
         Ok(())
     }
+}
+
+/// EBNF; side-conditions become `^1`, `^2`, … markers.
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let notes = self.side_conditions();
+        self.format_internal(f, Prec::Alternation, &notes)
+    }
+}
+
+/// A named rule, `name = expr .`, as [`Parse::bnf_rules`] collects it.
+/// `Display` footnotes its side-conditions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rule {
+    /// The rule's name: by default, its type's.
+    pub name: String,
+    /// The rule's definition.
+    pub expr: Expr,
+}
+
+impl Rule {
+    /// Rename this rule, and the rules it refers to, with `f`.
+    ///
+    /// ```
+    /// # use tygr::*;
+    /// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
+    /// #[derive(Parse)]
+    /// struct Pair(Number, StringEq!(","), Number);
+    /// #[derive(Parse)]
+    /// struct Number(StringOf1<Digit>);
+    ///
+    /// let mut rules = Pair::bnf_rules();
+    /// for rule in &mut rules {
+    ///     rule.rename(str::to_lowercase);
+    /// }
+    /// assert_eq!(rules[0].to_string(), "pair = number \",\" number .");
+    /// ```
+    pub fn rename(&mut self, f: impl Fn(&str) -> String) {
+        self.name = f(&self.name);
+        self.expr.rename(&f);
+    }
+}
+
+impl fmt::Display for Rule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} = {} .", self.name, self.expr)?;
+        for (i, text) in self.expr.side_conditions().into_iter().enumerate() {
+            let sep = if i == 0 { "\n\n" } else { "\n" };
+            write!(f, "{sep}^{}: {text}", i + 1)?;
+        }
+        Ok(())
+    }
+}
+
+/// Collects each type's [`Rule`] once, for [`Parse::visit_rules`].
+pub struct Rules {
+    seen: HashSet<TypeId>,
+    rules: Vec<Rule>,
+}
+
+impl Rules {
+    /// Add `T`'s rule, `name = expr()`, unless it's added already. Returns
+    /// whether it's new, so `T` visits the rules it refers to only once.
+    pub fn insert<T: 'static>(&mut self, name: &str, expr: impl FnOnce() -> Expr) -> bool {
+        let new = self.seen.insert(TypeId::of::<T>());
+        if new {
+            self.rules.push(Rule {
+                name: name.to_string(),
+                expr: expr(),
+            });
+        }
+        new
+    }
+}
+
+/// `G`'s rules, for [`Parse::bnf_rules`].
+pub(crate) fn rules<G: Parse>() -> Vec<Rule> {
+    let mut rules = Rules {
+        seen: HashSet::new(),
+        rules: Vec::new(),
+    };
+    G::visit_rules(&mut rules);
+    rules.rules
 }
 
 /// Escape special characters in a string literal.

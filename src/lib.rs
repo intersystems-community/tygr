@@ -113,16 +113,15 @@
 //!
 //! let e = Expr::parse("1 + 2 * 3").unwrap();
 //! assert_eq!(e.print(), "1 + 2 * 3");
+//!
+//! let bnf: Vec<String> = Expr::bnf_rules().iter().map(ToString::to_string).collect();
 //! # #[cfg(not(any(feature = "lower_bnf_name", feature = "upper_bnf_name")))]
-//! assert_eq!(
-//!     bnf_rules![Expr, Op1, Expr1, Op2, Expr2, Int].to_string(),
-//!     "Expr = Expr1 { Op1 Expr1 } .\n\
-//! Op1 = \"+\" | \"-\" .\n\
-//! Expr1 = Expr2 { Op2 Expr2 } .\n\
-//! Op2 = \"*\" | \"/\" .\n\
-//! Expr2 = \"(\" Expr \")\" | Int .\n\
-//! Int = 'digit' { 'digit' } ."
-//! );
+//! assert_eq!(bnf.join("\n"), r#"Expr = Expr1 { Op1 Expr1 } .
+//! Expr1 = Expr2 { Op2 Expr2 } .
+//! Expr2 = "(" Expr ")" | Int .
+//! Int = 'digit' { 'digit' } .
+//! Op2 = "*" | "/" .
+//! Op1 = "+" | "-" ."#);
 //! ```
 #![warn(missing_docs)]
 
@@ -190,29 +189,3 @@ pub use tygr_derive::StringEq;
 /// }
 /// ```
 pub use tygr_derive::StringEqCI;
-
-/// Collect BNF rule definitions from one or more [`GrammarRule`] types.
-///
-/// ```
-/// # use tygr::*;
-/// # char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
-/// # #[derive(Grammar)] struct Number(StringOf1<IsDigit>);
-/// # #[derive(Grammar)] struct AddOp(StringEq!("+"));
-/// # #[derive(Grammar)] struct MulOp(StringEq!("*"));
-/// # #[derive(Grammar)] struct Factor(Number);
-/// # #[derive(Grammar)] struct Term(Factor);
-/// # #[derive(Grammar)] struct Expr(Term);
-/// let bnf = bnf_rules![Expr, Term, Factor, Number, AddOp, MulOp];
-/// println!("{bnf}");
-/// ```
-#[macro_export]
-macro_rules! bnf_rules {
-    ($($T:ty),+ $(,)?) => {{
-        let mut _buf = ::std::string::String::new();
-        $(
-            if !_buf.is_empty() { _buf.push('\n'); }
-            _buf.push_str(&<$T as $crate::GrammarRule>::bnf_rule());
-        )+
-        _buf
-    }};
-}

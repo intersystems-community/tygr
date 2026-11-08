@@ -18,14 +18,9 @@ use json::*;
 fn main() -> ExitCode {
     match std::env::args().nth(1).as_deref() {
         Some("bnf") => {
-            println!(
-                "{}",
-                bnf_rules![
-                    Json, Element, Object, Members, Member, Array, Elements, String, Characters,
-                    Character, Escape, Hex, Number, Integer, Digits, Digit, Fraction, Exponent,
-                    Sign, Ws,
-                ]
-            );
+            for rule in Json::bnf_rules() {
+                println!("{rule}");
+            }
             ExitCode::SUCCESS
         }
         Some("parse") => common::parse::<Json>(),

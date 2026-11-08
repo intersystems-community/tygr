@@ -1,7 +1,7 @@
 //! Operators that keep the match but change the value or the BNF.
 
 use crate::State;
-use crate::bnf::Expr;
+use crate::bnf::{Expr, Rules};
 use crate::grammar::{Build, Check, Mode, Parse, Print};
 use std::convert::Infallible;
 use std::fmt;
@@ -108,6 +108,10 @@ impl<T: Parse> Parse for Raw<T> {
 
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state)
+    }
+
+    fn visit_rules(rules: &mut Rules) {
+        T::visit_rules(rules);
     }
 }
 
@@ -269,6 +273,10 @@ impl<T: Parse> Parse for Ranged<T> {
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state)
     }
+
+    fn visit_rules(rules: &mut Rules) {
+        T::visit_rules(rules);
+    }
 }
 
 impl<T: Print> Print for Ranged<T> {
@@ -295,6 +303,10 @@ impl<T: Parse> Parse for Box<T> {
 
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state)
+    }
+
+    fn visit_rules(rules: &mut Rules) {
+        T::visit_rules(rules);
     }
 }
 
@@ -324,6 +336,10 @@ impl<T: Parse> Parse for PhantomData<T> {
 
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state)
+    }
+
+    fn visit_rules(rules: &mut Rules) {
+        T::visit_rules(rules);
     }
 }
 

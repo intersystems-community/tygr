@@ -2,6 +2,11 @@
 
 use tygr::*;
 
+/// `G`'s own rule, as printed.
+fn rule<G: Parse>() -> String {
+    G::bnf_rules()[0].to_string()
+}
+
 // "é" is 0xC3 0xA9 in UTF-8; "è" is 0xC3 0xA8.
 
 #[derive(Grammar, Debug)]
@@ -79,8 +84,8 @@ fn ci_marker_only_where_case_matters() {
     #[derive(Grammar)]
     #[tygr(name = "Kw")]
     struct Kw(StringEqCI!("if"));
-    assert_eq!(Num::bnf_rule(), "Num = \"123\" .");
-    assert_eq!(Kw::bnf_rule(), "Kw = \"if\"i .");
+    assert_eq!(rule::<Num>(), "Num = \"123\" .");
+    assert_eq!(rule::<Kw>(), "Kw = \"if\"i .");
 }
 
 #[test]

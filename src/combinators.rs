@@ -3,9 +3,9 @@
 
 use crate::IntoInner;
 use crate::State;
-use crate::bnf::Expr;
+use crate::bnf::{Expr, Rules};
 use crate::first::{First, Optional, byte_set};
-use crate::grammar::{Check, GrammarRule, Mode, Parse, Print};
+use crate::grammar::{Check, Mode, Parse, Print};
 use either::Either::*;
 use std::fmt;
 use std::marker::PhantomData;
@@ -32,6 +32,8 @@ impl Parse for () {
     fn fail_at(_pos: usize, _state: State) -> bool {
         false
     }
+
+    fn visit_rules(_rules: &mut Rules) {}
 }
 
 impl Print for () {
@@ -69,6 +71,10 @@ macro_rules! impl_tuple {
 
             fn fail_at(pos: usize, mut state: State) -> bool {
                 $( <$T>::fail_at(pos, state.reborrow()) || )+ false
+            }
+
+            fn visit_rules(rules: &mut Rules) {
+                $( <$T>::visit_rules(rules); )+
             }
         }
 
@@ -248,6 +254,11 @@ impl<A: Parse, B: Parse> Parse for either::Either<A, B> {
         let b = B::fail_at(pos, state);
         a && b
     }
+
+    fn visit_rules(rules: &mut Rules) {
+        A::visit_rules(rules);
+        B::visit_rules(rules);
+    }
 }
 
 impl<A: Print, B: Print> Print for either::Either<A, B> {
@@ -281,6 +292,10 @@ impl<T: Parse> Parse for Option<T> {
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state);
         false
+    }
+
+    fn visit_rules(rules: &mut Rules) {
+        T::visit_rules(rules);
     }
 }
 
@@ -320,6 +335,10 @@ impl<T: Parse> Parse for Vec<T> {
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state);
         false
+    }
+
+    fn visit_rules(rules: &mut Rules) {
+        T::visit_rules(rules);
     }
 }
 
@@ -363,6 +382,10 @@ impl<T: Parse> Parse for Vec1<T> {
 
     fn fail_at(pos: usize, mut state: State) -> bool {
         T::fail_at(pos, state.reborrow()) || <Vec<T>>::fail_at(pos, state)
+    }
+
+    fn visit_rules(rules: &mut Rules) {
+        T::visit_rules(rules);
     }
 }
 
@@ -422,6 +445,11 @@ impl<T: Parse, S: Parse> Parse for VecSep<T, S> {
     fn fail_at(pos: usize, mut state: State) -> bool {
         T::fail_at(pos, state.reborrow()) || <Vec<(S, T)>>::fail_at(pos, state)
     }
+
+    fn visit_rules(rules: &mut Rules) {
+        T::visit_rules(rules);
+        S::visit_rules(rules);
+    }
 }
 
 impl<T: Print, S: Print> Print for VecSep<T, S> {
@@ -434,15 +462,6 @@ impl<T: Print, S: Print> Print for VecSep<T, S> {
             sep.print_to(buf);
             item.print_to(buf);
         }
-    }
-}
-
-// As in 0.6, where it was derived with `#[tygr(inline)]`.
-impl<T: Parse, S: Parse> GrammarRule for VecSep<T, S> {
-    const NAME: &'static str = "VecSep";
-
-    fn to_bnf_def() -> Expr {
-        Self::to_bnf()
     }
 }
 
@@ -497,6 +516,10 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
 
     fn fail_at(_pos: usize, _state: State) -> bool {
         false
+    }
+
+    fn visit_rules(rules: &mut Rules) {
+        G::visit_rules(rules);
     }
 }
 

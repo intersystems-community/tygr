@@ -17,6 +17,10 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
   `#[derive(Print)]` derive one, e.g. a grammar that is only parsed
   needs no printing.
 - `scan` and `scan_prefix` are renamed `check` and `check_prefix`.
+- Removed `GrammarRule` and `bnf_rules!`. `Parse::bnf_rules()` collects a
+  grammar's rules, each type's once, depth first, as `bnf::Rule`s to sort,
+  `rename` and print. Hand-written grammars implement `visit_rules`.
+- `bnf::Expr::format` is replaced by `Display`.
 - The derive attribute is `#[tygr(...)]`, not `#[grammar(...)]`.
 - Removed `GrammarFrom` and its derives (`GrammarFromStr`,
   `GrammarFromOther`, `GrammarTryFromOther`). Convert a field instead:
@@ -92,7 +96,7 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
 - The name argument of `char_class!` is optional and defaults to the type
   name (following `lower_bnf_name`/`upper_bnf_name`, like
   `#[derive(Grammar)]`).
-- Fixed derived code failing to compile unless `GrammarRule` was in
+- Fixed derived code failing to compile unless tygr's traits were in
   scope (e.g. with `use tygr::Grammar;` instead of `use tygr::*;`).
 - Failed literals, validations and conversions no longer allocate when
   recording what was expected.

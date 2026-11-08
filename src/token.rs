@@ -6,7 +6,7 @@ use std::fmt;
 
 #[cfg(feature = "trace_one_node")]
 use crate::Expectation;
-use crate::bnf::Expr;
+use crate::bnf::{Expr, Rules};
 use crate::first::{ByteSet, Required, byte_set};
 use crate::grammar::{Grammar, Mode, Parse, Print};
 use crate::state::State;
@@ -37,6 +37,8 @@ impl<const B: u8> Parse for ByteEq<B> {
     fn fail_at(_pos: usize, _state: State) -> bool {
         true
     }
+
+    fn visit_rules(_rules: &mut Rules) {}
 }
 
 impl<const B: u8> Print for ByteEq<B> {
@@ -154,6 +156,8 @@ impl<G: Literal> Parse for Token<G> {
         );
         true
     }
+
+    fn visit_rules(_rules: &mut Rules) {}
 }
 
 impl<G: Literal> Print for Token<G> {
@@ -227,6 +231,8 @@ impl Parse for char {
         );
         true
     }
+
+    fn visit_rules(_rules: &mut Rules) {}
 }
 
 impl Print for char {
@@ -359,6 +365,8 @@ macro_rules! char_class {
             fn fail_at(pos: usize, state: $crate::State) -> bool {
                 $crate::__private::class_fail_at::<Self>(pos, state)
             }
+
+            fn visit_rules(_rules: &mut $crate::bnf::Rules) {}
         }
 
         impl $crate::Print for $name {

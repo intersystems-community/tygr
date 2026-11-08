@@ -6,6 +6,11 @@
 
 use tygr::*;
 
+/// `G`'s own rule, as printed.
+fn rule<G: Parse>() -> String {
+    G::bnf_rules()[0].to_string()
+}
+
 char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
 
 fn token(text: &'static str) -> Expectation {
@@ -119,7 +124,7 @@ fn conversion_records_from_str_error() {
 #[test]
 fn conversion_bnf_shows_the_side_condition() {
     assert_eq!(
-        SmallNumber::bnf_rule(),
+        rule::<SmallNumber>(),
         "SmallNumber = ( 'digit' { 'digit' } ) ^1 .\n\n^1: be convertible"
     );
 }

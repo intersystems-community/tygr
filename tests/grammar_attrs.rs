@@ -6,6 +6,16 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use tygr::*;
 
+/// `G`'s own rule, as printed.
+fn rule<G: Parse>() -> String {
+    G::bnf_rules()[0].to_string()
+}
+
+/// The names of `G`'s rules, in order.
+fn names<G: Parse>() -> Vec<String> {
+    G::bnf_rules().into_iter().map(|rule| rule.name).collect()
+}
+
 char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
@@ -16,8 +26,8 @@ struct UsesPlain(Digits, Digits);
 
 #[test]
 fn no_attribute_uses_type_name_and_references_by_rule() {
-    assert_eq!(Digits::NAME, "Digits");
-    assert_eq!(UsesPlain::bnf_rule(), "UsesPlain = Digits Digits .");
+    assert_eq!(rule::<UsesPlain>(), "UsesPlain = Digits Digits .");
+    assert_eq!(names::<UsesPlain>(), ["UsesPlain", "Digits"]);
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
@@ -26,8 +36,7 @@ struct Named(StringEq!("x"));
 
 #[test]
 fn name_overrides_the_bnf_rule_name() {
-    assert_eq!(Named::NAME, "custom_name");
-    assert_eq!(Named::bnf_rule(), "custom_name = \"x\" .");
+    assert_eq!(rule::<Named>(), "custom_name = \"x\" .");
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
@@ -39,7 +48,7 @@ struct UsesHidden(Digits, Semi);
 
 #[test]
 fn hidden_field_vanishes_from_the_outer_rule_but_still_parses_and_prints() {
-    assert_eq!(UsesHidden::bnf_rule(), "UsesHidden = Digits .");
+    assert_eq!(rule::<UsesHidden>(), "UsesHidden = Digits .");
     let v = UsesHidden::parse("1;").unwrap();
     assert_eq!(v.print(), "1;");
 }
@@ -53,11 +62,11 @@ struct UsesRepeatedHidden(Vec<Semi>, Digits);
 #[test]
 fn optional_or_repeated_hidden_field_vanishes_instead_of_showing_empty_brackets() {
     assert_eq!(
-        UsesOptionalHidden::bnf_rule(),
+        rule::<UsesOptionalHidden>(),
         "UsesOptionalHidden = Digits ."
     );
     assert_eq!(
-        UsesRepeatedHidden::bnf_rule(),
+        rule::<UsesRepeatedHidden>(),
         "UsesRepeatedHidden = Digits ."
     );
 }
@@ -75,7 +84,7 @@ struct UsesHiddenAlternative(MaybeSemi, Named, NotFollowedBy<Semi>);
 #[test]
 fn hidden_alternative_or_lookahead_vanishes() {
     assert_eq!(
-        UsesHiddenAlternative::bnf_rule(),
+        rule::<UsesHiddenAlternative>(),
         "UsesHiddenAlternative = Digits custom_name ."
     );
     assert!(UsesHiddenAlternative::parse(";x").is_ok());
@@ -89,7 +98,7 @@ enum MaybeDigits {
 
 #[test]
 fn empty_alternative_makes_the_rest_optional() {
-    assert_eq!(MaybeDigits::bnf_rule(), "MaybeDigits = [ Digits ] .");
+    assert_eq!(rule::<MaybeDigits>(), "MaybeDigits = [ Digits ] .");
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
@@ -101,27 +110,27 @@ struct UsesInlined(Inlined, Digits);
 
 #[test]
 fn inline_splices_fields_instead_of_referencing_by_rule() {
-    assert_eq!(Inlined::bnf_rule(), "Inlined = \"a\" \"b\" .");
-    assert_eq!(
-        UsesInlined::bnf_rule(),
-        "UsesInlined = \"a\" \"b\" Digits ."
-    );
+    assert_eq!(rule::<UsesInlined>(), "UsesInlined = \"a\" \"b\" Digits .");
+    assert_eq!(names::<UsesInlined>(), ["UsesInlined", "Digits"]);
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
-#[tygr(name = "spliced")]
-#[tygr(inline)]
+#[tygr(name = "renamed")]
+#[tygr(validated)]
 struct TwoAttributes(StringEq!("a"));
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
-struct UsesTwoAttributes(TwoAttributes, Digits);
+impl Validate for TwoAttributes {
+    const REQUIREMENT: &'static str = "be valid";
+    fn validate(&self) -> bool {
+        true
+    }
+}
 
 #[test]
 fn separate_attributes_combine() {
-    assert_eq!(TwoAttributes::NAME, "spliced");
     assert_eq!(
-        UsesTwoAttributes::bnf_rule(),
-        "UsesTwoAttributes = \"a\" Digits ."
+        rule::<TwoAttributes>(),
+        "renamed = \"a\" ^1 .\n\n^1: be valid"
     );
 }
 
@@ -149,7 +158,7 @@ fn validated_rejects_values_that_fail_validation() {
 #[test]
 fn validated_bnf_shows_the_side_condition() {
     assert_eq!(
-        NonZero::bnf_rule(),
+        rule::<NonZero>(),
         "NonZero = ( 'digit' { 'digit' } ) ^1 .\n\n^1: be non-zero"
     );
 }
@@ -171,7 +180,7 @@ impl Validate for ValidatedEnum {
 #[test]
 fn validated_enum_bnf_shows_the_side_condition_around_the_whole_alternation() {
     assert_eq!(
-        ValidatedEnum::bnf_rule(),
+        rule::<ValidatedEnum>(),
         "ValidatedEnum = ( \"a\" | \"b\" ) ^1 .\n\n^1: be a recognized token"
     );
 }
@@ -193,7 +202,7 @@ struct UsesInlineValidated(InlineNonZero, Digits);
 #[test]
 fn inline_validated_side_condition_propagates_into_the_splice() {
     assert_eq!(
-        UsesInlineValidated::bnf_rule(),
+        rule::<UsesInlineValidated>(),
         "UsesInlineValidated = ( ( 'digit' { 'digit' } ) ^1 ) Digits .\n\n^1: be non-zero"
     );
 }
@@ -204,7 +213,7 @@ struct UsesInlineValidatedTwice(InlineNonZero, InlineNonZero);
 #[test]
 fn repeated_inline_validated_side_condition_gets_one_deduplicated_footnote() {
     assert_eq!(
-        UsesInlineValidatedTwice::bnf_rule(),
+        rule::<UsesInlineValidatedTwice>(),
         "UsesInlineValidatedTwice = ( ( 'digit' { 'digit' } ) ^1 ) ( ( 'digit' { 'digit' } ) ^1 ) .\n\n^1: be non-zero"
     );
 }
@@ -263,7 +272,7 @@ fn field_conversions() {
     assert_eq!(Converted::parse("null").unwrap(), Converted::Null);
     assert_eq!(Converted::parse("42,07;51").unwrap().print(), "42,07;51");
     assert_eq!(
-        Converted::bnf_rule(),
+        rule::<Converted>(),
         "Converted = \"null\" | ( ( 'digit' { 'digit' } ) ^1 ) \",\" 'digit' { 'digit' } \";\" Digit ( Digit ^1 ) .\n\n^1: be convertible"
     );
     for bad in ["42,07;52", "99999999999,07;51", "nul"] {
@@ -285,7 +294,7 @@ impl Validate for EvenNumber {
 #[test]
 fn validated_fallible_conversion_bnf_shows_both_side_conditions() {
     assert_eq!(
-        EvenNumber::bnf_rule(),
+        rule::<EvenNumber>(),
         "EvenNumber = ( ( 'digit' { 'digit' } ) ^1 ) ^2 .\n\n^1: be convertible\n^2: be even"
     );
     assert!(EvenNumber::parse("4").is_ok());
@@ -306,7 +315,7 @@ impl Validate for NonZeroDigit {
 #[test]
 fn validated_infallible_conversion_bnf_shows_only_the_validation() {
     assert_eq!(
-        NonZeroDigit::bnf_rule(),
+        rule::<NonZeroDigit>(),
         "NonZeroDigit = Digit ^1 .\n\n^1: be non-zero"
     );
 }
@@ -343,10 +352,7 @@ struct UsesCounted(#[tygr(from_str_infallible = StringOf1<IsDigit>)] Counted);
 
 #[test]
 fn infallible_conversion_is_skipped_when_checking() {
-    assert_eq!(
-        UsesCounted::bnf_rule(),
-        "UsesCounted = 'digit' { 'digit' } ."
-    );
+    assert_eq!(rule::<UsesCounted>(), "UsesCounted = 'digit' { 'digit' } .");
     let before = CONVERSIONS.load(Relaxed);
     assert!(UsesCounted::check("123").is_ok());
     assert_eq!(CONVERSIONS.load(Relaxed), before);

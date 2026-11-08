@@ -216,7 +216,7 @@ pub enum Expectation {
     /// A rule matched `range` but rejected the result: a
     /// `#[tygr(validated)]` check or a field conversion failed.
     Rejected {
-        /// The rule's [`GrammarRule::NAME`](crate::GrammarRule::NAME).
+        /// The rule's name.
         node: &'static str,
         /// The bytes it matched.
         range: Range<usize>,
@@ -300,7 +300,7 @@ impl<'a> Context<'a> {
 /// One entry in a [`Trace`]'s [`context`](Trace::context).
 #[derive(Clone, Copy, std::fmt::Debug, PartialEq, Eq)]
 pub struct Frame {
-    /// The rule's name, as in [`GrammarRule::NAME`](crate::GrammarRule::NAME).
+    /// The rule's name.
     pub node: &'static str,
     /// Where it was entered.
     pub pos: usize,

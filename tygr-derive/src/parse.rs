@@ -1,11 +1,11 @@
-//! A derived `Parse`, and its `GrammarRule`.
+//! A derived `Parse`.
 
 use crate::dispatch::dispatch;
 use crate::model::{Conversion, Field, Model, Shape, Variant};
 use proc_macro2::TokenStream;
 use quote::quote;
 
-/// The `Parse` and `GrammarRule` impls.
+/// The `Parse` impl.
 pub(crate) fn expand(model: &Model) -> TokenStream {
     let Model {
         ident,
@@ -64,12 +64,26 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     } else {
         def
     };
-    let to_bnf = if *hidden {
-        quote! { ::tygr::bnf::Expr::Hidden }
+    let sources = model
+        .variants()
+        .iter()
+        .flat_map(|variant| &variant.fields)
+        .map(Field::source);
+    let visit_parts = quote! { #(<#sources as ::tygr::Parse>::visit_rules(rules);)* };
+    // A hidden grammar refers to nothing; an inline one has no rule of its own.
+    let (to_bnf, visit_rules) = if *hidden {
+        (quote! { ::tygr::bnf::Expr::Hidden }, quote! {})
     } else if *inline {
-        def.clone()
+        (def, visit_parts)
     } else {
-        quote! { ::tygr::bnf::Expr::RuleRef(#name.to_string()) }
+        (
+            quote! { ::tygr::bnf::Expr::RuleRef(#name.to_string()) },
+            quote! {
+                if rules.insert::<Self>(#name, || #def) {
+                    #visit_parts
+                }
+            },
+        )
     };
     let (parse_at, fail_at) = (with_node(model, parse_at), with_node(model, fail_at));
     // `__Mode`, not `M`, so it can't shadow a type parameter of the user's.
@@ -91,13 +105,9 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
             fn fail_at(#[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> bool {
                 #fail_at
             }
-        }
 
-        impl #impl_generics ::tygr::GrammarRule for #ident #ty_generics #where_clause {
-            const NAME: &'static str = #name;
-
-            fn to_bnf_def() -> ::tygr::bnf::Expr {
-                #def
+            fn visit_rules(#[allow(unused_variables)] rules: &mut ::tygr::bnf::Rules) {
+                #visit_rules
             }
         }
     }
@@ -106,12 +116,12 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
 /// `body` in a trace node for this rule, unless it's inline.
 fn with_node(model: &Model, body: TokenStream) -> TokenStream {
     if model.inline {
-        body
-    } else {
-        quote! {
-            let mut state = state.node(<Self as ::tygr::GrammarRule>::NAME, pos);
-            #body
-        }
+        return body;
+    }
+    let name = &model.name;
+    quote! {
+        let mut state = state.node(#name, pos);
+        #body
     }
 }
 
@@ -132,7 +142,11 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
     } else {
         quote! { __Mode }
     };
-    let steps = variant.fields.iter().map(|field| parse_field(field, &mode));
+    let name = &model.name;
+    let steps = variant
+        .fields
+        .iter()
+        .map(|field| parse_field(field, &mode, name));
     let constructor = &variant.constructor;
     if model.validated {
         return quote! {
@@ -140,7 +154,7 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
             #(#steps)*
             let value = #constructor;
             if !::tygr::Validate::validate(&value) {
-                state.reject(<Self as ::tygr::GrammarRule>::NAME, start..pos, <Self as ::tygr::Validate>::REQUIREMENT);
+                state.reject(#name, start..pos, <Self as ::tygr::Validate>::REQUIREMENT);
                 return None;
             }
             Some((<__Mode as ::tygr::Mode>::build(|_| value), pos))
@@ -161,8 +175,9 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
     }
 }
 
-/// Parse `field` in `mode`, binding it; a dropped one is only matched.
-fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
+/// Parse `field` in `mode`, binding it; a dropped one is only matched. A
+/// failed conversion is rule `name`'s rejection.
+fn parse_field(field: &Field, mode: &TokenStream, name: &str) -> TokenStream {
     match field {
         Field::Kept {
             binding,
@@ -177,10 +192,7 @@ fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
             conversion: Some(Conversion { kind, source }),
         } => {
             let helper = kind.helper();
-            // A fallible conversion records its rejections.
-            let node = field
-                .fallible()
-                .then(|| quote! { <Self as ::tygr::GrammarRule>::NAME });
+            let node = field.fallible().then_some(name);
             quote! {
                 let (#binding, pos) = ::tygr::__private::#helper::<#source, #ty, #mode>(input, pos, state.reborrow(), #node)?;
             }

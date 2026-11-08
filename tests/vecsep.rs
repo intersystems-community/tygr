@@ -1,5 +1,10 @@
 use tygr::*;
 
+/// `G`'s own rule, as printed.
+fn rule<G: Parse>() -> String {
+    G::bnf_rules()[0].to_string()
+}
+
 char_class!(Digit, |ch| ch.is_ascii_digit());
 
 #[derive(Grammar, Debug)]
@@ -27,7 +32,7 @@ fn a_trailing_separator_is_left_unconsumed() {
 #[test]
 fn bnf_is_item_then_separated_items() {
     assert_eq!(
-        List::bnf_rule(),
+        rule::<List>(),
         format!(
             "List = '{d}' {{ '{d}' }} {{ \",\" '{d}' {{ '{d}' }} }} .",
             d = if cfg!(feature = "lower_bnf_name") && !cfg!(feature = "upper_bnf_name") {
