@@ -11,10 +11,12 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
 
 ### Breaking Changes
 
-- `Grammar::parse_at`/`scan_at` take `input: &[u8]`, the UTF-8 bytes of
-  the `&str` passed to `parse` and friends (whose signatures are
-  unchanged). Every position is a char boundary; hand-written grammars
-  must keep it that way.
+- `Grammar::scan_at` is merged into `parse_at::<M: Mode>`, which returns
+  `M::Output<Self>`: the value in mode `Parse`, `()` in mode `Scan`.
+  Hand-written grammars build outputs with `Mode::build`/`map`.
+- `parse_at` takes `input: &[u8]`, the UTF-8 bytes of the `&str` passed
+  to `parse` and friends (whose signatures are unchanged). Every position
+  is a char boundary; hand-written grammars must keep it that way.
 - `Grammar::print_to` and `GrammarFrom::print_to` write to
   `&mut Vec<u8>`. `print()` still returns a `String`; the new
   `print_bytes()` returns the bytes.
@@ -50,6 +52,8 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
 - `bnf::Expr::StringEq` and `StringEqCI` merged into
   `Expr::Token { text, case_insensitive }`. A case-insensitive literal
   without cased chars now prints without the `i` (`"123"`).
+- `bnf::Expr` gains `Hidden`. A hidden alternative or lookahead is
+  dropped from BNF, rather than making the rest optional (`[ A ]`).
 - Reworked `tygr::first` around bytes, for hand-written `Grammar::First`:
   - Name a constant set with `Required<S>` (not nullable) or `Optional<S>`
     (nullable), where `S` is built from `byte_set::{Emp, All, One,
@@ -68,6 +72,12 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
 - Removed `examples/json_optimized.rs`. `examples/json.rs` is the one JSON
   example, and `cargo bench --bench json` benchmarks the same grammar.
 - `char` is a grammar for any one char.
+- Field conversions: `#[grammar(from/try_from/from_str/from_str_infallible
+  = S)]` on a field parses `S` and converts it with the std trait. On a
+  unit variant, it matches `S` and keeps nothing.
+- The `print` feature (default) gates printing: without it, derived
+  grammars need no printing impls and panic if printed.
+- `Prefix` and `Suffix` fields are public, like `Wrap`'s.
 - New `#[derive(GrammarFromStrInfallible)]`: like `GrammarFromStr`, but
   `FromStr::Err` must be `Infallible`. The conversion can't fail, so
   scanning only checks the source grammar and never converts, and parsing
