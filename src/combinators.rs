@@ -109,113 +109,23 @@ impl<L, T, R> Wrap<L, T, R> {
         }
     }
 
-    /// Apply `f` to the wrapped value, keeping `before`/`after` unchanged.
+    /// Apply `f` to the wrapped value, keeping `before` and `after`.
     pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Wrap<L, U, R> {
-        Wrap {
-            before: self.before,
-            wrapped: f(self.wrapped),
-            after: self.after,
-        }
+        Wrap::new(self.before, f(self.wrapped), self.after)
     }
 }
 
 impl<L, T, E, R> Wrap<L, Result<T, E>, R> {
     /// Swap `Wrap<L, Result<T, E>, R>` for `Result<Wrap<L, T, R>, E>`.
     pub fn transpose(self) -> Result<Wrap<L, T, R>, E> {
-        Ok(Wrap {
-            before: self.before,
-            wrapped: self.wrapped?,
-            after: self.after,
-        })
+        Ok(Wrap::new(self.before, self.wrapped?, self.after))
     }
-}
-
-/// Sequence of two grammars, [`Deref`]-ing to the second.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
-pub struct Prefix<P, T> {
-    prefix: P,
-    /// The prefixed value.
-    pub prefixed: T,
-}
-
-/// Sequence of two grammars, [`Deref`]-ing to the first.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
-pub struct Suffix<T, S> {
-    suffixed: T,
-    suffix: S,
 }
 
 impl<L, T, R> Deref for Wrap<L, T, R> {
     type Target = T;
-
-    fn deref(&self) -> &Self::Target {
+    fn deref(&self) -> &T {
         &self.wrapped
-    }
-}
-
-impl<T, S> Deref for Suffix<T, S> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.suffixed
-    }
-}
-
-impl<P, T> Deref for Prefix<P, T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.prefixed
-    }
-}
-
-impl<P, T> Prefix<P, T> {
-    /// Construct a `Prefix` from its two parts.
-    pub fn new(prefix: P, prefixed: T) -> Self {
-        Self { prefix, prefixed }
-    }
-
-    /// Apply `f` to the prefixed value, keeping `prefix` unchanged.
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Prefix<P, U> {
-        Prefix {
-            prefix: self.prefix,
-            prefixed: f(self.prefixed),
-        }
-    }
-}
-
-impl<P, T, E> Prefix<P, Result<T, E>> {
-    /// Swap `Prefix<P, Result<T, E>>` for `Result<Prefix<P, T>, E>`.
-    pub fn transpose(self) -> Result<Prefix<P, T>, E> {
-        Ok(Prefix {
-            prefix: self.prefix,
-            prefixed: self.prefixed?,
-        })
-    }
-}
-
-impl<T, S> Suffix<T, S> {
-    /// Construct a `Suffix` from its two parts.
-    pub fn new(suffixed: T, suffix: S) -> Self {
-        Self { suffixed, suffix }
-    }
-
-    /// Apply `f` to the suffixed value, keeping `suffix` unchanged.
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Suffix<U, S> {
-        Suffix {
-            suffixed: f(self.suffixed),
-            suffix: self.suffix,
-        }
-    }
-}
-
-impl<T, S, E> Suffix<Result<T, E>, S> {
-    /// Swap `Suffix<Result<T, E>, S>` for `Result<Suffix<T, S>, E>`.
-    pub fn transpose(self) -> Result<Suffix<T, S>, E> {
-        Ok(Suffix {
-            suffixed: self.suffixed?,
-            suffix: self.suffix,
-        })
     }
 }
 
@@ -225,15 +135,87 @@ impl<L, T, R> IntoInner<T> for Wrap<L, T, R> {
     }
 }
 
-impl<T, S> IntoInner<T> for Suffix<T, S> {
-    fn into_inner(self) -> T {
-        self.suffixed
+/// Sequence of two grammars, [`Deref`]-ing to the second.
+#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
+#[grammar(inline)]
+pub struct Prefix<P, T> {
+    /// The leading element.
+    pub prefix: P,
+    /// The prefixed value.
+    pub prefixed: T,
+}
+
+impl<P, T> Prefix<P, T> {
+    /// Construct a `Prefix` from its two parts.
+    pub fn new(prefix: P, prefixed: T) -> Self {
+        Self { prefix, prefixed }
+    }
+
+    /// Apply `f` to the prefixed value, keeping `prefix`.
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Prefix<P, U> {
+        Prefix::new(self.prefix, f(self.prefixed))
+    }
+}
+
+impl<P, T, E> Prefix<P, Result<T, E>> {
+    /// Swap `Prefix<P, Result<T, E>>` for `Result<Prefix<P, T>, E>`.
+    pub fn transpose(self) -> Result<Prefix<P, T>, E> {
+        Ok(Prefix::new(self.prefix, self.prefixed?))
+    }
+}
+
+impl<P, T> Deref for Prefix<P, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.prefixed
     }
 }
 
 impl<P, T> IntoInner<T> for Prefix<P, T> {
     fn into_inner(self) -> T {
         self.prefixed
+    }
+}
+
+/// Sequence of two grammars, [`Deref`]-ing to the first.
+#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
+#[grammar(inline)]
+pub struct Suffix<T, S> {
+    /// The suffixed value.
+    pub suffixed: T,
+    /// The trailing element.
+    pub suffix: S,
+}
+
+impl<T, S> Suffix<T, S> {
+    /// Construct a `Suffix` from its two parts.
+    pub fn new(suffixed: T, suffix: S) -> Self {
+        Self { suffixed, suffix }
+    }
+
+    /// Apply `f` to the suffixed value, keeping `suffix`.
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Suffix<U, S> {
+        Suffix::new(f(self.suffixed), self.suffix)
+    }
+}
+
+impl<T, S, E> Suffix<Result<T, E>, S> {
+    /// Swap `Suffix<Result<T, E>, S>` for `Result<Suffix<T, S>, E>`.
+    pub fn transpose(self) -> Result<Suffix<T, S>, E> {
+        Ok(Suffix::new(self.suffixed?, self.suffix))
+    }
+}
+
+impl<T, S> Deref for Suffix<T, S> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.suffixed
+    }
+}
+
+impl<T, S> IntoInner<T> for Suffix<T, S> {
+    fn into_inner(self) -> T {
+        self.suffixed
     }
 }
 
