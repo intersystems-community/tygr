@@ -30,12 +30,12 @@ impl<const B: u8> Parse for ByteEq<B> {
         (input.get(pos) == Some(&B)).then(|| (M::build(|_| ByteEq), pos + 1))
     }
 
-    fn to_bnf() -> Expr {
-        unreachable!("internal: literal wrappers provide BNF")
-    }
-
     fn fail_at(_pos: usize, _state: State) -> bool {
         true
+    }
+
+    fn to_bnf() -> Expr {
+        unreachable!("internal: literal wrappers provide BNF")
     }
 
     fn visit_rules(_rules: &mut Rules) {}
@@ -137,13 +137,6 @@ impl<G: Literal> Parse for Token<G> {
         }
     }
 
-    fn to_bnf() -> Expr {
-        Expr::Token {
-            text: Self::text(),
-            case_insensitive: G::CASE_INSENSITIVE,
-        }
-    }
-
     fn fail_at(
         #[allow(unused_variables)] pos: usize,
         #[allow(unused_variables, unused_mut)] mut state: State,
@@ -155,6 +148,13 @@ impl<G: Literal> Parse for Token<G> {
             Expectation::Token(Self::BYTES),
         );
         true
+    }
+
+    fn to_bnf() -> Expr {
+        Expr::Token {
+            text: Self::text(),
+            case_insensitive: G::CASE_INSENSITIVE,
+        }
     }
 
     fn visit_rules(_rules: &mut Rules) {}
@@ -193,7 +193,7 @@ pub type NonAsciiStart = byte_set::Between<0xC2, 0xF4>;
 /// Bytes that can start a char.
 pub(crate) type CharStart = byte_set::Union<byte_set::Between<0x00, 0x7F>, NonAsciiStart>;
 
-/// `char`'s label in errors and BNF.
+/// `char`'s name in errors and BNF.
 const ANY_CHAR: &str = "any";
 
 /// Any one char. Fails only at end of input.
@@ -215,10 +215,6 @@ impl Parse for char {
         }
     }
 
-    fn to_bnf() -> Expr {
-        Expr::CharOf(ANY_CHAR.to_string())
-    }
-
     fn fail_at(
         #[allow(unused_variables)] pos: usize,
         #[allow(unused_variables, unused_mut)] mut state: State,
@@ -230,6 +226,10 @@ impl Parse for char {
             Expectation::CharClass(ANY_CHAR),
         );
         true
+    }
+
+    fn to_bnf() -> Expr {
+        Expr::CharOf(ANY_CHAR.to_string())
     }
 
     fn visit_rules(_rules: &mut Rules) {}
@@ -272,7 +272,7 @@ pub trait CharClass: Grammar + ByteSet {
     /// Does `ch` belong to this class?
     fn matches(ch: char) -> bool;
 
-    /// Label used in errors and BNF.
+    /// Its name in errors and BNF.
     fn name() -> &'static str;
 
     /// Wrap `ch`, unchecked.
@@ -315,22 +315,22 @@ pub trait CharClass: Grammar + ByteSet {
 /// ```
 #[macro_export]
 macro_rules! char_class {
-    ($vis:vis $name:ident, |$ch:ident| $pred:expr) => {
-        $crate::char_class!($vis $name, stringify!($name), |$ch| $pred);
+    ($vis:vis $class:ident, |$ch:ident| $pred:expr) => {
+        $crate::char_class!($vis $class, stringify!($class), |$ch| $pred);
     };
-    ($vis:vis $name:ident, $label:expr, |$ch:ident| $pred:expr) => {
+    ($vis:vis $class:ident, $name:expr, |$ch:ident| $pred:expr) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-        $vis struct $name(pub char);
+        $vis struct $class(pub char);
 
-        impl $crate::CharClass for $name {
+        impl $crate::CharClass for $class {
             fn matches($ch: char) -> bool { $pred }
-            fn name() -> &'static str { $label }
-            fn new(ch: char) -> Self { $name(ch) }
+            fn name() -> &'static str { $name }
+            fn new(ch: char) -> Self { $class(ch) }
             fn value(&self) -> char { self.0 }
         }
 
         // First bytes: the ASCII ones that match, and every UTF-8 lead byte.
-        impl $crate::first::ByteSet for $name {
+        impl $crate::first::ByteSet for $class {
             const BYTE_SET: $crate::first::byte_set::Type = {
                 const fn matches($ch: char) -> bool { $pred }
                 let mut bytes =
@@ -346,8 +346,8 @@ macro_rules! char_class {
             };
         }
 
-        impl $crate::Parse for $name {
-            type First = $crate::first::Required<$name>;
+        impl $crate::Parse for $class {
+            type First = $crate::first::Required<$class>;
 
             #[inline(always)]
             fn parse_at<M: $crate::Mode>(
@@ -358,18 +358,18 @@ macro_rules! char_class {
                 $crate::__private::class_parse_at::<Self, M>(input, pos, state)
             }
 
-            fn to_bnf() -> $crate::bnf::Expr {
-                $crate::__private::class_to_bnf::<Self>()
-            }
-
             fn fail_at(pos: usize, state: $crate::State) -> bool {
                 $crate::__private::class_fail_at::<Self>(pos, state)
+            }
+
+            fn to_bnf() -> $crate::bnf::Expr {
+                $crate::__private::class_to_bnf::<Self>()
             }
 
             fn visit_rules(_rules: &mut $crate::bnf::Rules) {}
         }
 
-        impl $crate::Print for $name {
+        impl $crate::Print for $class {
             fn print_to(&self, buf: &mut ::std::vec::Vec<u8>) {
                 $crate::__private::class_print_to(self, buf)
             }

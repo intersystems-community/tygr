@@ -33,7 +33,7 @@ pub trait IntoInner<T> {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Grammar)]
 #[tygr(hidden)]
-pub struct Hidden<T>(T);
+pub struct Hidden<T>(pub T);
 
 impl<T> Deref for Hidden<T> {
     type Target = T;
@@ -58,20 +58,10 @@ impl<T> IntoInner<T> for Hidden<T> {
 ///
 /// ```
 /// # use tygr::*;
-/// # char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
-/// # char_class!(IsSpace, "space", |ch| matches!(ch, ' ' | '\t'));
+/// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 /// #[derive(Grammar)]
-/// #[tygr(name = "ws", hidden)]
-/// struct Ws(StringOf<IsSpace>);
-///
-/// # #[derive(Grammar)]
-/// # struct Term(StringOf1<IsDigit>);
-/// # #[derive(Grammar)]
-/// # struct AddOp(StringEq!("+"));
-/// // Whitespace stored as string
-/// #[derive(Grammar)]
-/// #[tygr(name = "expr")]
-/// struct Expr(Term, Vec<(Raw<Ws>, AddOp, Raw<Ws>, Term)>);
+/// struct Integer(Raw<(Option<StringEq!("-")>, StringOf1<Digit>)>);
+/// assert_eq!(Integer::parse("-42").unwrap().0.as_str(), "-42");
 /// ```
 pub struct Raw<T>(pub String, PhantomData<T>);
 
@@ -100,12 +90,12 @@ impl<T: Parse> Parse for Raw<T> {
         Some((M::build(|_| Raw::from(text(input, pos, end))), end))
     }
 
-    fn to_bnf() -> Expr {
-        T::to_bnf()
-    }
-
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state)
+    }
+
+    fn to_bnf() -> Expr {
+        T::to_bnf()
     }
 
     fn visit_rules(rules: &mut Rules) {
@@ -113,13 +103,13 @@ impl<T: Parse> Parse for Raw<T> {
     }
 }
 
-// Not derived: only the text matters, so no bounds on `T`.
-
 impl<T> Print for Raw<T> {
     fn print_to(&self, buf: &mut Vec<u8>) {
         buf.extend_from_slice(self.0.as_bytes());
     }
 }
+
+// Not derived: only the text matters, so no bounds on `T`.
 
 impl<T> fmt::Debug for Raw<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -194,46 +184,25 @@ pub struct Ranged<T> {
     pub end: usize,
 }
 
-impl<T> IntoInner<T> for Ranged<T> {
-    fn into_inner(self) -> T {
-        self.ranged
-    }
-}
-
-impl<T> Deref for Ranged<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.ranged
-    }
-}
-
 impl<T> Ranged<T> {
-    /// The `start..end` byte range.
-    pub fn range(&self) -> Range<usize> {
-        self.start..self.end
-    }
-
     /// Construct from an already-known range.
     pub fn new(start: usize, ranged: T, end: usize) -> Self {
         Ranged { start, ranged, end }
     }
 
+    /// The `start..end` byte range.
+    pub fn range(&self) -> Range<usize> {
+        self.start..self.end
+    }
+
     /// Apply `f` to the ranged value, keeping the same range.
     pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Ranged<U> {
-        Ranged {
-            start: self.start,
-            ranged: f(self.ranged),
-            end: self.end,
-        }
+        Ranged::new(self.start, f(self.ranged), self.end)
     }
 
     /// Borrow the ranged value, keeping the same range.
     pub fn as_ref(&self) -> Ranged<&T> {
-        Ranged {
-            start: self.start,
-            ranged: &self.ranged,
-            end: self.end,
-        }
+        Ranged::new(self.start, &self.ranged, self.end)
     }
 }
 
@@ -251,6 +220,19 @@ impl<T, E> Ranged<Result<T, E>> {
     }
 }
 
+impl<T> Deref for Ranged<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.ranged
+    }
+}
+
+impl<T> IntoInner<T> for Ranged<T> {
+    fn into_inner(self) -> T {
+        self.ranged
+    }
+}
+
 impl<T: Parse> Parse for Ranged<T> {
     type First = T::First;
 
@@ -264,12 +246,12 @@ impl<T: Parse> Parse for Ranged<T> {
         Some((M::map(ranged, |ranged| Ranged::new(pos, ranged, end)), end))
     }
 
-    fn to_bnf() -> Expr {
-        T::to_bnf()
-    }
-
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state)
+    }
+
+    fn to_bnf() -> Expr {
+        T::to_bnf()
     }
 
     fn visit_rules(rules: &mut Rules) {
@@ -295,12 +277,12 @@ impl<T: Parse> Parse for Box<T> {
         Some((M::map(value, Box::new), end))
     }
 
-    fn to_bnf() -> Expr {
-        T::to_bnf()
-    }
-
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state)
+    }
+
+    fn to_bnf() -> Expr {
+        T::to_bnf()
     }
 
     fn visit_rules(rules: &mut Rules) {
@@ -328,12 +310,12 @@ impl<T: Parse> Parse for PhantomData<T> {
         Some((M::build(|_| PhantomData), end))
     }
 
-    fn to_bnf() -> Expr {
-        T::to_bnf()
-    }
-
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state)
+    }
+
+    fn to_bnf() -> Expr {
+        T::to_bnf()
     }
 
     fn visit_rules(rules: &mut Rules) {

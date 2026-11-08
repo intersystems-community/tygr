@@ -1,3 +1,5 @@
+//! `#[tygr(...)]` options on types and fields, and the BNF they give.
+
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use tygr::*;
@@ -356,6 +358,14 @@ fn parse_and_print_derive_separately() {
     assert_eq!(ParsedOnly::parse("42").unwrap().0, 42);
     let printed = PrintedOnly(Default::default(), Digits(Raw::new("42")));
     assert_eq!(printed.print(), "#42");
+}
+
+#[test]
+fn values_build_by_hand_to_print() {
+    let digits = Vec1::try_from(vec![IsDigit('4'), IsDigit('2')]).unwrap();
+    assert_eq!((Hidden(digits.clone()), Some(IsDigit('7'))).print(), "427");
+    assert_eq!(digits.into_inner().len(), 2);
+    assert!(Vec1::<IsDigit>::try_from(vec![]).is_err());
 }
 
 #[derive(Debug, PartialEq, Grammar)]

@@ -16,6 +16,7 @@ following json.org. It's a small CLI:
 ```sh
 cargo run --example json -- bnf              # print the grammar as EBNF
 echo '{"a": [1, true]}' | cargo run --example json -- parse   # parse, print the AST
+echo '{"a": [1, true]}' | cargo run --example json -- print   # parse, print it back
 echo '{"a": 1}'         | cargo run --example json -- test    # check well-formed (exit 0/1)
 ```
 

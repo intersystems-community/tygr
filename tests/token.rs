@@ -114,3 +114,11 @@ fn char_first_is_ascii_and_lead_bytes() {
     assert!(!starts(0x80) && !starts(0xBF) && !starts(0xC1));
     assert!(!starts(0xF5) && !starts(0xFF));
 }
+
+#[test]
+fn bnf_escapes_only_the_quote_in_use() {
+    char_class!(Quote, "\" or '", |ch| matches!(ch, '"' | '\''));
+    #[derive(Grammar)]
+    struct Quoted(StringEq!("\"'"), Quote);
+    assert_eq!(rule::<Quoted>(), r#"Quoted = "\"'" '" or \'' ."#);
+}

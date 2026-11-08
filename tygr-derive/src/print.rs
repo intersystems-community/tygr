@@ -3,8 +3,8 @@
 use crate::model::{Field, Model};
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::spanned::Spanned;
 use syn::Ident;
+use syn::spanned::Spanned;
 
 /// The `Print` impl, printing each field in turn.
 pub(crate) fn expand(model: &Model) -> TokenStream {

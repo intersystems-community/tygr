@@ -2,6 +2,7 @@
 //!
 //!   cargo run --example json -- bnf
 //!   echo '{"a": [1, true, null]}' | cargo run --example json -- parse
+//!   echo '{"a": [1, true, null]}' | cargo run --example json -- print
 //!   echo '{"a": 1}' | cargo run --example json -- test
 
 use std::process::ExitCode;
@@ -24,6 +25,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("parse") => common::parse::<Json>(),
+        Some("print") => common::print::<Json>(),
         Some("test") => common::test::<Json>(),
         _ => common::usage("json"),
     }

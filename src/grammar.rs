@@ -69,31 +69,6 @@ pub trait Parse: Sized + 'static {
         run(|state| Some(Self::parse_at::<Check>(input.as_bytes(), 0, state)?.1))
     }
 
-    /// Parse `Self` at byte offset `pos`, returning its output in mode `M`
-    /// (the value, or nothing when checking) and the end offset.
-    ///
-    /// Invariant, relied on by `unsafe` UTF-8 conversions: `input` is valid
-    /// UTF-8 and every position is a char boundary. Public grammars only
-    /// advance by whole chars; byte-level ones (`ByteEq`) are internal.
-    fn parse_at<M: Mode>(
-        input: &[u8],
-        pos: usize,
-        state: State,
-    ) -> Option<(M::Output<Self>, usize)>;
-
-    /// This grammar as an EBNF expression, as other rules refer to it.
-    fn to_bnf() -> Expr;
-
-    /// Record what this grammar expected at `pos`, without parsing (e.g.
-    /// when `First` already ruled it out). Returns whether it's required
-    /// (not nullable), so a sequence can stop reporting after it.
-    fn fail_at(pos: usize, state: State) -> bool;
-
-    /// Visit the named rules [`to_bnf`](Self::to_bnf) refers to: a named
-    /// grammar [inserts](Rules::insert) its own, then, if it's new, visits
-    /// its parts'.
-    fn visit_rules(rules: &mut Rules);
-
     /// This grammar's rule (unless inline or hidden), then each rule it
     /// refers to, depth first, once per type: to sort or
     /// [rename](Rule::rename), then print.
@@ -112,6 +87,31 @@ pub trait Parse: Sized + 'static {
     fn bnf_rules() -> Vec<Rule> {
         bnf::rules::<Self>()
     }
+
+    /// Parse `Self` at byte offset `pos`, returning its output in mode `M`
+    /// (the value, or nothing when checking) and the end offset.
+    ///
+    /// Invariant, relied on by `unsafe` UTF-8 conversions: `input` is valid
+    /// UTF-8 and every position is a char boundary. Public grammars only
+    /// advance by whole chars; byte-level ones (`ByteEq`) are internal.
+    fn parse_at<M: Mode>(
+        input: &[u8],
+        pos: usize,
+        state: State,
+    ) -> Option<(M::Output<Self>, usize)>;
+
+    /// Record what this grammar expected at `pos`, without parsing (e.g.
+    /// when `First` already ruled it out). Returns whether it's required
+    /// (not nullable), so a sequence can stop reporting after it.
+    fn fail_at(pos: usize, state: State) -> bool;
+
+    /// This grammar as an EBNF expression, as other rules refer to it.
+    fn to_bnf() -> Expr;
+
+    /// Visit the named rules [`to_bnf`](Self::to_bnf) refers to: a named
+    /// grammar [inserts](Rules::insert) its own, then, if it's new, visits
+    /// its parts'.
+    fn visit_rules(rules: &mut Rules);
 }
 
 /// Print a grammar element back as text.

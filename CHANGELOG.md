@@ -85,7 +85,8 @@ with the default tracing (6.6 → 82 MB/s) and about 3.5× faster without it
 ### Non-breaking Changes
 
 - Removed `examples/json_optimized.rs`. `examples/json.rs` is the one JSON
-  example, and `cargo bench --bench json` benchmarks the same grammar.
+  example, and `cargo bench --bench json` benchmarks the same grammar. It
+  gains a `print` command that prints its input back.
 - `char` is a grammar for any one char.
 - Field conversions: `#[tygr(<kind> = S)]` on a field parses grammar `S`
   and converts it with `try_from` (`S: TryInto<T>`), `try_from_infallible`
@@ -95,7 +96,12 @@ with the default tracing (6.6 → 82 MB/s) and about 3.5× faster without it
   when checking. The field prints with its type's `Print`, or with
   `write_to = f`, such as the new `write_display`. On a unit variant, any
   kind matches `S` and keeps nothing.
-- `Prefix` and `Suffix` fields are public, like `Wrap`'s.
+- `Prefix` and `Suffix` fields are public, like `Wrap`'s, and so is
+  `Hidden`'s. `Vec1` gains `IntoInner` and `TryFrom<Vec<T>>`. Every
+  combinator can be built by hand, e.g. to print.
+- `Error` implements `std::error::Error`, and `Expectation` is `Display`
+  whatever the features.
+- A character class's name in BNF escapes only `'`, not `"`.
 - `VecSep` reserves the usual amortized capacity on its first item, rather
   than exactly one, so short lists no longer reallocate.
 - The name argument of `char_class!` is optional and defaults to the type

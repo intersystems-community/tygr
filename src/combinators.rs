@@ -6,7 +6,7 @@ use crate::State;
 use crate::bnf::{Expr, Rules};
 use crate::first::{First, Optional, byte_set};
 use crate::grammar::{Check, Mode, Parse, Print};
-use either::Either::*;
+use either::Either::{self, Left, Right};
 use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -25,12 +25,12 @@ impl Parse for () {
         Some((M::build(|_| ()), pos))
     }
 
-    fn to_bnf() -> Expr {
-        Expr::empty()
-    }
-
     fn fail_at(_pos: usize, _state: State) -> bool {
         false
+    }
+
+    fn to_bnf() -> Expr {
+        Expr::empty()
     }
 
     fn visit_rules(_rules: &mut Rules) {}
@@ -65,12 +65,12 @@ macro_rules! impl_tuple {
                 Some((M::build(|mode| ($(mode.get($T),)+)), pos))
             }
 
-            fn to_bnf() -> Expr {
-                Expr::sequence(vec![$(<$T>::to_bnf()),+])
-            }
-
             fn fail_at(pos: usize, mut state: State) -> bool {
                 $( <$T>::fail_at(pos, state.reborrow()) || )+ false
+            }
+
+            fn to_bnf() -> Expr {
+                Expr::sequence(vec![$(<$T>::to_bnf()),+])
             }
 
             fn visit_rules(rules: &mut Rules) {
@@ -229,7 +229,7 @@ impl<T, S> IntoInner<T> for Suffix<T, S> {
     }
 }
 
-impl<A: Parse, B: Parse> Parse for either::Either<A, B> {
+impl<A: Parse, B: Parse> Parse for Either<A, B> {
     type First = <A::First as First>::Alt<B::First>;
 
     #[inline]
@@ -245,14 +245,14 @@ impl<A: Parse, B: Parse> Parse for either::Either<A, B> {
         Some((M::map(b, Right), end))
     }
 
-    fn to_bnf() -> Expr {
-        Expr::alternation(vec![A::to_bnf(), B::to_bnf()])
-    }
-
     fn fail_at(pos: usize, mut state: State) -> bool {
         let a = A::fail_at(pos, state.reborrow());
         let b = B::fail_at(pos, state);
         a && b
+    }
+
+    fn to_bnf() -> Expr {
+        Expr::alternation(vec![A::to_bnf(), B::to_bnf()])
     }
 
     fn visit_rules(rules: &mut Rules) {
@@ -261,7 +261,7 @@ impl<A: Parse, B: Parse> Parse for either::Either<A, B> {
     }
 }
 
-impl<A: Print, B: Print> Print for either::Either<A, B> {
+impl<A: Print, B: Print> Print for Either<A, B> {
     fn print_to(&self, buf: &mut Vec<u8>) {
         match self {
             Left(a) => a.print_to(buf),
@@ -285,13 +285,13 @@ impl<T: Parse> Parse for Option<T> {
         })
     }
 
-    fn to_bnf() -> Expr {
-        Expr::optional(T::to_bnf())
-    }
-
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state);
         false
+    }
+
+    fn to_bnf() -> Expr {
+        Expr::optional(T::to_bnf())
     }
 
     fn visit_rules(rules: &mut Rules) {
@@ -328,13 +328,13 @@ impl<T: Parse> Parse for Vec<T> {
         Some((items, pos))
     }
 
-    fn to_bnf() -> Expr {
-        Expr::repetition(T::to_bnf())
-    }
-
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state);
         false
+    }
+
+    fn to_bnf() -> Expr {
+        Expr::repetition(T::to_bnf())
     }
 
     fn visit_rules(rules: &mut Rules) {
@@ -356,9 +356,27 @@ pub struct Vec1<T>(Vec<T>);
 
 impl<T> Deref for Vec1<T> {
     type Target = Vec<T>;
-
-    fn deref(&self) -> &Self::Target {
+    fn deref(&self) -> &Vec<T> {
         &self.0
+    }
+}
+
+impl<T> IntoInner<Vec<T>> for Vec1<T> {
+    fn into_inner(self) -> Vec<T> {
+        self.0
+    }
+}
+
+/// Fails on no items, giving them back.
+impl<T> TryFrom<Vec<T>> for Vec1<T> {
+    type Error = Vec<T>;
+
+    fn try_from(items: Vec<T>) -> Result<Self, Vec<T>> {
+        if items.is_empty() {
+            Err(items)
+        } else {
+            Ok(Vec1(items))
+        }
     }
 }
 
@@ -376,12 +394,12 @@ impl<T: Parse> Parse for Vec1<T> {
         (end != pos).then(|| (M::map(items, Self), end))
     }
 
-    fn to_bnf() -> Expr {
-        Expr::sequence(vec![T::to_bnf(), <Vec<T>>::to_bnf()])
-    }
-
     fn fail_at(pos: usize, mut state: State) -> bool {
         T::fail_at(pos, state.reborrow()) || <Vec<T>>::fail_at(pos, state)
+    }
+
+    fn to_bnf() -> Expr {
+        Expr::sequence(vec![T::to_bnf(), <Vec<T>>::to_bnf()])
     }
 
     fn visit_rules(rules: &mut Rules) {
@@ -438,12 +456,12 @@ impl<T: Parse, S: Parse> Parse for VecSep<T, S> {
         Some((vec_sep, pos))
     }
 
-    fn to_bnf() -> Expr {
-        Expr::sequence(vec![T::to_bnf(), <Vec<(S, T)>>::to_bnf()])
-    }
-
     fn fail_at(pos: usize, mut state: State) -> bool {
         T::fail_at(pos, state.reborrow()) || <Vec<(S, T)>>::fail_at(pos, state)
+    }
+
+    fn to_bnf() -> Expr {
+        Expr::sequence(vec![T::to_bnf(), <Vec<(S, T)>>::to_bnf()])
     }
 
     fn visit_rules(rules: &mut Rules) {
@@ -510,12 +528,12 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
         }
     }
 
-    fn to_bnf() -> Expr {
-        Expr::not_followed_by(G::to_bnf())
-    }
-
     fn fail_at(_pos: usize, _state: State) -> bool {
         false
+    }
+
+    fn to_bnf() -> Expr {
+        Expr::not_followed_by(G::to_bnf())
     }
 
     fn visit_rules(rules: &mut Rules) {

@@ -1,3 +1,5 @@
+//! `VecSep`: items with separators between them.
+
 use tygr::*;
 
 /// `G`'s own rule, as printed.

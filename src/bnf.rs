@@ -18,7 +18,7 @@ pub enum Expr {
     },
     /// A reference to another named rule.
     RuleRef(String),
-    /// A character class, formatted as `'label'`.
+    /// A character class, formatted as `'name'`.
     CharOf(String),
     /// Concatenation: `A B C`.
     Sequence(Vec<Expr>),
@@ -210,11 +210,11 @@ impl Expr {
             } => write!(
                 f,
                 "\"{}\"{}",
-                escape_string(text),
+                escape(text, '"'),
                 if *case_insensitive { "i" } else { "" }
             ),
             Expr::RuleRef(name) => write!(f, "{name}"),
-            Expr::CharOf(name) => write!(f, "'{}'", escape_char_class(name)),
+            Expr::CharOf(name) => write!(f, "'{}'", escape(name, '\'')),
             Expr::Sequence(exprs) => Self::format_list(exprs, " ", Prec::Sequence, f, notes),
             Expr::Alternation(exprs) => {
                 Self::format_list(exprs, " | ", Prec::Alternation, f, notes)
@@ -350,19 +350,10 @@ pub(crate) fn rules<G: Parse>() -> Vec<Rule> {
     rules.rules
 }
 
-/// Escape special characters in a string literal.
-pub(crate) fn escape_string(s: &str) -> String {
+/// `s` escaped for a literal between `quote`s.
+pub(crate) fn escape(s: &str, quote: char) -> String {
     s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-}
-
-fn escape_char_class(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\'', "\\'")
+        .replace(quote, &format!("\\{quote}"))
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\t', "\\t")

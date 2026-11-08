@@ -82,7 +82,7 @@ impl Model {
                 return Err(syn::Error::new_spanned(
                     ident,
                     "a grammar is a struct or an enum, not a union",
-                ))
+                ));
             }
         };
         let mut model = Model {

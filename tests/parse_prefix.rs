@@ -1,3 +1,5 @@
+//! `parse_prefix` and `check_prefix`, and errors whatever the tracing.
+
 use tygr::*;
 
 char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
@@ -31,4 +33,6 @@ fn check_prefix_fails_when_nothing_matches() {
 fn errors_print_something_whatever_the_tracing() {
     let err = Digits::parse("abc").unwrap_err();
     assert!(!format!("{err:?}").is_empty());
+    let err: Box<dyn std::error::Error> = Box::new(err);
+    assert!(!err.to_string().is_empty());
 }

@@ -1,3 +1,4 @@
+//! What a failed parse records, and how its error reads.
 #![cfg(feature = "trace_one_node")]
 
 use tygr::*;

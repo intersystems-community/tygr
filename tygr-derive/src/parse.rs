@@ -98,12 +98,12 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
                 #parse_at
             }
 
-            fn to_bnf() -> ::tygr::bnf::Expr {
-                #to_bnf
-            }
-
             fn fail_at(#[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> bool {
                 #fail_at
+            }
+
+            fn to_bnf() -> ::tygr::bnf::Expr {
+                #to_bnf
             }
 
             fn visit_rules(#[allow(unused_variables)] rules: &mut ::tygr::bnf::Rules) {

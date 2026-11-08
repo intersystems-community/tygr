@@ -1,8 +1,11 @@
-#[cfg(feature = "trace_one_node")]
-use crate::bnf::escape_string;
+//! The state threaded through parsing, and the [`Error`] it traces.
+
+use crate::bnf::escape;
 #[cfg(feature = "trace_pos")]
 use std::cmp::Ordering;
-use std::{fmt::Display, marker::PhantomData, ops::Range};
+use std::fmt;
+use std::marker::PhantomData;
+use std::ops::Range;
 
 /// Parse state threaded through `parse_at`; a ZST when nothing is traced.
 #[doc(hidden)]
@@ -126,7 +129,7 @@ pub(crate) fn run<R>(parse: impl FnOnce(State<'_>) -> Option<R>) -> Result<R, Er
 
 /// What was expected at the furthest position reached.
 #[cfg(feature = "trace_pos")]
-#[derive(std::fmt::Debug, Default)]
+#[derive(Debug, Default)]
 struct History {
     #[cfg(feature = "trace_one_node")]
     traces: Vec<Pending>,
@@ -135,7 +138,7 @@ struct History {
 
 /// A recorded trace, with its context kept cheap until the parse fails.
 #[cfg(feature = "trace_one_node")]
-#[derive(std::fmt::Debug)]
+#[derive(Debug)]
 struct Pending {
     frames: Frames,
     expectation: Expectation,
@@ -207,7 +210,7 @@ impl History {
 }
 
 /// One candidate for what would have matched at a [`Trace`]'s recorded position.
-#[derive(std::fmt::Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Expectation {
     /// This literal (`StringEq!` / `StringEqCI!`) didn't match.
     Token(&'static [u8]),
@@ -227,12 +230,11 @@ pub enum Expectation {
     },
 }
 
-#[cfg(feature = "trace_one_node")]
-impl Display for Expectation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Expectation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Expectation::Token(t) => {
-                write!(f, "\"{}\"", escape_string(&String::from_utf8_lossy(t)))
+                write!(f, "\"{}\"", escape(&String::from_utf8_lossy(t), '"'))
             }
             Expectation::CharClass(c) => write!(f, "Char of {c}"),
             Expectation::Rejected {
@@ -245,7 +247,7 @@ impl Display for Expectation {
 }
 
 /// One thing that would have let the parse continue at [`Error::pos`].
-#[derive(std::fmt::Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Trace {
     /// Enclosing rules, outermost first (all of them only with
     /// `trace_all_nodes`).
@@ -298,7 +300,7 @@ impl<'a> Context<'a> {
 }
 
 /// One entry in a [`Trace`]'s [`context`](Trace::context).
-#[derive(Clone, Copy, std::fmt::Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Frame {
     /// The rule's name.
     pub node: &'static str,
@@ -345,8 +347,8 @@ impl Error {
     }
 }
 
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "parse error")?;
         #[cfg(feature = "trace_pos")]
         write!(f, " at byte {}", self.pos)?;
@@ -380,8 +382,8 @@ impl Display for Error {
     }
 }
 
-impl std::fmt::Debug for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[cfg(feature = "trace_one_node")]
         {
             writeln!(f, ":{}", self.pos)?;
@@ -404,7 +406,9 @@ impl std::fmt::Debug for Error {
         // Without traces, that's all there is to say.
         #[cfg(not(feature = "trace_one_node"))]
         {
-            Display::fmt(self, f)
+            fmt::Display::fmt(self, f)
         }
     }
 }
+
+impl std::error::Error for Error {}
