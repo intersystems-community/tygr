@@ -183,6 +183,7 @@ fn parse_field(field: &Field, mode: &TokenStream, name: &str) -> TokenStream {
             binding,
             ty,
             conversion: None,
+            ..
         } => quote! {
             let (#binding, pos) = <#ty as ::tygr::Parse>::parse_at::<#mode>(input, pos, state.reborrow())?;
         },
@@ -190,6 +191,7 @@ fn parse_field(field: &Field, mode: &TokenStream, name: &str) -> TokenStream {
             binding,
             ty,
             conversion: Some(Conversion { kind, source }),
+            ..
         } => {
             let helper = kind.helper();
             let node = field.fallible().then_some(name);

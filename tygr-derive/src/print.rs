@@ -1,8 +1,10 @@
 //! A derived `Print`.
 
-use crate::model::{Conversion, Field, Kind, Model};
+use crate::model::{Field, Model};
 use proc_macro2::TokenStream;
 use quote::quote;
+use syn::spanned::Spanned;
+use syn::Ident;
 
 /// The `Print` impl, printing each field in turn.
 pub(crate) fn expand(model: &Model) -> TokenStream {
@@ -26,27 +28,20 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     }
 }
 
-/// Print `field`: a converted value back through its source, converted text
-/// through `Display`, and a dropped source as its default.
+/// Print `field` with its `write_to`, or else its `Print`; a dropped source
+/// prints as its default.
 fn print_field(field: &Field) -> TokenStream {
     match field {
         Field::Kept {
             binding,
-            conversion: None,
+            write_to: Some(write_to),
             ..
-        } => quote! { ::tygr::Print::print_to(#binding, buf); },
-        Field::Kept {
-            binding,
-            ty,
-            conversion: Some(Conversion { kind, source }),
-        } => match kind {
-            Kind::From | Kind::TryFrom => quote! {
-                ::tygr::Print::print_to(&<#source as ::core::convert::From<&#ty>>::from(#binding), buf);
-            },
-            Kind::FromStr | Kind::FromStrInfallible => quote! {
-                buf.extend_from_slice(::std::string::ToString::to_string(#binding).as_bytes());
-            },
-        },
+        } => quote! { #write_to(#binding, buf); },
+        Field::Kept { binding, ty, .. } => {
+            // At the type's span, so a type that doesn't print is blamed.
+            let binding = Ident::new(&binding.to_string(), ty.span());
+            quote! { ::tygr::Print::print_to(#binding, buf); }
+        }
         Field::Dropped(source) => quote! {
             ::tygr::Print::print_to(&<#source as ::core::default::Default>::default(), buf);
         },

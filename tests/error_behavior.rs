@@ -89,7 +89,7 @@ fn char_class_records_class_name() {
     );
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Parse, Debug, PartialEq, Eq)]
 struct SmallNumber(#[tygr(from_str = StringOf1<IsDigit>)] u8);
 
 #[test]

@@ -28,24 +28,27 @@
 //! | [`VecSep<T, S>`] | one-or-more repetition with separators (`T { S T }`) |
 //!
 //! To parse a field as another grammar `S` and convert it, e.g. digits into
-//! a `u32`, give `S` in the field's `#[tygr(...)]`, naming the std trait:
-//! - `from = S`: `From` the parsed value.
-//! - `try_from = S`: `TryFrom` the parsed value.
-//! - `from_str = S`: `FromStr` on the matched text.
-//! - `from_str_infallible = S`: `FromStr` with `Err = Infallible` on the
-//!   matched text.
+//! a `u32`, give `S` in the field's `#[tygr(...)]`, naming how to convert:
+//! - `try_from = S`: `S: TryInto<T>`, on the parsed value.
+//! - `try_from_infallible = S`: the same with `Error = Infallible`, as for
+//!   every `From` conversion.
+//! - `from_str = S`: `T: FromStr`, on the matched text.
+//! - `from_str_infallible = S`: the same with `Err = Infallible`.
 //!
-//! A failed conversion backtracks; an infallible one is skipped when
-//! checking. Printing goes back via `S: From<&T>` or `T: Display`. On a
-//! unit variant, it matches `S` and keeps nothing (printing `S::default()`).
+//! A failed conversion backtracks, recorded and footnoted in BNF like a
+//! failed [`Validate`] check; an infallible one is skipped when checking.
+//! The field prints with its type's [`Print`], or with `write_to = f`, an
+//! `fn(&T, &mut Vec<u8>)` such as [`write_display`]. On a unit variant, any
+//! of them matches `S` and keeps nothing, printing `S::default()`.
 //!
 //! ```
 //! # use tygr::*;
 //! # char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
 //! #[derive(Grammar)]
-//! struct Port(#[tygr(from_str = StringOf1<IsDigit>)] u16);
+//! struct Port(#[tygr(from_str = StringOf1<IsDigit>, write_to = write_display)] u16);
 //! assert_eq!(Port::parse("8080").unwrap().0, 8080);
 //! assert!(Port::parse("99999").is_err());
+//! assert_eq!(Port(443).print(), "443");
 //! ```
 //!
 //! `#[tygr(...)]` on a derived type:
@@ -124,6 +127,7 @@
 
 pub mod bnf;
 mod combinators;
+mod convert;
 pub mod first;
 mod grammar;
 mod olc;
@@ -141,11 +145,13 @@ pub use wrappers::{Hidden, IntoInner, Ranged, Raw};
 // Paths the macros expand to, whatever the user has in scope.
 #[doc(hidden)]
 pub mod __private {
+    pub use crate::convert::{
+        CONVERTIBLE, from_str, from_str_infallible, try_from, try_from_infallible,
+    };
     pub use crate::token::{
         ByteEq, Literal, NonAsciiStart, Token, class_fail_at, class_parse_at, class_print_to,
         class_to_bnf,
     };
-    pub use crate::wrappers::{CONVERTIBLE, from, from_str, from_str_infallible, try_from};
     pub use either::Either;
 
     /// Whether failures are traced, so derived code can skip reporting.

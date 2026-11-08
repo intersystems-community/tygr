@@ -87,11 +87,14 @@ with the default tracing (6.6 → 77 MB/s) and about 3× faster without it
 - Removed `examples/json_optimized.rs`. `examples/json.rs` is the one JSON
   example, and `cargo bench --bench json` benchmarks the same grammar.
 - `char` is a grammar for any one char.
-- Field conversions: `#[tygr(from/try_from/from_str/from_str_infallible
-  = S)]` on a field parses `S` and converts it with the std trait. A
-  failed conversion backtracks and is recorded as `Rejected`; an
-  infallible one is skipped when checking. On a unit variant, it matches
-  `S` and keeps nothing.
+- Field conversions: `#[tygr(<kind> = S)]` on a field parses grammar `S`
+  and converts it with `try_from` (`S: TryInto<T>`), `try_from_infallible`
+  (`Error = Infallible`, as for every `From`), `from_str` (`T: FromStr`
+  on the matched text) or `from_str_infallible`. A failed conversion
+  backtracks and is recorded as `Rejected`; an infallible one is skipped
+  when checking. The field prints with its type's `Print`, or with
+  `write_to = f`, such as the new `write_display`. On a unit variant, any
+  kind matches `S` and keeps nothing.
 - `Prefix` and `Suffix` fields are public, like `Wrap`'s.
 - `VecSep` reserves the usual amortized capacity on its first item, rather
   than exactly one, so short lists no longer reallocate.

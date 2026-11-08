@@ -1,4 +1,3 @@
-use std::fmt;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use tygr::*;
@@ -226,12 +225,6 @@ impl From<Digit> for u8 {
     }
 }
 
-impl From<&u8> for Digit {
-    fn from(n: &u8) -> Digit {
-        Digit(IsDigit::new((b'0' + n) as char))
-    }
-}
-
 impl TryFrom<Digit> for bool {
     type Error = ();
     fn try_from(d: Digit) -> Result<bool, ()> {
@@ -239,23 +232,22 @@ impl TryFrom<Digit> for bool {
     }
 }
 
-impl From<&bool> for Digit {
-    fn from(b: &bool) -> Digit {
-        Digit::from(&(*b as u8))
-    }
+/// `true` as the digit `1`, `false` as `0`.
+fn write_flag(flag: &bool, buf: &mut Vec<u8>) {
+    buf.push(if *flag { b'1' } else { b'0' });
 }
 
 #[derive(Debug, PartialEq, Grammar)]
 enum Converted {
-    #[tygr(from = StringEq!("null"))]
+    #[tygr(try_from = StringEq!("null"))]
     Null,
     Fields(
-        #[tygr(from_str = StringOf1<IsDigit>)] u32,
+        #[tygr(from_str = StringOf1<IsDigit>, write_to = write_display)] u32,
         StringEq!(","),
-        #[tygr(from_str_infallible = StringOf1<IsDigit>)] String,
+        #[tygr(from_str_infallible = StringOf1<IsDigit>, write_to = write_display)] String,
         StringEq!(";"),
-        #[tygr(from = Digit)] u8,
-        #[tygr(try_from = Digit)] bool,
+        #[tygr(try_from_infallible = Digit, write_to = write_display)] u8,
+        #[tygr(try_from = Digit, write_to = write_flag)] bool,
     ),
 }
 
@@ -277,7 +269,7 @@ fn field_conversions() {
     }
 }
 
-#[derive(Debug, Grammar)]
+#[derive(Debug, Parse)]
 #[tygr(validated)]
 struct EvenNumber(#[tygr(from_str = StringOf1<IsDigit>)] u32);
 
@@ -298,9 +290,9 @@ fn validated_fallible_conversion_bnf_shows_both_side_conditions() {
     assert!(EvenNumber::parse("3").is_err());
 }
 
-#[derive(Debug, Grammar)]
+#[derive(Debug, Parse)]
 #[tygr(validated)]
-struct NonZeroDigit(#[tygr(from = Digit)] u8);
+struct NonZeroDigit(#[tygr(try_from_infallible = Digit)] u8);
 
 impl Validate for NonZeroDigit {
     const REQUIREMENT: &'static str = "be non-zero";
@@ -338,13 +330,7 @@ impl FromStr for Counted {
     }
 }
 
-impl fmt::Display for Counted {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-#[derive(Debug, Grammar)]
+#[derive(Debug, Parse)]
 struct UsesCounted(#[tygr(from_str_infallible = StringOf1<IsDigit>)] Counted);
 
 #[test]
@@ -370,4 +356,30 @@ fn parse_and_print_derive_separately() {
     assert_eq!(ParsedOnly::parse("42").unwrap().0, 42);
     let printed = PrintedOnly(Default::default(), Digits(Raw::new("42")));
     assert_eq!(printed.print(), "#42");
+}
+
+#[derive(Debug, PartialEq, Grammar)]
+enum Unit {
+    #[tygr(try_from = StringEq!("a"))]
+    A,
+    #[tygr(try_from_infallible = StringEq!("b"))]
+    B,
+    #[tygr(from_str = StringEq!("c"))]
+    C,
+    #[tygr(from_str_infallible = StringEq!("d"))]
+    D,
+}
+
+#[test]
+fn any_conversion_on_a_unit_variant_matches_and_drops_its_source() {
+    for (text, unit) in [
+        ("a", Unit::A),
+        ("b", Unit::B),
+        ("c", Unit::C),
+        ("d", Unit::D),
+    ] {
+        assert_eq!(Unit::parse(text).unwrap(), unit);
+        assert_eq!(unit.print(), text);
+    }
+    assert_eq!(rule::<Unit>(), r#"Unit = "a" | "b" | "c" | "d" ."#);
 }

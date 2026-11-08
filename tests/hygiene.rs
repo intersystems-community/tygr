@@ -26,10 +26,23 @@ impl tygr::Validate for NonZero {
 
 #[derive(tygr::Grammar)]
 struct Field(
-    #[tygr(from_str = tygr::StringOf1<Digit>)] u32,
+    #[tygr(from_str = tygr::StringOf1<Digit>, write_to = tygr::write_display)] u32,
     tygr::StringEq!(","),
-    #[tygr(from_str_infallible = tygr::StringOf1<Digit>)] String,
+    #[tygr(try_from = Kw, write_to = write_kw)] Keyword,
 );
+
+struct Keyword;
+
+impl TryFrom<Kw> for Keyword {
+    type Error = ();
+    fn try_from(_: Kw) -> Result<Keyword, ()> {
+        Ok(Keyword)
+    }
+}
+
+fn write_kw(_: &Keyword, buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"if");
+}
 
 // Fields named like the derived code's own variables.
 #[derive(tygr::Grammar)]
@@ -55,8 +68,9 @@ fn derives_compile_and_parse_without_imports() {
     assert!(Kw::parse("if").is_ok());
     assert!(Op::parse("*").is_ok() && Op::parse("x").is_err());
     assert!(NonZero::parse("10").is_ok() && NonZero::parse("00").is_err());
-    let field = Field::parse("42,7").unwrap();
-    assert_eq!((field.0, field.2.as_str()), (42, "7"));
+    let field = Field::parse("42,if").unwrap();
+    assert_eq!(field.0, 42);
+    assert_eq!(tygr::Print::print(&field), "42,if");
     assert!(Locals::parse("1,2;").is_ok());
     assert!(Generic::<Kw>::parse("if").is_ok() && Generic::<Kw>::check("d").is_ok());
 }

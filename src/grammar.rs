@@ -6,6 +6,8 @@ use crate::bnf::{self, Expr, Rule, Rules};
 use crate::first::First;
 use crate::state::run;
 use crate::{Error, State};
+use std::fmt;
+use std::io::Write;
 
 /// Parse and describe (as BNF) a grammar element.
 ///
@@ -115,7 +117,13 @@ pub trait Parse: Sized + 'static {
 /// Print a grammar element back as text.
 ///
 /// Implemented for tygr's own grammars; for `struct`s and `enum`s,
-/// `#[derive(Print)]` or `#[derive(Grammar)]` generates it.
+/// `#[derive(Print)]` or `#[derive(Grammar)]` generates it. A converted field
+/// whose type isn't a grammar prints with `#[tygr(write_to = f)]` instead,
+/// such as [`write_display`].
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` doesn't print as a grammar",
+    note = "derive `Print` for it, or print a converted field with `#[tygr(write_to = f)]`, e.g. `tygr::write_display`"
+)]
 pub trait Print {
     /// Append `self`'s text to `buf`.
     fn print_to(&self, buf: &mut Vec<u8>);
@@ -129,6 +137,19 @@ pub trait Print {
             Err(err) => String::from_utf8_lossy(err.as_bytes()).into_owned(),
         }
     }
+}
+
+/// Print `value` with its `Display`, for `#[tygr(write_to = write_display)]`.
+///
+/// ```
+/// # use tygr::*;
+/// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
+/// #[derive(Grammar)]
+/// struct Port(#[tygr(from_str = StringOf1<Digit>, write_to = write_display)] u16);
+/// assert_eq!(Port(8080).print(), "8080");
+/// ```
+pub fn write_display<T: fmt::Display>(value: &T, buf: &mut Vec<u8>) {
+    write!(buf, "{value}").expect("a Display implementation returned an error");
 }
 
 /// A grammar that both parses and prints, as `#[derive(Grammar)]` makes.

@@ -2,12 +2,10 @@
 
 use crate::State;
 use crate::bnf::{Expr, Rules};
-use crate::grammar::{Build, Check, Mode, Parse, Print};
-use std::convert::Infallible;
+use crate::grammar::{Check, Mode, Parse, Print};
 use std::fmt;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut, Range};
-use std::str::FromStr;
 use tygr_derive::Grammar;
 
 /// Unwrap a wrapper grammar to the value it holds.
@@ -349,86 +347,7 @@ impl<T> Print for PhantomData<T> {
 
 /// The text of `input[pos..end]`.
 #[inline(always)]
-fn text(input: &[u8], pos: usize, end: usize) -> &str {
+pub(crate) fn text(input: &[u8], pos: usize, end: usize) -> &str {
     // SAFETY: see the invariant on `Parse::parse_at`.
     unsafe { std::str::from_utf8_unchecked(&input[pos..end]) }
-}
-
-/// `#[tygr(from = S)]`: parse `S`, then convert it.
-#[doc(hidden)]
-#[inline(always)]
-pub fn from<S: Parse, T: From<S>, M: Mode>(
-    input: &[u8],
-    pos: usize,
-    state: State,
-) -> Option<(M::Output<T>, usize)> {
-    let (source, end) = S::parse_at::<M>(input, pos, state)?;
-    Some((M::map(source, T::from), end))
-}
-
-/// What a fallible conversion requires, in errors and BNF.
-#[doc(hidden)]
-pub const CONVERTIBLE: &str = "be convertible";
-
-/// `#[tygr(try_from = S)]`: parse `S`, then convert it, even when
-/// checking: the conversion can fail. A failure is `node`'s rejection.
-#[doc(hidden)]
-#[inline(always)]
-pub fn try_from<S: Parse, T: TryFrom<S>, M: Mode>(
-    input: &[u8],
-    pos: usize,
-    mut state: State,
-    node: &'static str,
-) -> Option<(M::Output<T>, usize)> {
-    let (source, end) = S::parse_at::<Build>(input, pos, state.reborrow())?;
-    let value = converted(T::try_from(source), pos..end, state, node)?;
-    Some((M::build(|_| value), end))
-}
-
-/// `#[tygr(from_str = S)]`: check `S`, then convert its text, even when
-/// checking: the conversion can fail. A failure is `node`'s rejection.
-#[doc(hidden)]
-#[inline(always)]
-pub fn from_str<S: Parse, T: FromStr, M: Mode>(
-    input: &[u8],
-    pos: usize,
-    mut state: State,
-    node: &'static str,
-) -> Option<(M::Output<T>, usize)> {
-    let ((), end) = S::parse_at::<Check>(input, pos, state.reborrow())?;
-    let value = converted(T::from_str(text(input, pos, end)), pos..end, state, node)?;
-    Some((M::build(|_| value), end))
-}
-
-/// The converted value, or `None` once `node`'s rejection of `range` is
-/// recorded.
-#[inline(always)]
-fn converted<T, E>(
-    result: Result<T, E>,
-    range: Range<usize>,
-    mut state: State,
-    node: &'static str,
-) -> Option<T> {
-    if result.is_err() {
-        state.reject(node, range, CONVERTIBLE);
-    }
-    result.ok()
-}
-
-/// `#[tygr(from_str_infallible = S)]`: check `S`, then convert its text.
-#[doc(hidden)]
-#[inline(always)]
-pub fn from_str_infallible<S: Parse, T: FromStr<Err = Infallible>, M: Mode>(
-    input: &[u8],
-    pos: usize,
-    state: State,
-) -> Option<(M::Output<T>, usize)> {
-    let ((), end) = S::parse_at::<Check>(input, pos, state)?;
-    Some((
-        M::build(|_| {
-            let Ok(value) = T::from_str(text(input, pos, end));
-            value
-        }),
-        end,
-    ))
 }

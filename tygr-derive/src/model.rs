@@ -2,7 +2,7 @@
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Attribute, Data, DeriveInput, Fields, Generics, Ident, LitStr, Type};
+use syn::{Attribute, Data, DeriveInput, Fields, Generics, Ident, LitStr, Path, Type};
 
 /// A derived `struct` or `enum` and its `#[tygr(...)]` options.
 pub(crate) struct Model {
@@ -35,11 +35,13 @@ pub(crate) struct Variant {
 /// One part of a sequence.
 #[allow(clippy::large_enum_variant)] // Built once per field, at compile time.
 pub(crate) enum Field {
-    /// A field, parsed as its type or converted, bound as `binding`.
+    /// A field, parsed as its type or converted, bound as `binding`, and
+    /// printed with its `Print` or `write_to`.
     Kept {
         binding: Ident,
         ty: Type,
         conversion: Option<Conversion>,
+        write_to: Option<Path>,
     },
     /// A unit variant's source grammar: matched, then dropped.
     Dropped(Type),
@@ -54,8 +56,8 @@ pub(crate) struct Conversion {
 /// The std trait a field converts with.
 #[derive(Clone, Copy)]
 pub(crate) enum Kind {
-    From,
     TryFrom,
+    TryFromInfallible,
     FromStr,
     FromStrInfallible,
 }
@@ -136,7 +138,17 @@ impl Variant {
     /// with the generated code. Only a unit variant takes `attrs`.
     fn new(path: TokenStream, fields: &Fields, attrs: &[Attribute]) -> syn::Result<Self> {
         if let Fields::Unit = fields {
-            let dropped = conversion(attrs)?.map(|conversion| Field::Dropped(conversion.source));
+            let FieldAttrs {
+                conversion,
+                write_to,
+            } = FieldAttrs::new(attrs)?;
+            if let Some(write_to) = write_to {
+                return Err(syn::Error::new_spanned(
+                    write_to,
+                    "a unit variant prints its source's default, not `write_to`",
+                ));
+            }
+            let dropped = conversion.map(|conversion| Field::Dropped(conversion.source));
             return Ok(Variant {
                 constructor: path,
                 fields: dropped.into_iter().collect(),
@@ -160,10 +172,15 @@ impl Variant {
             .iter()
             .zip(bindings)
             .map(|(field, binding)| {
+                let FieldAttrs {
+                    conversion,
+                    write_to,
+                } = FieldAttrs::new(&field.attrs)?;
                 Ok(Field::Kept {
                     binding,
                     ty: field.ty.clone(),
-                    conversion: conversion(&field.attrs)?,
+                    conversion,
+                    write_to,
                 })
             })
             .collect::<syn::Result<_>>()?;
@@ -210,47 +227,63 @@ impl Field {
 }
 
 impl Kind {
+    const ALL: [Kind; 4] = [
+        Kind::TryFrom,
+        Kind::TryFromInfallible,
+        Kind::FromStr,
+        Kind::FromStrInfallible,
+    ];
+
+    /// Its keyword in `#[tygr(...)]`, also its `tygr::__private` helper's name.
+    fn keyword(self) -> &'static str {
+        match self {
+            Kind::TryFrom => "try_from",
+            Kind::TryFromInfallible => "try_from_infallible",
+            Kind::FromStr => "from_str",
+            Kind::FromStrInfallible => "from_str_infallible",
+        }
+    }
+
     /// The `tygr::__private` helper that parses and converts.
     pub(crate) fn helper(self) -> Ident {
-        format_ident!(
-            "{}",
-            match self {
-                Kind::From => "from",
-                Kind::TryFrom => "try_from",
-                Kind::FromStr => "from_str",
-                Kind::FromStrInfallible => "from_str_infallible",
-            }
-        )
+        format_ident!("{}", self.keyword())
     }
 }
 
-/// `#[tygr(<kind> = S)]` among `attrs`, if any.
-fn conversion(attrs: &[Attribute]) -> syn::Result<Option<Conversion>> {
-    let mut conversion = None;
-    for attr in tygr_attrs(attrs) {
-        attr.parse_nested_meta(|meta| {
-            let kind = if meta.path.is_ident("from") {
-                Kind::From
-            } else if meta.path.is_ident("try_from") {
-                Kind::TryFrom
-            } else if meta.path.is_ident("from_str") {
-                Kind::FromStr
-            } else if meta.path.is_ident("from_str_infallible") {
-                Kind::FromStrInfallible
-            } else {
-                return Err(
-                    meta.error("expected `from`, `try_from`, `from_str`, or `from_str_infallible`")
-                );
-            };
-            if conversion.is_some() {
-                return Err(meta.error("a field converts only one way"));
-            }
-            let source = meta.value()?.parse()?;
-            conversion = Some(Conversion { kind, source });
-            Ok(())
-        })?;
+/// A field's `#[tygr(...)]` options (a unit variant's, for its source).
+#[derive(Default)]
+struct FieldAttrs {
+    conversion: Option<Conversion>,
+    write_to: Option<Path>,
+}
+
+impl FieldAttrs {
+    fn new(attrs: &[Attribute]) -> syn::Result<Self> {
+        let mut field = FieldAttrs::default();
+        for attr in tygr_attrs(attrs) {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("write_to") {
+                    field.write_to = Some(meta.value()?.parse()?);
+                } else if let Some(kind) = Kind::ALL
+                    .into_iter()
+                    .find(|kind| meta.path.is_ident(kind.keyword()))
+                {
+                    if field.conversion.is_some() {
+                        return Err(meta.error("a field converts only one way"));
+                    }
+                    let source = meta.value()?.parse()?;
+                    field.conversion = Some(Conversion { kind, source });
+                } else {
+                    return Err(meta.error(
+                        "expected `try_from`, `try_from_infallible`, `from_str`, \
+                         `from_str_infallible`, or `write_to`",
+                    ));
+                }
+                Ok(())
+            })?;
+        }
+        Ok(field)
     }
-    Ok(conversion)
 }
 
 /// The `#[tygr(...)]` attributes among `attrs`.

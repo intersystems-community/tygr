@@ -14,9 +14,9 @@ use quote::quote;
 /// Derive `Parse` and `Print` for a `struct` or `enum`: a `struct` is a
 /// sequence of its fields, an `enum` an alternation of its variants.
 ///
-/// `#[tygr(name = "…", hidden, inline, validated)]` on the type and
-/// `#[tygr(from/try_from/from_str/from_str_infallible = S)]` on a field are
-/// optional (see `tygr`'s crate docs).
+/// `#[tygr(name = "…", hidden, inline, validated)]` on the type, and
+/// `#[tygr(try_from/try_from_infallible/from_str/from_str_infallible = S,
+/// write_to = f)]` on a field, are optional (see `tygr`'s crate docs).
 #[proc_macro_derive(Grammar, attributes(tygr))]
 pub fn derive_grammar(input: TokenStream) -> TokenStream {
     derive(input, |model| {
