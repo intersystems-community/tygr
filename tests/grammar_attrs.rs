@@ -36,9 +36,11 @@ struct Semi(StringEq!(";"));
 struct UsesHidden(Digits, Semi);
 
 #[test]
+#[cfg_attr(not(feature = "print"), allow(unused_variables))]
 fn hidden_field_vanishes_from_the_outer_rule_but_still_parses_and_prints() {
     assert_eq!(UsesHidden::bnf_rule(), "UsesHidden = Digits .");
     let v = UsesHidden::parse("1;").unwrap();
+    #[cfg(feature = "print")]
     assert_eq!(v.print(), "1;");
 }
 
@@ -77,6 +79,23 @@ fn inline_splices_fields_instead_of_referencing_by_rule() {
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
+#[grammar(name = "spliced")]
+#[grammar(inline)]
+struct TwoAttributes(StringEq!("a"));
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+struct UsesTwoAttributes(TwoAttributes, Digits);
+
+#[test]
+fn separate_attributes_combine() {
+    assert_eq!(TwoAttributes::NAME, "spliced");
+    assert_eq!(
+        UsesTwoAttributes::bnf_rule(),
+        "UsesTwoAttributes = \"a\" Digits ."
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
 #[grammar(validated)]
 struct NonZero(StringOf1<IsDigit>);
 
@@ -89,6 +108,7 @@ impl Validate for NonZero {
 
 #[test]
 fn validated_accepts_values_that_pass_validation() {
+    #[cfg(feature = "print")]
     assert_eq!(NonZero::parse("123").unwrap().print(), "123");
 }
 
@@ -268,4 +288,67 @@ fn grammar_from_str_infallible_converts_the_text_but_not_when_scanning() {
     assert_eq!(Counted::parse("123").unwrap().0, 3);
     assert_eq!(CONVERSIONS.load(Relaxed), before + 1);
     assert!(Counted::parse("x").is_err());
+}
+
+// Field conversions: `#[grammar(<kind> = S)]`.
+
+#[derive(Debug, PartialEq, Grammar)]
+struct Digit(IsDigit);
+
+impl From<Digit> for u8 {
+    fn from(d: Digit) -> u8 {
+        d.0.value() as u8 - b'0'
+    }
+}
+
+impl From<&u8> for Digit {
+    fn from(n: &u8) -> Digit {
+        Digit(IsDigit::new((b'0' + n) as char))
+    }
+}
+
+impl TryFrom<Digit> for bool {
+    type Error = ();
+    fn try_from(d: Digit) -> Result<bool, ()> {
+        [false, true].get(u8::from(d) as usize).copied().ok_or(())
+    }
+}
+
+impl From<&bool> for Digit {
+    fn from(b: &bool) -> Digit {
+        Digit::from(&(*b as u8))
+    }
+}
+
+#[derive(Debug, PartialEq, Grammar)]
+enum Converted {
+    #[grammar(from = StringEq!("null"))]
+    Null,
+    Fields(
+        #[grammar(from_str = StringOf1<IsDigit>)] u32,
+        StringEq!(","),
+        #[grammar(from_str_infallible = StringOf1<IsDigit>)] String,
+        StringEq!(";"),
+        #[grammar(from = Digit)] u8,
+        #[grammar(try_from = Digit)] bool,
+    ),
+}
+
+#[test]
+fn field_conversions() {
+    let Converted::Fields(n, _, text, _, digit, flag) = Converted::parse("42,07;51").unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!((n, text.as_str(), digit, flag), (42, "07", 5, true));
+    assert_eq!(Converted::parse("null").unwrap(), Converted::Null);
+    #[cfg(feature = "print")]
+    assert_eq!(Converted::parse("42,07;51").unwrap().print(), "42,07;51");
+    assert_eq!(
+        Converted::bnf_rule(),
+        "Converted = \"null\" | ( ( 'digit' { 'digit' } ) ^1 ) \",\" 'digit' { 'digit' } \";\" Digit ( Digit ^1 ) .\n\n^1: be convertible"
+    );
+    for bad in ["42,07;52", "99999999999,07;51", "nul"] {
+        assert!(Converted::parse(bad).is_err() && Converted::scan(bad).is_err());
+    }
 }

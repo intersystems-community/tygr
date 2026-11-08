@@ -26,7 +26,7 @@ pub(crate) fn parse<R: Grammar + Debug>() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(err) => {
-            eprintln!("parse error{err}");
+            eprintln!("{err}");
             ExitCode::FAILURE
         }
     }
@@ -41,7 +41,7 @@ pub(crate) fn test<R: Grammar>() -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(err) => {
-            eprintln!("error{err}");
+            eprintln!("{err}");
             ExitCode::FAILURE
         }
     }

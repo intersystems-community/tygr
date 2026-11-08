@@ -1,4 +1,4 @@
-//! Derived code must not rely on anything the user has imported.
+//! Derived code must work whatever the user has imported or named.
 
 #[derive(tygr::Grammar)]
 struct Kw(tygr::StringEq!("if"));
@@ -58,6 +58,26 @@ impl std::str::FromStr for Text {
     }
 }
 
+#[derive(tygr::Grammar)]
+struct Field(#[grammar(from_str = tygr::StringOf1<Digit>)] u32);
+
+// Fields named like the derived code's own variables.
+#[derive(tygr::Grammar)]
+struct Locals {
+    input: tygr::StringOf1<Digit>,
+    pos: tygr::StringEq!(","),
+    state: tygr::StringOf1<Digit>,
+}
+
+// Generic, with enough variants for a dispatch table.
+#[derive(tygr::Grammar)]
+enum Generic<T> {
+    A(T),
+    B(tygr::StringEq!("b")),
+    C(tygr::StringEq!("c")),
+    D(tygr::StringEq!("d")),
+}
+
 #[test]
 fn derives_compile_and_parse_without_imports() {
     use tygr::Grammar as _;
@@ -66,4 +86,7 @@ fn derives_compile_and_parse_without_imports() {
     assert!(NonZero::parse("10").is_ok() && NonZero::parse("00").is_err());
     assert_eq!(Num::parse("42").unwrap().0, 42);
     assert_eq!(Text::parse("42").unwrap().0, "42");
+    assert_eq!(Field::parse("42").unwrap().0, 42);
+    assert!(Locals::parse("1,2").is_ok());
+    assert!(Generic::<Kw>::parse("if").is_ok() && Generic::<Kw>::parse("d").is_ok());
 }

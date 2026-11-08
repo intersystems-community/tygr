@@ -14,7 +14,9 @@ fn token(text: &'static str) -> Expectation {
 
 #[test]
 fn string_eq_ci_matches_unicode_case_variants() {
+    #[cfg(feature = "print")]
     assert_eq!(Accent::parse("é").unwrap().print(), "é");
+    #[cfg(feature = "print")]
     assert_eq!(Accent::parse("É").unwrap().print(), "É");
     assert!(Accent::parse("e").is_err());
 }
@@ -25,6 +27,7 @@ struct Strasse(StringEqCI!("straße"));
 #[test]
 fn string_eq_ci_variant_can_change_length() {
     // 'ß' uppercases to "SS".
+    #[cfg(feature = "print")]
     assert_eq!(Strasse::parse("STRASSE").unwrap().print(), "STRASSE");
     assert!(Strasse::parse("Straße").is_ok());
 }
@@ -97,6 +100,7 @@ fn char_class_computes_first_bytes() {
     #[derive(Grammar, Debug)]
     #[grammar(name = "Word")]
     struct Word(StringOf1<Lower>);
+    #[cfg(feature = "print")]
     assert_eq!(Word::parse("abc").unwrap().print(), "abc");
     assert!(Word::parse("aBc").is_err());
 }

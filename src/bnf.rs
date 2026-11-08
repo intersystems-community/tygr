@@ -237,7 +237,7 @@ impl Expr {
 }
 
 /// Escape special characters in a string literal.
-fn escape_string(s: &str) -> String {
+pub(crate) fn escape_string(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('\n', "\\n")

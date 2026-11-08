@@ -3,11 +3,7 @@
 //! backtracking; no left recursion.
 
 use crate::first::First;
-#[cfg(feature = "trace_one_node")]
-use crate::state::Context;
-#[cfg(feature = "trace_pos")]
-use crate::state::History;
-use crate::state::make_error;
+use crate::state::run;
 use crate::{Error, State, bnf::Expr};
 
 /// Parse, print, and describe (as BNF) a grammar element.
@@ -43,96 +39,27 @@ pub trait Grammar: Sized + 'static {
 
     /// Parse the entire `input` as `Self`, failing if any input is left unconsumed.
     fn parse(input: &str) -> Result<Self, Error> {
-        #[cfg(feature = "trace_pos")]
-        let mut history = History::new();
-        #[cfg(feature = "trace_one_node")]
-        let context = Context::new();
-        let state = State::new(
-            #[cfg(feature = "trace_pos")]
-            &mut history,
-            #[cfg(feature = "trace_one_node")]
-            context,
-        );
-        if let Some((val, pos)) = Self::parse_at(input.as_bytes(), 0, state)
-            && pos == input.len()
-        {
-            Ok(val)
-        } else {
-            Err(make_error(
-                #[cfg(feature = "trace_pos")]
-                history,
-            ))
-        }
+        run(|state| {
+            let (value, end) = Self::parse_at(input.as_bytes(), 0, state)?;
+            (end == input.len()).then_some(value)
+        })
     }
 
     /// Like [`parse`](Self::parse), but may stop early; returns the end
     /// position too.
     fn parse_prefix(input: &str) -> Result<(Self, usize), Error> {
-        #[cfg(feature = "trace_pos")]
-        let mut history = History::new();
-        #[cfg(feature = "trace_one_node")]
-        let context = Context::new();
-        let state = State::new(
-            #[cfg(feature = "trace_pos")]
-            &mut history,
-            #[cfg(feature = "trace_one_node")]
-            context,
-        );
-        if let Some((val, pos)) = Self::parse_at(input.as_bytes(), 0, state) {
-            Ok((val, pos))
-        } else {
-            Err(make_error(
-                #[cfg(feature = "trace_pos")]
-                history,
-            ))
-        }
+        run(|state| Self::parse_at(input.as_bytes(), 0, state))
     }
 
     /// Like [`parse`](Self::parse), but only checks `input`.
     fn scan(input: &str) -> Result<(), Error> {
-        #[cfg(feature = "trace_pos")]
-        let mut history = History::new();
-        #[cfg(feature = "trace_one_node")]
-        let context = Context::new();
-        let state = State::new(
-            #[cfg(feature = "trace_pos")]
-            &mut history,
-            #[cfg(feature = "trace_one_node")]
-            context,
-        );
-        if let Some(pos) = Self::scan_at(input.as_bytes(), 0, state)
-            && pos == input.len()
-        {
-            Ok(())
-        } else {
-            Err(make_error(
-                #[cfg(feature = "trace_pos")]
-                history,
-            ))
-        }
+        run(|state| (Self::scan_at(input.as_bytes(), 0, state)? == input.len()).then_some(()))
     }
 
     /// Like [`scan`](Self::scan), but may stop early; returns the end
     /// position.
     fn scan_prefix(input: &str) -> Result<usize, Error> {
-        #[cfg(feature = "trace_pos")]
-        let mut history = History::new();
-        #[cfg(feature = "trace_one_node")]
-        let context = Context::new();
-        let state = State::new(
-            #[cfg(feature = "trace_pos")]
-            &mut history,
-            #[cfg(feature = "trace_one_node")]
-            context,
-        );
-        if let Some(pos) = Self::scan_at(input.as_bytes(), 0, state) {
-            Ok(pos)
-        } else {
-            Err(make_error(
-                #[cfg(feature = "trace_pos")]
-                history,
-            ))
-        }
+        run(|state| Self::scan_at(input.as_bytes(), 0, state))
     }
 
     /// Parse `Self` at byte offset `pos`, returning it and the end offset.
@@ -145,8 +72,15 @@ pub trait Grammar: Sized + 'static {
     /// Like [`parse_at`](Self::parse_at), but returns only the end.
     fn scan_at(input: &[u8], pos: usize, state: State) -> Option<usize>;
 
-    /// Serialize `self` back to bytes, appending to `buf`.
+    /// Serialize `self` back to bytes, appending to `buf`. Without the
+    /// `print` feature, derived impls panic here.
+    #[cfg(feature = "print")]
     fn print_to(&self, buf: &mut Vec<u8>);
+    /// Panics: tygr's `print` feature is off.
+    #[cfg(not(feature = "print"))]
+    fn print_to(&self, _buf: &mut Vec<u8>) {
+        unimplemented!("tygr's `print` feature is off")
+    }
 
     /// This grammar as an EBNF expression, as other rules refer to it.
     fn to_bnf() -> Expr;
@@ -205,8 +139,15 @@ pub trait GrammarFrom {
     /// The grammar actually parsed.
     type Source: Grammar;
 
-    /// Serialize `self` back to bytes (see [`Grammar::print_to`]).
+    /// Serialize `self` back to bytes (see [`Grammar::print_to`]); optional
+    /// without the `print` feature.
+    #[cfg(feature = "print")]
     fn print_to(&self, buf: &mut Vec<u8>);
+    /// Panics: tygr's `print` feature is off.
+    #[cfg(not(feature = "print"))]
+    fn print_to(&self, _buf: &mut Vec<u8>) {
+        unimplemented!("tygr's `print` feature is off")
+    }
 }
 
 /// Post-parse validation for `#[grammar(validated)]` types.

@@ -68,6 +68,7 @@ pub(crate) enum Escape {
         hex1: Hex,
         hex2: Hex,
         hex3: Hex,
+        hex4: Hex,
     },
 }
 

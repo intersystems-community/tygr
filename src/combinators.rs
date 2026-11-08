@@ -50,38 +50,19 @@ macro_rules! impl_grammar_tuple {
             type First = concat_first!(Optional<byte_set::Emp>; $($T),+);
 
             #[inline]
-            fn parse_at(
-                input: &[u8],
-                pos: usize,
-                #[allow(unused_mut)] mut state: State,
-            ) -> Option<(Self, usize)> {
-                let i = 0;
+            fn parse_at(input: &[u8], pos: usize, mut state: State) -> Option<(Self, usize)> {
                 $(
                     #[allow(non_snake_case)]
                     let ($T, pos) = <$T>::parse_at(input, pos, state.reborrow())?;
-                    #[allow(unused_variables)]
-                    let i = i + 1;
                 )+
                 Some((($($T,)+), pos))
             }
 
             #[inline]
-            fn scan_at(
-                input: &[u8],
-                pos: usize,
-                #[allow(unused_mut)] mut state: State,
-            ) -> Option<usize> {
-                let i = 0;
-                $(
-                    #[allow(non_snake_case)]
-                    let pos =<$T>::scan_at(input, pos, state.reborrow())?;
-                    #[allow(unused_variables)]
-                    let i = i + 1;
-                )+
+            fn scan_at(input: &[u8], pos: usize, mut state: State) -> Option<usize> {
+                $(let pos = <$T>::scan_at(input, pos, state.reborrow())?;)+
                 Some(pos)
             }
-
-
 
             fn print_to(&self, buf: &mut Vec<u8>) {
                 $(self.$idx.print_to(buf);)+
@@ -91,7 +72,7 @@ macro_rules! impl_grammar_tuple {
                 Expr::sequence(vec![$(<$T>::to_bnf()),+])
             }
 
-            fn fail_at(pos: usize, #[allow(unused_mut)] mut state: State) -> bool {
+            fn fail_at(pos: usize, mut state: State) -> bool {
                 $( <$T>::fail_at(pos, state.reborrow()) || )+ false
             }
         }
@@ -298,17 +279,14 @@ impl<T: Grammar> Grammar for Option<T> {
     #[inline]
     fn parse_at(input: &[u8], pos: usize, state: State) -> Option<(Self, usize)> {
         match T::parse_at(input, pos, state) {
-            Some((val, new_pos)) => Some((Some(val), new_pos)),
+            Some((val, end)) => Some((Some(val), end)),
             None => Some((None, pos)),
         }
     }
 
     #[inline]
     fn scan_at(input: &[u8], pos: usize, state: State) -> Option<usize> {
-        match T::scan_at(input, pos, state) {
-            Some(end_pos) => Some(end_pos),
-            None => Some(pos),
-        }
+        Some(T::scan_at(input, pos, state).unwrap_or(pos))
     }
 
     fn print_to(&self, buf: &mut Vec<u8>) {
@@ -333,7 +311,7 @@ impl<T: Grammar> Grammar for Vec<T> {
     #[inline]
     fn parse_at(input: &[u8], mut pos: usize, mut state: State) -> Option<(Self, usize)> {
         let mut items: Vec<T> = Vec::new();
-        while let Some((val, new_pos)) = { T::parse_at(input, pos, state.reborrow()) } {
+        while let Some((val, new_pos)) = T::parse_at(input, pos, state.reborrow()) {
             if new_pos == pos {
                 break;
             }
@@ -345,7 +323,7 @@ impl<T: Grammar> Grammar for Vec<T> {
 
     #[inline]
     fn scan_at(input: &[u8], mut pos: usize, mut state: State) -> Option<usize> {
-        while let Some(new_pos) = { T::scan_at(input, pos, state.reborrow()) } {
+        while let Some(new_pos) = T::scan_at(input, pos, state.reborrow()) {
             if new_pos == pos {
                 break;
             }
@@ -387,18 +365,14 @@ impl<T: Grammar> Grammar for Vec1<T> {
 
     #[inline]
     fn parse_at(input: &[u8], pos: usize, state: State) -> Option<(Self, usize)> {
-        let (x, pos) = <Vec<T>>::parse_at(input, pos, state).unwrap();
-        if x.is_empty() {
-            None
-        } else {
-            Some((Self(x), pos))
-        }
+        let (items, end) = <Vec<T>>::parse_at(input, pos, state)?;
+        (!items.is_empty()).then_some((Self(items), end))
     }
 
     #[inline]
     fn scan_at(input: &[u8], pos: usize, state: State) -> Option<usize> {
-        let end = <Vec<T>>::scan_at(input, pos, state).unwrap();
-        if end == pos { None } else { Some(end) }
+        let end = <Vec<T>>::scan_at(input, pos, state)?;
+        (end != pos).then_some(end)
     }
 
     fn print_to(&self, buf: &mut Vec<u8>) {

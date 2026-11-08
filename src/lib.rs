@@ -40,6 +40,21 @@
 //!
 //! An infallible, unvalidated conversion is skipped when scanning.
 //!
+//! To convert one field instead, e.g. to a type you don't own, give its source
+//! grammar: `#[grammar(from = S)]`, `try_from`, `from_str` or
+//! `from_str_infallible`, with the same std traits (printing goes back via
+//! `S: From<&T>` or `T: Display`). On a unit variant, it matches `S` and
+//! keeps nothing (printing `S::default()`).
+//!
+//! ```
+//! # use tygr::*;
+//! # char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
+//! #[derive(Grammar)]
+//! struct Port(#[grammar(from_str = StringOf1<IsDigit>)] u16);
+//! assert_eq!(Port::parse("8080").unwrap().0, 8080);
+//! assert!(Port::parse("99999").is_err());
+//! ```
+//!
 //! `#[grammar(...)]` on a `#[derive(Grammar)]` type:
 //! - `name = "..."` — override the BNF rule name (defaults to the type name).
 //! - `hidden` — same effect as wrapping in [`Hidden<T>`], but on a whole struct/enum.
@@ -50,12 +65,13 @@
 //!
 //! ## Feature Flags
 //!
-//! The `tygr` crate enables the `trace_one_node` feature by default.
+//! The `tygr` crate enables the `trace_one_node` and `print` features by default.
 //! Available features are:
 //!
 //! | Feature | Description |
 //! | ------- | ----------- |
-//! | `default` | Enables `trace_one_node`. |
+//! | `default` | Enables `trace_one_node` and `print`. |
+//! | `print` | Derived grammars print. Without it, they need no printing impls or bounds, and panic if printed. |
 //! | `trace` | Enables all tracing features. |
 //! | `trace_pos` | Traces parser positions. |
 //! | `trace_one_node` | Traces only the nearest grammar node for each attempt. |
@@ -104,6 +120,7 @@
 //! pub struct Ws(pub StringOf<IsSpace>);
 //!
 //! let e = Expr::parse("1 + 2 * 3").unwrap();
+//! # #[cfg(feature = "print")]
 //! assert_eq!(e.print(), "1 + 2 * 3");
 //! # #[cfg(not(any(feature = "lower_bnf_name", feature = "upper_bnf_name")))]
 //! assert_eq!(
@@ -141,6 +158,7 @@ pub mod __private {
         ByteEq, Literal, NonAsciiStart, Token, class_fail_at, class_parse_at, class_print_to,
         class_scan_at, class_to_bnf,
     };
+    pub use crate::wrappers::{from, from_str, from_str_infallible, try_from};
     pub use either::Either;
     pub use tygr_derive::__default_name as default_name;
 }
@@ -149,8 +167,9 @@ pub mod __private {
 #[doc(hidden)]
 extern crate self as tygr;
 
-pub use tygr_derive::Grammar;
-pub use tygr_derive::{GrammarFromOther, GrammarFromStr, GrammarFromStrInfallible, GrammarTryFromOther};
+pub use tygr_derive::{
+    Grammar, GrammarFromOther, GrammarFromStr, GrammarFromStrInfallible, GrammarTryFromOther,
+};
 
 /// A literal-string grammar: `StringEq!("->")` matches exactly `->`.
 ///

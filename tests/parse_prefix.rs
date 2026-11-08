@@ -6,8 +6,10 @@ char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
 struct Digits(StringOf1<IsDigit>);
 
 #[test]
+#[cfg_attr(not(feature = "print"), allow(unused_variables))]
 fn parse_prefix_stops_at_the_match_without_consuming_the_rest() {
     let (value, pos) = Digits::parse_prefix("123abc").unwrap();
+    #[cfg(feature = "print")]
     assert_eq!(value.print(), "123");
     assert_eq!(pos, 3);
 }
@@ -25,4 +27,10 @@ fn scan_prefix_stops_at_the_match_without_consuming_the_rest() {
 #[test]
 fn scan_prefix_fails_when_nothing_matches() {
     assert!(Digits::scan_prefix("abc").is_err());
+}
+
+#[test]
+fn errors_print_something_whatever_the_tracing() {
+    let err = Digits::parse("abc").unwrap_err();
+    assert!(!format!("{err:?}").is_empty());
 }

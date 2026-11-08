@@ -9,7 +9,6 @@ use tygr::*;
 
 char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
 
-#[cfg(feature = "trace_one_node")]
 fn token(text: &'static str) -> Expectation {
     Expectation::Token(text.as_bytes())
 }
@@ -213,6 +212,11 @@ fn display_shows_each_expectation_kind() {
     for (err, expected) in cases {
         assert_eq!(err.to_string(), expected);
     }
+}
+
+#[test]
+fn display_escapes_tokens() {
+    assert_eq!(token("\\\"\n").to_string(), r#""\\\"\n""#);
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]

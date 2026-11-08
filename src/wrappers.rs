@@ -144,7 +144,7 @@ impl<T> std::hash::Hash for Raw<T> {
     }
 }
 
-impl<T> std::ops::Deref for Raw<T> {
+impl<T> Deref for Raw<T> {
     type Target = str;
     fn deref(&self) -> &str {
         &self.0
@@ -237,28 +237,14 @@ impl<T> Ranged<T> {
 impl<T> Ranged<Option<T>> {
     /// Swap `Ranged<Option<T>>` for `Option<Ranged<T>>`.
     pub fn transpose(self) -> Option<Ranged<T>> {
-        match self.ranged {
-            Some(it) => Some(Ranged {
-                start: self.start,
-                ranged: it,
-                end: self.end,
-            }),
-            None => None,
-        }
+        Some(Ranged::new(self.start, self.ranged?, self.end))
     }
 }
 
 impl<T, E> Ranged<Result<T, E>> {
     /// Swap `Ranged<Result<T, E>>` for `Result<Ranged<T>, E>`.
     pub fn transpose(self) -> Result<Ranged<T>, E> {
-        match self.ranged {
-            Ok(it) => Ok(Ranged {
-                start: self.start,
-                ranged: it,
-                end: self.end,
-            }),
-            Err(e) => Err(e),
-        }
+        Ok(Ranged::new(self.start, self.ranged?, self.end))
     }
 }
 
@@ -267,18 +253,8 @@ impl<T: Grammar> Grammar for Ranged<T> {
 
     #[inline]
     fn parse_at(input: &[u8], pos: usize, state: State) -> Option<(Self, usize)> {
-        if let Some((it, new_pos)) = T::parse_at(input, pos, state) {
-            Some((
-                Ranged {
-                    start: pos,
-                    ranged: it,
-                    end: new_pos,
-                },
-                new_pos,
-            ))
-        } else {
-            None
-        }
+        let (ranged, end) = T::parse_at(input, pos, state)?;
+        Some((Ranged::new(pos, ranged, end), end))
     }
 
     #[inline]
@@ -348,4 +324,49 @@ impl<T: Grammar> Grammar for PhantomData<T> {
     fn fail_at(pos: usize, state: State) -> bool {
         T::fail_at(pos, state)
     }
+}
+
+/// `#[grammar(from = S)]`: parse `S`, then convert it.
+#[doc(hidden)]
+#[inline(always)]
+pub fn from<S: Grammar, T: From<S>>(input: &[u8], pos: usize, state: State) -> Option<(T, usize)> {
+    let (source, end) = S::parse_at(input, pos, state)?;
+    Some((T::from(source), end))
+}
+
+/// `#[grammar(from_str = S)]`: scan `S`, then convert its text.
+#[doc(hidden)]
+#[inline(always)]
+pub fn from_str<S: Grammar, T: std::str::FromStr>(
+    input: &[u8],
+    pos: usize,
+    state: State,
+) -> Option<(T, usize)> {
+    let end = S::scan_at(input, pos, state)?;
+    // SAFETY: see the invariant on `Grammar::parse_at`.
+    let text = unsafe { std::str::from_utf8_unchecked(&input[pos..end]) };
+    Some((T::from_str(text).ok()?, end))
+}
+
+/// `#[grammar(from_str_infallible = S)]`: `from_str` that can't fail.
+#[doc(hidden)]
+#[inline(always)]
+pub fn from_str_infallible<S: Grammar, T: std::str::FromStr<Err = std::convert::Infallible>>(
+    input: &[u8],
+    pos: usize,
+    state: State,
+) -> Option<(T, usize)> {
+    from_str::<S, T>(input, pos, state)
+}
+
+/// `#[grammar(try_from = S)]`: parse `S`, then convert it.
+#[doc(hidden)]
+#[inline(always)]
+pub fn try_from<S: Grammar, T: TryFrom<S>>(
+    input: &[u8],
+    pos: usize,
+    state: State,
+) -> Option<(T, usize)> {
+    let (source, end) = S::parse_at(input, pos, state)?;
+    Some((T::try_from(source).ok()?, end))
 }
