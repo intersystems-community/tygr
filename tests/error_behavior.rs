@@ -1,6 +1,7 @@
 //! What a failed parse records, and how its error reads.
 #![cfg(feature = "trace_one_node")]
 
+use std::ops::Range;
 use tygr::*;
 
 /// `G`'s own rule, as printed.
@@ -10,8 +11,11 @@ fn rule<G: Parse>() -> String {
 
 char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
 
-fn token(text: &'static str) -> Expectation {
-    Expectation::Token(text.as_bytes())
+fn token(text: &'static str, range: Range<usize>) -> Expectation {
+    Expectation::Token {
+        bytes: text.as_bytes(),
+        range,
+    }
 }
 
 fn frame(node: &'static str, pos: usize) -> Frame {
@@ -33,7 +37,7 @@ fn string_eq_records_literal() {
         err,
         vec![Trace {
             context: vec![frame("Lit", 0)],
-            expectation: token("foo"),
+            expectation: token("foo", 0..0),
         }],
         0,
     );
@@ -49,7 +53,7 @@ fn string_eq_ci_records_ci_literal() {
         err,
         vec![Trace {
             context: vec![frame("LitCI", 0)],
-            expectation: token("foo"),
+            expectation: token("foo", 0..0),
         }],
         0,
     );
@@ -59,15 +63,15 @@ fn string_eq_ci_records_ci_literal() {
 struct Arrow(StringEq!("->"));
 
 #[test]
-fn string_eq_partial_match_records_at_its_start() {
+fn string_eq_partial_match_records_where_it_diverged() {
     let err = Arrow::parse("-x").unwrap_err();
     assert_error(
         err,
         vec![Trace {
             context: vec![frame("Arrow", 0)],
-            expectation: token("->"),
+            expectation: token("->", 0..1),
         }],
-        0,
+        1,
     );
 }
 
@@ -176,6 +180,10 @@ fn display_shows_each_expectation_kind() {
             "parse error at byte 0, expected:\n\t- LitCI",
         ),
         (
+            Arrow::parse("-x").unwrap_err(),
+            "parse error at byte 1, expected:\n\t- \"->\" at 0..1",
+        ),
+        (
             Digits::parse("abc").unwrap_err(),
             "parse error at byte 0, expected:\n\t- Digits",
         ),
@@ -196,7 +204,7 @@ fn display_shows_each_expectation_kind() {
 
 #[test]
 fn display_escapes_tokens() {
-    assert_eq!(token("\\\"\n").to_string(), r#""\\\"\n""#);
+    assert_eq!(token("\\\"\n", 0..0).to_string(), r#""\\\"\n""#);
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
@@ -210,7 +218,7 @@ fn context_records_nearest_node() {
         err,
         vec![Trace {
             context: vec![frame("Lit", 0)],
-            expectation: token("foo"),
+            expectation: token("foo", 0..0),
         }],
         0,
     );
@@ -224,7 +232,7 @@ fn context_records_full_node_chain() {
         err,
         vec![Trace {
             context: vec![frame("Wrapper", 0), frame("Lit", 0)],
-            expectation: token("foo"),
+            expectation: token("foo", 0..0),
         }],
         0,
     );
@@ -248,19 +256,19 @@ fn enum_records_every_variant_when_first_matches_none() {
         vec![
             Trace {
                 context: vec![frame("Op", 0)],
-                expectation: token("+"),
+                expectation: token("+", 0..0),
             },
             Trace {
                 context: vec![frame("Op", 0)],
-                expectation: token("-"),
+                expectation: token("-", 0..0),
             },
             Trace {
                 context: vec![frame("Op", 0)],
-                expectation: token("*"),
+                expectation: token("*", 0..0),
             },
             Trace {
                 context: vec![frame("Op", 0)],
-                expectation: token("/"),
+                expectation: token("/", 0..0),
             },
         ],
         0,
@@ -295,35 +303,35 @@ fn nullable_variant_traces() -> Vec<Trace> {
     vec![
         Trace {
             context: vec![frame("NullableOp", 0)],
-            expectation: token("+"),
+            expectation: token("+", 0..0),
         },
         Trace {
             context: vec![frame("NullableOp", 0)],
-            expectation: token("-"),
+            expectation: token("-", 0..0),
         },
         Trace {
             context: vec![frame("NullableOp", 0)],
-            expectation: token("*"),
+            expectation: token("*", 0..0),
         },
         Trace {
             context: vec![frame("NullableOp", 0)],
-            expectation: token("y"),
+            expectation: token("y", 0..0),
         },
         Trace {
             context: vec![frame("NullableOpThenTail", 0)],
-            expectation: token("TAIL"),
+            expectation: token("TAIL", 0..0),
         },
         Trace {
             context: vec![frame("Outermost", 0)],
-            expectation: token("b"),
+            expectation: token("b", 0..0),
         },
         Trace {
             context: vec![frame("Outermost", 0)],
-            expectation: token("c"),
+            expectation: token("c", 0..0),
         },
         Trace {
             context: vec![frame("Outermost", 0)],
-            expectation: token("d"),
+            expectation: token("d", 0..0),
         },
     ]
 }
@@ -384,18 +392,23 @@ enum Four {
     A(StringEq!("a")),
     B(StringEq!("b")),
     C(StringEq!("cx")),
-    D(StringEq!("d")),
+    D(StringEq!("é")),
 }
 
 #[test]
 fn enum_dispatch_records_the_variants_it_skips() {
-    // The table jumps to `C` on "c"; `A` and `B` were candidates too.
-    let err = Four::parse("cy").unwrap_err();
+    // The table jumps to `D` on the first byte "é" shares with "è"; `D`
+    // diverges inside that char, so at byte 0, where the others could start.
+    let err = Four::parse("è").unwrap_err();
     assert_eq!(err.pos(), 0);
     assert_eq!(
         expectations(&err),
-        [r#""a""#, r#""b""#, r#""cx""#, r#""d""#]
+        [r#""a""#, r#""b""#, r#""cx""#, r#""é""#]
     );
+    // `C` gets further than any variant the table skipped.
+    let err = Four::parse("cy").unwrap_err();
+    assert_eq!(err.pos(), 1);
+    assert_eq!(expectations(&err), [r#""cx" at 0..1"#]);
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
@@ -447,7 +460,7 @@ fn positive_lookahead_records_what_it_expected() {
         Key::parse("k").unwrap_err(),
         vec![Trace {
             context: vec![frame("Key", 0)],
-            expectation: token(":"),
+            expectation: token(":", 1..1),
         }],
         1,
     );

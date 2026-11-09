@@ -58,19 +58,20 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
   `std::ops::Range`. It gains `range() -> Range<usize>`.
 - `StringEqCI!` matches each char's Unicode case mappings rather than only
   ASCII letters: `"é"` matches `"É"`, and `"ß"` matches `"SS"`.
-- A literal that fails to match is reported as a whole, at the position
-  where it starts. This reverts 0.6.1, which reported partial matches
-  where they diverged: `"->"` against `"-x"` now fails at byte 0 instead
-  of byte 1.
+- A literal that fails partway is still reported where it diverged, but
+  as the whole literal with the range it matched, as a rejected
+  validation is: `"->"` against `"-x"` reads `"->" at 0..1` at byte 1,
+  not `"->"'s ">"`.
 - `Expectation`:
-  - `StringEq` and `StringEqCI` merged into `Token(&'static [u8])`.
+  - `StringEq` and `StringEqCI` merged into `Token { bytes, range }`.
   - `Valid` and `GrammarFrom` merged into
     `Rejected { node, range, requirement }`. It records the rejected byte
     range instead of its text; slice your input to recover it. A failed
     conversion has the requirement `"be convertible"` and no longer
     carries the conversion error's message.
-  - `Display` changed to match: `"->"`, `NonZero at 0..3 must be
-    non-zero`, `SmallNumber at 0..3 must be convertible`.
+  - `Display` changed to match: `"->"` (or `"->" at 0..1` once partly
+    matched), `NonZero at 0..3 must be non-zero`, `SmallNumber at 0..3
+    must be convertible`.
   - It's `#[non_exhaustive]`, and gains `NotFollowedBy(range)` and `End`.
 - `Error`'s fields are private: read them with `pos()` and `traces()`. Its
   `Display` no longer ends with a newline.

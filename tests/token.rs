@@ -13,8 +13,11 @@ fn rule<G: Parse>() -> String {
 struct Accent(StringEqCI!("é"));
 
 #[cfg(feature = "trace_one_node")]
-fn token(text: &'static str) -> Expectation {
-    Expectation::Token(text.as_bytes())
+fn token(text: &'static str, range: std::ops::Range<usize>) -> Expectation {
+    Expectation::Token {
+        bytes: text.as_bytes(),
+        range,
+    }
 }
 
 #[test]
@@ -54,26 +57,31 @@ fn char_decodes_one_character_of_any_width() {
 
 #[cfg(feature = "trace_one_node")]
 #[test]
-fn literal_errors_report_the_whole_literal_at_its_start() {
+fn literal_errors_report_the_whole_literal_where_it_diverged() {
     #[derive(Grammar, Debug)]
     struct Arrow(StringEq!("->"));
     let err = Arrow::parse("-x").unwrap_err();
-    assert_eq!(err.pos(), 0);
-    assert_eq!(err.traces()[0].expectation, token("->"));
+    assert_eq!(err.pos(), 1);
+    assert_eq!(err.traces()[0].expectation, token("->", 0..1));
 
-    // Even a mismatch inside a multi-byte char.
+    // A mismatch inside a multi-byte char backs out to the char's start.
     #[derive(Grammar, Debug)]
     struct E(StringEq!("aé"));
     let err = E::parse("aè").unwrap_err();
-    assert_eq!(err.pos(), 0);
-    assert_eq!(err.traces()[0].expectation, token("aé"));
+    assert_eq!(err.pos(), 1);
+    assert_eq!(err.traces()[0].expectation, token("aé", 0..1));
+
+    // The range is the input matched, even where a case variant is longer.
+    let err = Strasse::parse("STRASSX").unwrap_err();
+    assert_eq!(err.pos(), 6);
+    assert_eq!(err.traces()[0].expectation, token("straße", 0..6));
 
     // The case variants of one char give one expectation, not one each.
     #[derive(Grammar, Debug)]
     struct Kw(StringEqCI!("if"));
     let err = Kw::parse("x").unwrap_err();
     assert_eq!(err.traces().len(), 1);
-    assert_eq!(err.traces()[0].expectation, token("if"));
+    assert_eq!(err.traces()[0].expectation, token("if", 0..0));
 }
 
 #[test]

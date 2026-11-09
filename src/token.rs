@@ -3,6 +3,7 @@
 
 use either::Either;
 use std::fmt;
+use std::ops::Range;
 
 #[cfg(feature = "trace_one_node")]
 use crate::Expectation;
@@ -98,22 +99,50 @@ pub trait Literal: Grammar {
     const BUF_REF: &'static LiteralBuf = &Self::BUF;
     /// The literal's bytes.
     const BYTES: &'static [u8] = Self::BUF_REF.as_slice();
+    /// The most bytes any of its case variants matches.
+    const LONGEST: usize;
+
+    /// Where a match from `pos` ends, or else where it diverged.
+    fn reach(input: &[u8], pos: usize) -> Result<usize, usize>;
 }
 
 impl<const B: u8> Literal for ByteEq<B> {
     const CASE_INSENSITIVE: bool = false;
     const BUF: LiteralBuf = LiteralBuf::one(B);
+    const LONGEST: usize = 1;
+
+    fn reach(input: &[u8], pos: usize) -> Result<usize, usize> {
+        if input.get(pos) == Some(&B) {
+            Ok(pos + 1)
+        } else {
+            Err(pos)
+        }
+    }
 }
 
 impl<A: Literal, B: Literal> Literal for (A, B) {
     const CASE_INSENSITIVE: bool = A::CASE_INSENSITIVE || B::CASE_INSENSITIVE;
     const BUF: LiteralBuf = A::BUF.concat(B::BUF);
+    const LONGEST: usize = A::LONGEST + B::LONGEST;
+
+    fn reach(input: &[u8], pos: usize) -> Result<usize, usize> {
+        B::reach(input, A::reach(input, pos)?)
+    }
 }
 
 /// The left side is the literal: `StringEqCI!` puts each char first.
 impl<A: Literal, B: Literal> Literal for Either<A, B> {
     const CASE_INSENSITIVE: bool = true;
     const BUF: LiteralBuf = A::BUF;
+    const LONGEST: usize = if A::LONGEST > B::LONGEST {
+        A::LONGEST
+    } else {
+        B::LONGEST
+    };
+
+    fn reach(input: &[u8], pos: usize) -> Result<usize, usize> {
+        A::reach(input, pos).or_else(|a| B::reach(input, pos).map_err(|b| a.max(b)))
+    }
 }
 
 /// A `StringEq!` / `StringEqCI!` literal; keeps the matched `G`.
@@ -131,25 +160,16 @@ unsafe impl<G: Literal> Parse for Token<G> {
         pos: usize,
         mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        match G::parse_at::<M>(input, pos, state.reborrow()) {
-            Some((matched, end)) => Some((M::map(matched, Token), end)),
-            None => {
-                Self::fail_at(pos, state);
-                None
-            }
+        let result = G::parse_at::<M>(input, pos, state.reborrow());
+        #[cfg(feature = "trace_pos")]
+        if result.is_none() {
+            Self::expected(pos..diverged::<G>(input, pos), state);
         }
+        result.map(|(matched, end)| (M::map(matched, Token), end))
     }
 
-    fn fail_at(
-        #[allow(unused_variables)] pos: usize,
-        #[allow(unused_variables, unused_mut)] mut state: State,
-    ) -> bool {
-        #[cfg(feature = "trace_pos")]
-        state.expect(
-            pos,
-            #[cfg(feature = "trace_one_node")]
-            Expectation::Token(Self::BYTES),
-        );
+    fn fail_at(pos: usize, state: State) -> bool {
+        Self::expected(pos..pos, state);
         true
     }
 
@@ -175,6 +195,38 @@ impl<G: Literal> Token<G> {
     fn text() -> String {
         String::from_utf8_lossy(Self::BYTES).into_owned()
     }
+
+    /// Record the literal as expected where it diverged, having matched
+    /// `range`, like a rejected validation.
+    fn expected(
+        #[allow(unused_variables)] range: Range<usize>,
+        #[allow(unused_variables, unused_mut)] mut state: State,
+    ) {
+        #[cfg(feature = "trace_pos")]
+        state.expect(
+            range.end,
+            #[cfg(feature = "trace_one_node")]
+            Expectation::Token {
+                bytes: Self::BYTES,
+                range,
+            },
+        );
+    }
+}
+
+/// Where literal `G` diverged from `input` at `pos`, backed out of any char
+/// it matched only part of.
+#[cfg(feature = "trace_pos")]
+fn diverged<G: Literal>(input: &[u8], pos: usize) -> usize {
+    // One byte long, it can only diverge at once: skip the rescan.
+    if G::LONGEST == 1 {
+        return pos;
+    }
+    let (Ok(mut end) | Err(mut end)) = G::reach(input, pos);
+    while input.get(end).is_some_and(|&byte| byte & 0xC0 == 0x80) {
+        end -= 1;
+    }
+    end
 }
 
 impl<G: Literal> Default for Token<G> {

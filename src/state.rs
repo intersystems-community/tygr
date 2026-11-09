@@ -248,8 +248,14 @@ impl History {
 #[derive(Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Expectation {
-    /// This literal (`StringEq!` / `StringEqCI!`) didn't match.
-    Token(&'static [u8]),
+    /// A literal (`StringEq!` / `StringEqCI!`) matched `range`, then
+    /// diverged: it's recorded at the range's end.
+    Token {
+        /// The literal's bytes.
+        bytes: &'static [u8],
+        /// What it matched; empty if it diverged at once.
+        range: Range<usize>,
+    },
     /// No character satisfying this [`CharClass`](crate::CharClass) was found.
     CharClass(&'static str),
     /// A rule matched `range` but rejected the result: a
@@ -274,8 +280,12 @@ pub enum Expectation {
 impl fmt::Display for Expectation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expectation::Token(t) => {
-                write!(f, "\"{}\"", escape(&String::from_utf8_lossy(t), '"'))
+            Expectation::Token { bytes, range } => {
+                write!(f, "\"{}\"", escape(&String::from_utf8_lossy(bytes), '"'))?;
+                if !range.is_empty() {
+                    write!(f, " at {range:?}")?;
+                }
+                Ok(())
             }
             Expectation::CharClass(c) => write!(f, "Char of {c}"),
             Expectation::Rejected {

@@ -20,7 +20,8 @@ fn errors_stop_where_parsing_did() {
     assert_eq!(Lit::parse("bar").unwrap_err().pos(), 0);
     assert_eq!(Lit::parse("foox").unwrap_err().pos(), 3);
     assert_eq!(Lit::check("foox").unwrap_err().pos(), 3);
-    assert_eq!(Pair::parse("foo,fob").unwrap_err().pos(), 4);
+    // The second literal diverges after "fo".
+    assert_eq!(Pair::parse("foo,fob").unwrap_err().pos(), 6);
     assert_eq!(Div::parse("//").unwrap_err().pos(), 1);
     assert_eq!(Key::parse("k").unwrap_err().pos(), 1);
 }
