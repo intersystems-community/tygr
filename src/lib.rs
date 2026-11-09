@@ -28,7 +28,7 @@
 //! | [`Hidden<T>`]  | parsed/printed, omitted from BNF |
 //! | [`Raw<T>`] | parsed via `T`, kept as the raw matched text |
 //! | [`Ranged<T>`] | parsed via `T`, kept alongside its `start..end` byte range |
-//! | [`PhantomData<T>`](std::marker::PhantomData) | parsed via `T`, kept and printed as nothing (e.g. whitespace) |
+//! | [`PhantomData<T>`](std::marker::PhantomData) | parsed via `T`, kept as nothing, printed as `T::default()` (e.g. whitespace) |
 //! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | concatenation shorthands, [`Deref`](std::ops::Deref)-ing to `T` |
 //! | [`VecSep<T, S>`] | one-or-more repetition with separators (`T { S T }`) |
 //!

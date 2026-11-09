@@ -100,7 +100,7 @@ impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J);
 impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K);
 
 /// Sequence of three grammars, [`Deref`]-ing to the middle one.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Grammar)]
 #[tygr(inline)]
 pub struct Wrap<L, T, R> {
     /// The leading element.
@@ -148,7 +148,7 @@ impl<L, T, R> IntoInner<T> for Wrap<L, T, R> {
 }
 
 /// Sequence of two grammars, [`Deref`]-ing to the second.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Grammar)]
 #[tygr(inline)]
 pub struct Prefix<P, T> {
     /// The leading element.
@@ -190,7 +190,7 @@ impl<P, T> IntoInner<T> for Prefix<P, T> {
 }
 
 /// Sequence of two grammars, [`Deref`]-ing to the first.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Grammar)]
 #[tygr(inline)]
 pub struct Suffix<T, S> {
     /// The suffixed value.

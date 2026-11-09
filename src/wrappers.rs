@@ -31,7 +31,7 @@ pub trait IntoInner<T> {
 /// #[tygr(hidden)]
 /// struct Ws(StringOf<IsSpace>);
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Grammar)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Grammar)]
 #[tygr(hidden)]
 pub struct Hidden<T>(pub T);
 
@@ -107,6 +107,14 @@ unsafe impl<T: Parse> Parse for Raw<T> {
 impl<T> Print for Raw<T> {
     fn print_to(&self, buf: &mut Vec<u8>) {
         buf.extend_from_slice(self.0.as_bytes());
+    }
+}
+
+/// The text `T::default()` prints, so a [`StringOf`](crate::StringOf)
+/// defaults to empty.
+impl<T: Default + Print> Default for Raw<T> {
+    fn default() -> Self {
+        Raw::from(T::default().print())
     }
 }
 
@@ -299,8 +307,8 @@ impl<T: Print> Print for Box<T> {
     }
 }
 
-/// Matches `T` and discards it; prints nothing, so it suits text that may
-/// be empty, such as whitespace. Keep a required token instead.
+/// Matches `T` and discards it; prints `T::default()`, e.g. nothing for
+/// whitespace.
 // SAFETY: ends where `T` ends.
 unsafe impl<T: Parse> Parse for PhantomData<T> {
     type First = T::First;
@@ -328,8 +336,10 @@ unsafe impl<T: Parse> Parse for PhantomData<T> {
     }
 }
 
-impl<T> Print for PhantomData<T> {
-    fn print_to(&self, _buf: &mut Vec<u8>) {}
+impl<T: Default + Print> Print for PhantomData<T> {
+    fn print_to(&self, buf: &mut Vec<u8>) {
+        T::default().print_to(buf);
+    }
 }
 
 /// The text of `input[pos..end]`.

@@ -50,6 +50,10 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
   use a `#[tygr(validated)]` type wrapping `char`.
 - `StringOf<C>` and `StringOf1<C>` are type aliases for `Raw<Vec<C>>` and
   `Raw<Vec1<C>>`, so they `Debug`-print as `Raw(..)`.
+- `PhantomData<T>` prints `T::default()` rather than nothing, so a dropped
+  token prints back; printing it needs `T: Default`. `Raw<T>` defaults to
+  the text `T::default()` prints (empty for `StringOf`), and `Hidden`,
+  `Wrap`, `Prefix` and `Suffix` derive `Default`.
 - Renamed `Range<T>` to `Ranged<T>`, freeing the name for
   `std::ops::Range`. It gains `range() -> Range<usize>`.
 - `StringEqCI!` matches each char's Unicode case mappings rather than only

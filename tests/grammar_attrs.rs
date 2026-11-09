@@ -1,5 +1,6 @@
 //! `#[tygr(...)]` options on types and fields, and the BNF they give.
 
+use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use tygr::*;
@@ -407,6 +408,23 @@ fn any_conversion_on_a_unit_variant_matches_and_drops_its_source() {
         assert_eq!(unit.print(), text);
     }
     assert_eq!(rule::<Unit>(), r#"Unit = "a" | "b" | "c" | "d" ."#);
+}
+
+char_class!(IsSpace, "space", |ch| ch == ' ');
+
+/// Drops a required comma and optional spaces.
+#[derive(Grammar)]
+struct Pair(
+    Digits,
+    PhantomData<StringEq!(",")>,
+    PhantomData<StringOf<IsSpace>>,
+    Digits,
+);
+
+#[test]
+fn phantom_data_prints_its_grammars_default() {
+    assert_eq!(Pair::parse("1,  2").unwrap().print(), "1,2");
+    assert_eq!(<Raw<StringEq!(",")>>::default().as_str(), ",");
 }
 
 #[derive(Grammar)]
