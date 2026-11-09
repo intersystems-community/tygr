@@ -151,10 +151,7 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
         quote! { __Mode }
     };
     let name = &model.name;
-    let steps = variant
-        .fields
-        .iter()
-        .map(|field| parse_field(field, &mode, name));
+    let steps = variant.fields.iter().map(|field| parse_field(field, &mode));
     let constructor = &variant.constructor;
     if model.validated {
         return quote! {
@@ -162,7 +159,7 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
             #(#steps)*
             let value = #constructor;
             if !::tygr::Validate::validate(&value) {
-                state.reject(#name, start..pos, <Self as ::tygr::Validate>::REQUIREMENT);
+                state.reject(::core::option::Option::Some(#name), start..pos, <Self as ::tygr::Validate>::REQUIREMENT);
                 return None;
             }
             Some((<__Mode as ::tygr::Mode>::build(|_| value), pos))
@@ -183,9 +180,8 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
     }
 }
 
-/// Parse `field` in `mode`, binding it; a dropped one is only matched. A
-/// failed conversion is rule `name`'s rejection.
-fn parse_field(field: &Field, mode: &TokenStream, name: &str) -> TokenStream {
+/// Parse `field` in `mode`, binding it; a dropped one is only matched.
+fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
     match field {
         Field::Kept {
             binding,
@@ -202,9 +198,9 @@ fn parse_field(field: &Field, mode: &TokenStream, name: &str) -> TokenStream {
             ..
         } => {
             let helper = kind.helper();
-            let node = field.fallible().then_some(name);
+            let requirement = field.requirement();
             quote! {
-                let (#binding, pos) = ::tygr::__private::#helper::<#source, #ty, #mode>(input, pos, state.reborrow(), #node)?;
+                let (#binding, pos) = ::tygr::__private::#helper::<#source, #ty, #mode>(input, pos, state.reborrow(), #requirement)?;
             }
         }
         Field::Dropped(source) => quote! {
@@ -226,10 +222,9 @@ fn sequence(variant: &Variant) -> TokenStream {
     let bnfs = variant.fields.iter().map(|field| {
         let source = field.source();
         let bnf = quote! { <#source as ::tygr::Parse>::to_bnf() };
-        if field.fallible() {
-            quote! { ::tygr::bnf::Expr::side_condition(#bnf, ::tygr::__private::CONVERTIBLE) }
-        } else {
-            bnf
+        match field.requirement() {
+            Some(requirement) => quote! { ::tygr::bnf::Expr::side_condition(#bnf, #requirement) },
+            None => bnf,
         }
     });
     quote! { ::tygr::bnf::Expr::sequence(vec![#(#bnfs),*]) }

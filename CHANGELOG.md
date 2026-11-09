@@ -67,11 +67,11 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
   - `Valid` and `GrammarFrom` merged into
     `Rejected { node, range, requirement }`. It records the rejected byte
     range instead of its text; slice your input to recover it. A failed
-    conversion has the requirement `"be convertible"` and no longer
-    carries the conversion error's message.
+    conversion has no `node`, and the requirement `"be convertible to T"`
+    for a field of type `T` rather than the conversion error's message.
   - `Display` changed to match: `"->"` (or `"->" at 0..1` once partly
-    matched), `NonZero at 0..3 must be non-zero`, `SmallNumber at 0..3
-    must be convertible`.
+    matched), `NonZero at 0..3 must be non-zero`, `Text at 0..3 must be
+    convertible to u8`.
   - It's `#[non_exhaustive]`, and gains `NotFollowedBy(range)` and `End`.
 - `Error`'s fields are private: read them with `pos()` and `traces()`. Its
   `Display` no longer ends with a newline.

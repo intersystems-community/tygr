@@ -8,20 +8,17 @@ use std::convert::Infallible;
 use std::ops::Range;
 use std::str::FromStr;
 
-/// What a fallible conversion requires, in errors and BNF.
-pub const CONVERTIBLE: &str = "be convertible";
-
 /// `try_from = S`: parse `S`, then convert it, even when checking, as the
-/// conversion can fail. A failure is `node`'s rejection.
+/// conversion can fail. A failure rejects the text, which must `requirement`.
 #[inline(always)]
 pub fn try_from<S: Parse + TryInto<T>, T, M: Mode>(
     input: &[u8],
     pos: usize,
     mut state: State,
-    node: &'static str,
+    requirement: &'static str,
 ) -> Option<(M::Output<T>, usize)> {
     let (source, end) = S::parse_at::<Build>(input, pos, state.reborrow())?;
-    let value = converted(source.try_into(), pos..end, state, node)?;
+    let value = converted(source.try_into(), pos..end, state, requirement)?;
     Some((M::build(|_| value), end))
 }
 
@@ -43,16 +40,22 @@ pub fn try_from_infallible<S: Parse + TryInto<T, Error = Infallible>, T, M: Mode
 }
 
 /// `from_str = S`: check `S`, then convert its text, even when checking, as
-/// the conversion can fail. A failure is `node`'s rejection.
+/// the conversion can fail. A failure rejects the text, which must
+/// `requirement`.
 #[inline(always)]
 pub fn from_str<S: Parse, T: FromStr, M: Mode>(
     input: &[u8],
     pos: usize,
     mut state: State,
-    node: &'static str,
+    requirement: &'static str,
 ) -> Option<(M::Output<T>, usize)> {
     let ((), end) = S::parse_at::<Check>(input, pos, state.reborrow())?;
-    let value = converted(T::from_str(text(input, pos, end)), pos..end, state, node)?;
+    let value = converted(
+        T::from_str(text(input, pos, end)),
+        pos..end,
+        state,
+        requirement,
+    )?;
     Some((M::build(|_| value), end))
 }
 
@@ -73,17 +76,17 @@ pub fn from_str_infallible<S: Parse, T: FromStr<Err = Infallible>, M: Mode>(
     ))
 }
 
-/// The converted value, or `None` once `node`'s rejection of `range` is
-/// recorded.
+/// The converted value, or `None` once the text at `range` is recorded as
+/// rejected.
 #[inline(always)]
 fn converted<T, E>(
     result: Result<T, E>,
     range: Range<usize>,
     mut state: State,
-    node: &'static str,
+    requirement: &'static str,
 ) -> Option<T> {
     if result.is_err() {
-        state.reject(node, range, CONVERTIBLE);
+        state.reject(None, range, requirement);
     }
     result.ok()
 }

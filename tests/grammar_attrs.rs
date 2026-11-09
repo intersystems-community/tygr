@@ -280,7 +280,7 @@ fn field_conversions() {
     assert_eq!(Converted::parse("42,07;51").unwrap().print(), "42,07;51");
     assert_eq!(
         rule::<Converted>(),
-        "Converted = \"null\" | ( ( 'digit' { 'digit' } ) ^1 ) \",\" 'digit' { 'digit' } \";\" Digit ( Digit ^1 ) .\n\n^1: be convertible"
+        "Converted = \"null\" | ( ( 'digit' { 'digit' } ) ^1 ) \",\" 'digit' { 'digit' } \";\" Digit ( Digit ^2 ) .\n\n^1: be convertible to u32\n^2: be convertible to bool"
     );
     for bad in ["42,07;52", "99999999999,07;51", "nul"] {
         assert!(Converted::parse(bad).is_err() && Converted::check(bad).is_err());
@@ -302,10 +302,36 @@ impl Validate for EvenNumber {
 fn validated_fallible_conversion_bnf_shows_both_side_conditions() {
     assert_eq!(
         rule::<EvenNumber>(),
-        "EvenNumber = ( ( 'digit' { 'digit' } ) ^1 ) ^2 .\n\n^1: be convertible\n^2: be even"
+        "EvenNumber = ( ( 'digit' { 'digit' } ) ^1 ) ^2 .\n\n^1: be convertible to u32\n^2: be even"
     );
     assert!(EvenNumber::parse("4").is_ok());
     assert!(EvenNumber::parse("3").is_err());
+}
+
+#[derive(Debug)]
+struct Small<T>(T);
+
+impl TryFrom<Digits> for Small<u8> {
+    type Error = std::num::ParseIntError;
+    fn try_from(digits: Digits) -> Result<Self, Self::Error> {
+        digits.0.parse().map(Small)
+    }
+}
+
+#[derive(Parse)]
+struct Converts(
+    #[tygr(try_from = Digits)] Small<u8>,
+    StringEq!(","),
+    #[tygr(from_str = Digits)] std::num::NonZeroU8,
+);
+
+#[test]
+fn a_conversion_requires_its_field_type_as_written() {
+    assert_eq!(
+        rule::<Converts>(),
+        "Converts = ( Digits ^1 ) \",\" ( Digits ^2 ) .\n\n^1: be convertible to Small<u8>\n^2: be convertible to std::num::NonZeroU8"
+    );
+    assert!(Converts::parse("7,300").is_err());
 }
 
 #[derive(Debug, Parse)]

@@ -158,9 +158,7 @@ pub use wrappers::{Hidden, IntoInner, Ranged, Raw};
 #[doc(hidden)]
 pub mod __private {
     pub use crate::bnf::{inline_bnf, visit_inline};
-    pub use crate::convert::{
-        CONVERTIBLE, from_str, from_str_infallible, try_from, try_from_infallible,
-    };
+    pub use crate::convert::{from_str, from_str_infallible, try_from, try_from_infallible};
     pub use crate::token::{
         ByteEq, Literal, NonAsciiStart, Token, class_fail_at, class_parse_at, class_print_to,
         class_to_bnf,

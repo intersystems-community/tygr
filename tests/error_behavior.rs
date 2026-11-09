@@ -107,9 +107,9 @@ fn conversion_records_from_str_error() {
             Trace {
                 context: vec![frame("SmallNumber", 0)],
                 expectation: Expectation::Rejected {
-                    node: "SmallNumber",
+                    node: None,
                     range: 0..3,
-                    requirement: "be convertible",
+                    requirement: "be convertible to u8",
                 },
             },
         ],
@@ -121,7 +121,7 @@ fn conversion_records_from_str_error() {
 fn conversion_bnf_shows_the_side_condition() {
     assert_eq!(
         rule::<SmallNumber>(),
-        "SmallNumber = ( 'digit' { 'digit' } ) ^1 .\n\n^1: be convertible"
+        "SmallNumber = ( 'digit' { 'digit' } ) ^1 .\n\n^1: be convertible to u8"
     );
 }
 
@@ -149,7 +149,7 @@ fn validated_records_requirement() {
             Trace {
                 context: vec![frame("NonZero", 0)],
                 expectation: Expectation::Rejected {
-                    node: "NonZero",
+                    node: Some("NonZero"),
                     range: 0..3,
                     requirement: "be non-zero",
                 },
@@ -189,7 +189,7 @@ fn display_shows_each_expectation_kind() {
         ),
         (
             SmallNumber::parse("999").unwrap_err(),
-            "parse error at byte 3, expected:\n\t- Char of digit\n\t- SmallNumber at 0..3 must be convertible",
+            "parse error at byte 3, expected:\n\t- Char of digit\n\t- Text at 0..3 must be convertible to u8",
         ),
         (
             NonZero::parse("007").unwrap_err(),

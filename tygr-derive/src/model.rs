@@ -253,19 +253,40 @@ impl Field {
         }
     }
 
-    /// Can its conversion fail?
-    pub(crate) fn fallible(&self) -> bool {
-        matches!(
-            self,
+    /// What its text must do if its conversion can fail, in errors and BNF:
+    /// be convertible to its type.
+    pub(crate) fn requirement(&self) -> Option<String> {
+        match self {
             Field::Kept {
-                conversion: Some(Conversion {
-                    kind: Kind::TryFrom | Kind::FromStr,
-                    ..
-                }),
+                ty,
+                conversion:
+                    Some(Conversion {
+                        kind: Kind::TryFrom | Kind::FromStr,
+                        ..
+                    }),
                 ..
-            }
-        )
+            } => Some(format!("be convertible to {}", written(ty))),
+            _ => None,
+        }
     }
+}
+
+/// `ty` as written: `Small<u8>`, not the `Small < u8 >` its tokens print as.
+fn written(ty: &Type) -> String {
+    let spaced: Vec<char> = quote! { #ty }.to_string().chars().collect();
+    let word = |ch: Option<&char>| ch.is_some_and(|&ch| ch.is_alphanumeric() || "_'".contains(ch));
+    let mut written = String::new();
+    for (i, &ch) in spaced.iter().enumerate() {
+        // Keep a space between words (`dyn Fn`) and after `,` or `;`.
+        let before = i.checked_sub(1).and_then(|i| spaced.get(i));
+        if ch != ' '
+            || (word(before) && word(spaced.get(i + 1)))
+            || before.is_some_and(|ch| ",;".contains(*ch))
+        {
+            written.push(ch);
+        }
+    }
+    written
 }
 
 impl Kind {

@@ -99,12 +99,12 @@ impl<'a> State<'a> {
         );
     }
 
-    /// Record that rule `node` matched `range` but rejected the result,
-    /// which must `requirement`.
+    /// Record that the text at `range` was rejected, as it must
+    /// `requirement`: by validated rule `node`, or by a field conversion.
     #[inline]
     pub fn reject(
         &mut self,
-        #[allow(unused_variables)] node: &'static str,
+        #[allow(unused_variables)] node: Option<&'static str>,
         #[allow(unused_variables)] range: Range<usize>,
         #[allow(unused_variables)] requirement: &'static str,
     ) {
@@ -258,16 +258,16 @@ pub enum Expectation {
     },
     /// No character satisfying this [`CharClass`](crate::CharClass) was found.
     CharClass(&'static str),
-    /// A rule matched `range` but rejected the result: a
+    /// The text at `range` matched but was rejected: a
     /// `#[tygr(validated)]` check or a field conversion failed.
     Rejected {
-        /// The rule's name.
-        node: &'static str,
-        /// The bytes it matched.
+        /// The validated rule's name; `None` for a field conversion.
+        node: Option<&'static str>,
+        /// The bytes rejected.
         range: Range<usize>,
-        /// What the result must do: a
+        /// What they must do: a
         /// [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT), or
-        /// `"be convertible"`.
+        /// `"be convertible to T"` for a field of type `T`.
         requirement: &'static str,
     },
     /// Anything but the text at this range, which a
@@ -292,7 +292,11 @@ impl fmt::Display for Expectation {
                 node,
                 range,
                 requirement,
-            } => write!(f, "{node} at {range:?} must {requirement}"),
+            } => write!(
+                f,
+                "{} at {range:?} must {requirement}",
+                node.unwrap_or("Text")
+            ),
             Expectation::NotFollowedBy(range) => write!(f, "anything but {range:?}"),
             Expectation::End => write!(f, "end of input"),
         }
