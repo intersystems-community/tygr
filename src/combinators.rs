@@ -321,9 +321,6 @@ unsafe impl<T: Parse> Parse for Vec<T> {
         mut pos: usize,
         mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        if !state.room(pos) {
-            return None;
-        }
         let mut items = M::build(|_| Vec::new());
         while let Some((item, end)) = T::parse_at::<M>(input, pos, state.reborrow())
             && end != pos
@@ -442,9 +439,6 @@ unsafe impl<T: Parse, S: Parse> Parse for VecSep<T, S> {
         pos: usize,
         mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        if !state.room(pos) {
-            return None;
-        }
         let (first, mut pos) = T::parse_at::<M>(input, pos, state.reborrow())?;
         let mut vec_sep = M::build(|_| VecSep {
             items: Vec::new(),
@@ -535,9 +529,6 @@ unsafe impl<G: Parse> Parse for NotFollowedBy<G> {
         pos: usize,
         mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        if !state.room(pos) {
-            return None;
-        }
         // Probe, so only what `G` matched is recorded, not what it expected.
         match state.probe(|state| G::parse_at::<Check>(input, pos, state)) {
             Some(((), end)) => {
@@ -581,11 +572,8 @@ unsafe impl<G: Parse> Parse for FollowedBy<G> {
     fn parse_at<M: Mode>(
         input: &[u8],
         pos: usize,
-        mut state: State,
+        state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        if !state.room(pos) {
-            return None;
-        }
         G::parse_at::<Check>(input, pos, state)?;
         Some((M::build(|_| FollowedBy(PhantomData)), pos))
     }

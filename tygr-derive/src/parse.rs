@@ -208,7 +208,7 @@ fn parse_field(field: &Field, mode: &TokenStream, name: &str) -> TokenStream {
             }
         }
         Field::Dropped(source) => quote! {
-            let ((), pos) = ::tygr::__private::dropped::<#source>(input, pos, state.reborrow())?;
+            let ((), pos) = <#source as ::tygr::Parse>::parse_at::<::tygr::Check>(input, pos, state.reborrow())?;
         },
     }
 }

@@ -7,28 +7,13 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Range;
 
-/// The stack a parse can use: input nested deeper than that fails to
-/// parse, as [`Expectation::TooDeep`], rather than overflow the stack. How
-/// deep that is depends on the grammar and the build.
-///
-/// Every recursive grammar goes through a [`Box`], a [`Vec`], a
-/// [`VecSep`](crate::VecSep), a `PhantomData`, a [`Raw`](crate::Raw), a
-/// lookahead or a field conversion, as a type can't hold itself; each of
-/// these checks the stack. A hand-written grammar that recurses some other
-/// way should go through one too.
-pub const MAX_STACK: usize = 1 << 20;
-
-/// Parse state threaded through `parse_at`.
+/// Parse state threaded through `parse_at`; a ZST when nothing is traced.
 #[doc(hidden)]
 pub struct State<'a> {
     #[cfg(feature = "trace_pos")]
     history: &'a mut History,
     #[cfg(feature = "trace_one_node")]
     context: Context<'a>,
-    /// The lowest stack address parsing can go on at; kept in `history`
-    /// when tracing, so the state doesn't grow.
-    #[cfg(not(feature = "trace_pos"))]
-    floor: usize,
     _marker: PhantomData<&'a ()>,
 }
 
@@ -36,15 +21,12 @@ impl<'a> State<'a> {
     fn new(
         #[cfg(feature = "trace_pos")] history: &'a mut History,
         #[cfg(feature = "trace_one_node")] context: Context<'a>,
-        #[cfg(not(feature = "trace_pos"))] floor: usize,
     ) -> Self {
         Self {
             #[cfg(feature = "trace_pos")]
             history,
             #[cfg(feature = "trace_one_node")]
             context,
-            #[cfg(not(feature = "trace_pos"))]
-            floor,
             _marker: PhantomData,
         }
     }
@@ -56,8 +38,6 @@ impl<'a> State<'a> {
             history: &mut *self.history,
             #[cfg(feature = "trace_one_node")]
             context: self.context,
-            #[cfg(not(feature = "trace_pos"))]
-            floor: self.floor,
             _marker: PhantomData,
         }
     }
@@ -73,47 +53,8 @@ impl<'a> State<'a> {
             history: &mut *self.history,
             #[cfg(feature = "trace_one_node")]
             context: self.context.node(node, pos),
-            #[cfg(not(feature = "trace_pos"))]
-            floor: self.floor,
             _marker: PhantomData,
         }
-    }
-
-    /// Whether there's stack left to go deeper at `pos`; if not, records
-    /// that it's too deep. See [`MAX_STACK`].
-    #[inline(always)]
-    pub(crate) fn room(&mut self, pos: usize) -> bool {
-        let room = stack_address() >= self.floor();
-        if !room {
-            // By value, so the hot path never takes `self`'s address.
-            Self::too_deep(self.reborrow(), pos);
-        }
-        room
-    }
-
-    /// The lowest stack address parsing can go on at.
-    #[inline(always)]
-    fn floor(&self) -> usize {
-        #[cfg(feature = "trace_pos")]
-        return self.history.floor;
-        #[cfg(not(feature = "trace_pos"))]
-        return self.floor;
-    }
-
-    /// Record that going deeper at `pos` would use too much stack; out of
-    /// line when it records, so its callers stay small.
-    #[cold]
-    #[cfg_attr(feature = "trace_pos", inline(never))]
-    fn too_deep(
-        #[allow(unused_variables, unused_mut)] mut state: State<'_>,
-        #[allow(unused_variables)] pos: usize,
-    ) {
-        #[cfg(feature = "trace_pos")]
-        state.expect(
-            pos,
-            #[cfg(feature = "trace_one_node")]
-            Expectation::TooDeep,
-        );
     }
 
     /// Whether `pos` is the end of `input`; if not, records that it was
@@ -183,68 +124,25 @@ impl<'a> State<'a> {
     pub(crate) fn probe<R>(&mut self, f: impl FnOnce(State<'_>) -> R) -> R {
         // Already past every position, so it ignores all records.
         #[cfg(feature = "trace_pos")]
-        let mut ignored = History::new(self.floor());
-        #[cfg(feature = "trace_pos")]
-        {
-            ignored.pos = usize::MAX;
-        }
+        let mut ignored = History::new(usize::MAX);
         f(State::new(
             #[cfg(feature = "trace_pos")]
             &mut ignored,
             #[cfg(feature = "trace_one_node")]
             self.context,
-            #[cfg(not(feature = "trace_pos"))]
-            self.floor,
         ))
-    }
-}
-
-/// About where the stack is now; it grows down.
-#[inline(always)]
-fn stack_address() -> usize {
-    // `pure`: fixed within a frame, so the reads in one frame can merge.
-    #[cfg(all(not(miri), target_arch = "aarch64"))]
-    {
-        let sp: usize;
-        // SAFETY: only reads the stack pointer.
-        unsafe {
-            std::arch::asm!("mov {}, sp", out(reg) sp, options(pure, nomem, nostack, preserves_flags));
-        }
-        sp
-    }
-    #[cfg(all(not(miri), target_arch = "x86_64"))]
-    {
-        let sp: usize;
-        // SAFETY: only reads the stack pointer.
-        unsafe {
-            std::arch::asm!("mov {}, rsp", out(reg) sp, options(pure, nomem, nostack, preserves_flags));
-        }
-        sp
-    }
-    #[cfg(any(miri, not(any(target_arch = "aarch64", target_arch = "x86_64"))))]
-    {
-        let here = 0u8;
-        (&raw const here).addr()
     }
 }
 
 /// Run a parse from a fresh state, turning `None` into the traced `Error`.
 pub(crate) fn run<R>(parse: impl FnOnce(State<'_>) -> Option<R>) -> Result<R, Error> {
-    // Miri's addresses aren't a stack's.
-    let floor = if cfg!(miri) {
-        0
-    } else {
-        stack_address().saturating_sub(MAX_STACK)
-    };
     #[cfg(feature = "trace_pos")]
-    let mut history = History::new(floor);
+    let mut history = History::new(0);
     let result = parse(State::new(
         #[cfg(feature = "trace_pos")]
         &mut history,
         #[cfg(feature = "trace_one_node")]
         Context::default(),
-        #[cfg(not(feature = "trace_pos"))]
-        floor,
     ));
     match result {
         Some(value) => Ok(value),
@@ -262,8 +160,6 @@ struct History {
     #[cfg(feature = "trace_one_node")]
     traces: Vec<Pending>,
     pos: usize,
-    /// The lowest stack address parsing can go on at.
-    floor: usize,
 }
 
 /// A recorded trace, with its context kept cheap until the parse fails.
@@ -282,12 +178,12 @@ type Frames = Vec<Frame>;
 
 #[cfg(feature = "trace_pos")]
 impl History {
-    fn new(floor: usize) -> Self {
+    /// Nothing recorded yet, and records before `pos` are ignored.
+    fn new(pos: usize) -> Self {
         History {
             #[cfg(feature = "trace_one_node")]
             traces: Vec::new(),
-            pos: 0,
-            floor,
+            pos,
         }
     }
 
@@ -373,8 +269,6 @@ pub enum Expectation {
     NotFollowedBy(Range<usize>),
     /// The end of input: the grammar matched only part of it.
     End,
-    /// Shallower nesting: going deeper would use more than [`MAX_STACK`].
-    TooDeep,
 }
 
 impl fmt::Display for Expectation {
@@ -391,7 +285,6 @@ impl fmt::Display for Expectation {
             } => write!(f, "{node} at {range:?} must {requirement}"),
             Expectation::NotFollowedBy(range) => write!(f, "anything but {range:?}"),
             Expectation::End => write!(f, "end of input"),
-            Expectation::TooDeep => write!(f, "shallower nesting"),
         }
     }
 }
@@ -510,15 +403,9 @@ impl fmt::Display for Error {
                          context,
                          expectation,
                      }| {
-                        // A rule that starts here stands for what it expected,
-                        // unless it was nested too deeply to enter.
+                        // A rule that starts here stands for what it expected.
                         match context.last() {
-                            Some(frame)
-                                if frame.pos == self.pos
-                                    && *expectation != Expectation::TooDeep =>
-                            {
-                                frame.node.to_string()
-                            }
+                            Some(frame) if frame.pos == self.pos => frame.node.to_string(),
                             _ => format!("{expectation}"),
                         }
                     },

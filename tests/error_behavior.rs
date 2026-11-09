@@ -452,17 +452,3 @@ fn positive_lookahead_records_what_it_expected() {
         1,
     );
 }
-
-#[derive(Grammar, Debug, PartialEq, Eq)]
-struct Nest(StringEq!("("), Option<Box<Nest>>, StringEq!(")"));
-
-#[test]
-fn deep_nesting_records_too_deep() {
-    let err = Nest::parse(&"(".repeat(1_000_000)).unwrap_err();
-    assert!(
-        err.traces()
-            .iter()
-            .any(|trace| trace.expectation == Expectation::TooDeep)
-    );
-    assert!(err.to_string().contains("\t- shallower nesting"));
-}

@@ -67,8 +67,7 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
     carries the conversion error's message.
   - `Display` changed to match: `"->"`, `NonZero at 0..3 must be
     non-zero`, `SmallNumber at 0..3 must be convertible`.
-  - It's `#[non_exhaustive]`, and gains `NotFollowedBy(range)`, `End` and
-    `TooDeep`.
+  - It's `#[non_exhaustive]`, and gains `NotFollowedBy(range)` and `End`.
 - `Error`'s fields are private: read them with `pos()` and `traces()`. Its
   `Display` no longer ends with a newline.
 - `FollowedBy<G>` is its own type rather than
@@ -121,8 +120,6 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
   scope (e.g. with `use tygr::Grammar;` instead of `use tygr::*;`).
 - Failed literals, validations and conversions no longer allocate when
   recording what was expected, nor lookaheads when probing.
-- Deeply nested input fails to parse, as `Expectation::TooDeep`, once
-  parsing has used `MAX_STACK` (1 MiB) of stack, rather than overflow it.
 - Errors report input left over after a match, as `Expectation::End`,
   and a failed negative lookahead, as `NotFollowedBy`; both recorded
   nothing.

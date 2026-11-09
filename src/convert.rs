@@ -20,9 +20,6 @@ pub fn try_from<S: Parse + TryInto<T>, T, M: Mode>(
     mut state: State,
     node: &'static str,
 ) -> Option<(M::Output<T>, usize)> {
-    if !state.room(pos) {
-        return None;
-    }
     let (source, end) = S::parse_at::<Build>(input, pos, state.reborrow())?;
     let value = converted(source.try_into(), pos..end, state, node)?;
     Some((M::build(|_| value), end))
@@ -33,11 +30,8 @@ pub fn try_from<S: Parse + TryInto<T>, T, M: Mode>(
 pub fn try_from_infallible<S: Parse + TryInto<T, Error = Infallible>, T, M: Mode>(
     input: &[u8],
     pos: usize,
-    mut state: State,
+    state: State,
 ) -> Option<(M::Output<T>, usize)> {
-    if !state.room(pos) {
-        return None;
-    }
     let (source, end) = S::parse_at::<M>(input, pos, state)?;
     Some((
         M::map(source, |source| {
@@ -57,9 +51,6 @@ pub fn from_str<S: Parse, T: FromStr, M: Mode>(
     mut state: State,
     node: &'static str,
 ) -> Option<(M::Output<T>, usize)> {
-    if !state.room(pos) {
-        return None;
-    }
     let ((), end) = S::parse_at::<Check>(input, pos, state.reborrow())?;
     let value = converted(T::from_str(text(input, pos, end)), pos..end, state, node)?;
     Some((M::build(|_| value), end))
@@ -70,11 +61,8 @@ pub fn from_str<S: Parse, T: FromStr, M: Mode>(
 pub fn from_str_infallible<S: Parse, T: FromStr<Err = Infallible>, M: Mode>(
     input: &[u8],
     pos: usize,
-    mut state: State,
+    state: State,
 ) -> Option<(M::Output<T>, usize)> {
-    if !state.room(pos) {
-        return None;
-    }
     let ((), end) = S::parse_at::<Check>(input, pos, state)?;
     Some((
         M::build(|_| {
@@ -83,15 +71,6 @@ pub fn from_str_infallible<S: Parse, T: FromStr<Err = Infallible>, M: Mode>(
         }),
         end,
     ))
-}
-
-/// A unit variant's source `S`: matched, then dropped.
-#[inline(always)]
-pub fn dropped<S: Parse>(input: &[u8], pos: usize, mut state: State) -> Option<((), usize)> {
-    if !state.room(pos) {
-        return None;
-    }
-    S::parse_at::<Check>(input, pos, state)
 }
 
 /// The converted value, or `None` once `node`'s rejection of `range` is

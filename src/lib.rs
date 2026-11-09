@@ -35,8 +35,9 @@
 //! [`Parse::bnf_rules`] lists a grammar's rules, each once, to sort,
 //! [rename](bnf::Rule::rename) and print.
 //!
-//! Parsing uses at most [`MAX_STACK`] of stack, so deeply nested input
-//! fails to parse rather than overflow the stack.
+//! Parsing recurses as the grammar nests, so input nested deeply enough
+//! overflows the stack, which aborts the process. For untrusted input,
+//! limit its size first or parse it on a thread with a bigger stack.
 //!
 //! `#[tygr(...)]` on a derived type:
 //! - `name = "..."` — override the BNF rule name (defaults to the type name).
@@ -158,7 +159,7 @@ pub use wrappers::{Hidden, IntoInner, Ranged, Raw};
 pub mod __private {
     pub use crate::bnf::{inline_bnf, visit_inline};
     pub use crate::convert::{
-        CONVERTIBLE, dropped, from_str, from_str_infallible, try_from, try_from_infallible,
+        CONVERTIBLE, from_str, from_str_infallible, try_from, try_from_infallible,
     };
     pub use crate::token::{
         ByteEq, Literal, NonAsciiStart, Token, class_fail_at, class_parse_at, class_print_to,

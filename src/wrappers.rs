@@ -85,11 +85,8 @@ unsafe impl<T: Parse> Parse for Raw<T> {
     fn parse_at<M: Mode>(
         input: &[u8],
         pos: usize,
-        mut state: State,
+        state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        if !state.room(pos) {
-            return None;
-        }
         let ((), end) = T::parse_at::<Check>(input, pos, state)?;
         Some((M::build(|_| Raw::from(text(input, pos, end))), end))
     }
@@ -277,11 +274,8 @@ unsafe impl<T: Parse> Parse for Box<T> {
     fn parse_at<M: Mode>(
         input: &[u8],
         pos: usize,
-        mut state: State,
+        state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        if !state.room(pos) {
-            return None;
-        }
         let (value, end) = T::parse_at::<M>(input, pos, state)?;
         Some((M::map(value, Box::new), end))
     }
@@ -315,11 +309,8 @@ unsafe impl<T: Parse> Parse for PhantomData<T> {
     fn parse_at<M: Mode>(
         input: &[u8],
         pos: usize,
-        mut state: State,
+        state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        if !state.room(pos) {
-            return None;
-        }
         let ((), end) = T::parse_at::<Check>(input, pos, state)?;
         Some((M::build(|_| PhantomData), end))
     }
