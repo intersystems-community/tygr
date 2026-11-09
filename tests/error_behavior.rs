@@ -18,21 +18,24 @@ fn frame(node: &'static str, pos: usize) -> Frame {
     Frame { node, pos }
 }
 
+/// Check that `err` traced `traces` at `pos`.
+fn assert_error(err: Error, traces: Vec<Trace>, pos: usize) {
+    assert_eq!((err.pos(), err.traces()), (pos, &traces[..]));
+}
+
 #[derive(Grammar, Debug, PartialEq, Eq)]
 struct Lit(StringEq!("foo"));
 
 #[test]
 fn string_eq_records_literal() {
     let err = Lit::parse("bar").unwrap_err();
-    assert_eq!(
+    assert_error(
         err,
-        Error {
-            traces: vec![Trace {
-                context: vec![frame("Lit", 0)],
-                expectation: token("foo"),
-            }],
-            pos: 0,
-        }
+        vec![Trace {
+            context: vec![frame("Lit", 0)],
+            expectation: token("foo"),
+        }],
+        0,
     );
 }
 
@@ -42,15 +45,13 @@ struct LitCI(StringEqCI!("foo"));
 #[test]
 fn string_eq_ci_records_ci_literal() {
     let err = LitCI::parse("bar").unwrap_err();
-    assert_eq!(
+    assert_error(
         err,
-        Error {
-            traces: vec![Trace {
-                context: vec![frame("LitCI", 0)],
-                expectation: token("foo"),
-            }],
-            pos: 0,
-        }
+        vec![Trace {
+            context: vec![frame("LitCI", 0)],
+            expectation: token("foo"),
+        }],
+        0,
     );
 }
 
@@ -60,15 +61,13 @@ struct Arrow(StringEq!("->"));
 #[test]
 fn string_eq_partial_match_records_at_its_start() {
     let err = Arrow::parse("-x").unwrap_err();
-    assert_eq!(
+    assert_error(
         err,
-        Error {
-            traces: vec![Trace {
-                context: vec![frame("Arrow", 0)],
-                expectation: token("->"),
-            }],
-            pos: 0,
-        }
+        vec![Trace {
+            context: vec![frame("Arrow", 0)],
+            expectation: token("->"),
+        }],
+        0,
     );
 }
 
@@ -78,15 +77,13 @@ struct Digits(StringOf1<IsDigit>);
 #[test]
 fn char_class_records_class_name() {
     let err = Digits::parse("abc").unwrap_err();
-    assert_eq!(
+    assert_error(
         err,
-        Error {
-            traces: vec![Trace {
-                context: vec![frame("Digits", 0)],
-                expectation: Expectation::CharClass("digit"),
-            }],
-            pos: 0,
-        }
+        vec![Trace {
+            context: vec![frame("Digits", 0)],
+            expectation: Expectation::CharClass("digit"),
+        }],
+        0,
     );
 }
 
@@ -96,25 +93,23 @@ struct SmallNumber(#[tygr(from_str = StringOf1<IsDigit>)] u8);
 #[test]
 fn conversion_records_from_str_error() {
     let err = SmallNumber::parse("999").unwrap_err();
-    assert_eq!(
+    assert_error(
         err,
-        Error {
-            traces: vec![
-                Trace {
-                    context: vec![frame("SmallNumber", 0)],
-                    expectation: Expectation::CharClass("digit"),
+        vec![
+            Trace {
+                context: vec![frame("SmallNumber", 0)],
+                expectation: Expectation::CharClass("digit"),
+            },
+            Trace {
+                context: vec![frame("SmallNumber", 0)],
+                expectation: Expectation::Rejected {
+                    node: "SmallNumber",
+                    range: 0..3,
+                    requirement: "be convertible",
                 },
-                Trace {
-                    context: vec![frame("SmallNumber", 0)],
-                    expectation: Expectation::Rejected {
-                        node: "SmallNumber",
-                        range: 0..3,
-                        requirement: "be convertible",
-                    },
-                },
-            ],
-            pos: 3,
-        }
+            },
+        ],
+        3,
     );
 }
 
@@ -140,25 +135,23 @@ impl Validate for NonZero {
 #[test]
 fn validated_records_requirement() {
     let err = NonZero::parse("007").unwrap_err();
-    assert_eq!(
+    assert_error(
         err,
-        Error {
-            traces: vec![
-                Trace {
-                    context: vec![frame("NonZero", 0)],
-                    expectation: Expectation::CharClass("digit"),
+        vec![
+            Trace {
+                context: vec![frame("NonZero", 0)],
+                expectation: Expectation::CharClass("digit"),
+            },
+            Trace {
+                context: vec![frame("NonZero", 0)],
+                expectation: Expectation::Rejected {
+                    node: "NonZero",
+                    range: 0..3,
+                    requirement: "be non-zero",
                 },
-                Trace {
-                    context: vec![frame("NonZero", 0)],
-                    expectation: Expectation::Rejected {
-                        node: "NonZero",
-                        range: 0..3,
-                        requirement: "be non-zero",
-                    },
-                },
-            ],
-            pos: 3,
-        }
+            },
+        ],
+        3,
     );
 }
 
@@ -167,7 +160,7 @@ fn display_includes_position_context_and_expectation() {
     let err = NonZero::parse("007").unwrap_err();
     assert_eq!(
         err.to_string(),
-        "parse error at byte 3, expected:\n\t- Char of digit\n\t- NonZero at 0..3 must be non-zero\n"
+        "parse error at byte 3, expected:\n\t- Char of digit\n\t- NonZero at 0..3 must be non-zero"
     );
 }
 
@@ -176,23 +169,23 @@ fn display_shows_each_expectation_kind() {
     let cases = [
         (
             Lit::parse("bar").unwrap_err(),
-            "parse error at byte 0, expected:\n\t- Lit\n",
+            "parse error at byte 0, expected:\n\t- Lit",
         ),
         (
             LitCI::parse("bar").unwrap_err(),
-            "parse error at byte 0, expected:\n\t- LitCI\n",
+            "parse error at byte 0, expected:\n\t- LitCI",
         ),
         (
             Digits::parse("abc").unwrap_err(),
-            "parse error at byte 0, expected:\n\t- Digits\n",
+            "parse error at byte 0, expected:\n\t- Digits",
         ),
         (
             SmallNumber::parse("999").unwrap_err(),
-            "parse error at byte 3, expected:\n\t- Char of digit\n\t- SmallNumber at 0..3 must be convertible\n",
+            "parse error at byte 3, expected:\n\t- Char of digit\n\t- SmallNumber at 0..3 must be convertible",
         ),
         (
             NonZero::parse("007").unwrap_err(),
-            "parse error at byte 3, expected:\n\t- Char of digit\n\t- NonZero at 0..3 must be non-zero\n",
+            "parse error at byte 3, expected:\n\t- Char of digit\n\t- NonZero at 0..3 must be non-zero",
         ),
     ];
 
@@ -213,15 +206,13 @@ struct Wrapper(Lit);
 #[cfg(not(feature = "trace_all_nodes"))]
 fn context_records_nearest_node() {
     let err = Wrapper::parse("bar").unwrap_err();
-    assert_eq!(
+    assert_error(
         err,
-        Error {
-            traces: vec![Trace {
-                context: vec![frame("Lit", 0)],
-                expectation: token("foo"),
-            }],
-            pos: 0,
-        }
+        vec![Trace {
+            context: vec![frame("Lit", 0)],
+            expectation: token("foo"),
+        }],
+        0,
     );
 }
 
@@ -229,15 +220,13 @@ fn context_records_nearest_node() {
 #[cfg(feature = "trace_all_nodes")]
 fn context_records_full_node_chain() {
     let err = Wrapper::parse("bar").unwrap_err();
-    assert_eq!(
+    assert_error(
         err,
-        Error {
-            traces: vec![Trace {
-                context: vec![frame("Wrapper", 0), frame("Lit", 0)],
-                expectation: token("foo"),
-            }],
-            pos: 0,
-        }
+        vec![Trace {
+            context: vec![frame("Wrapper", 0), frame("Lit", 0)],
+            expectation: token("foo"),
+        }],
+        0,
     );
 }
 
@@ -254,29 +243,27 @@ enum Op {
 #[test]
 fn enum_records_every_variant_when_first_matches_none() {
     let err = Op::parse("x").unwrap_err();
-    assert_eq!(
+    assert_error(
         err,
-        Error {
-            traces: vec![
-                Trace {
-                    context: vec![frame("Op", 0)],
-                    expectation: token("+"),
-                },
-                Trace {
-                    context: vec![frame("Op", 0)],
-                    expectation: token("-"),
-                },
-                Trace {
-                    context: vec![frame("Op", 0)],
-                    expectation: token("*"),
-                },
-                Trace {
-                    context: vec![frame("Op", 0)],
-                    expectation: token("/"),
-                },
-            ],
-            pos: 0,
-        }
+        vec![
+            Trace {
+                context: vec![frame("Op", 0)],
+                expectation: token("+"),
+            },
+            Trace {
+                context: vec![frame("Op", 0)],
+                expectation: token("-"),
+            },
+            Trace {
+                context: vec![frame("Op", 0)],
+                expectation: token("*"),
+            },
+            Trace {
+                context: vec![frame("Op", 0)],
+                expectation: token("/"),
+            },
+        ],
+        0,
     );
 }
 
@@ -345,13 +332,7 @@ fn nullable_variant_traces() -> Vec<Trace> {
 #[cfg(not(feature = "trace_all_nodes"))]
 fn nullable_variant_does_not_block_sibling_field_or_sibling_variant() {
     let err = Outermost::parse("x").unwrap_err();
-    assert_eq!(
-        err,
-        Error {
-            traces: nullable_variant_traces(),
-            pos: 0,
-        }
-    );
+    assert_error(err, nullable_variant_traces(), 0);
 }
 
 #[test]
@@ -368,11 +349,120 @@ fn nullable_variant_does_not_block_sibling_field_or_sibling_variant() {
     expected[2].context = expected[0].context.clone();
     expected[3].context = expected[0].context.clone();
     expected[4].context = vec![frame("Outermost", 0), frame("NullableOpThenTail", 0)];
+    assert_error(err, expected, 0);
+}
+
+#[test]
+fn leftover_input_expects_the_end() {
+    let end = || {
+        vec![Trace {
+            context: vec![],
+            expectation: Expectation::End,
+        }]
+    };
+    assert_error(Lit::parse("foox").unwrap_err(), end(), 3);
+    assert_error(Lit::check("foox").unwrap_err(), end(), 3);
     assert_eq!(
-        err,
-        Error {
-            traces: expected,
-            pos: 0,
-        }
+        Lit::parse("foox").unwrap_err().to_string(),
+        "parse error at byte 3, expected:\n\t- end of input"
     );
+}
+
+/// The expectations `err` traced, printed and sorted.
+fn expectations(err: &Error) -> Vec<String> {
+    let mut expectations: Vec<String> = err
+        .traces()
+        .iter()
+        .map(|trace| trace.expectation.to_string())
+        .collect();
+    expectations.sort();
+    expectations
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+enum Four {
+    A(StringEq!("a")),
+    B(StringEq!("b")),
+    C(StringEq!("cx")),
+    D(StringEq!("d")),
+}
+
+#[test]
+fn enum_dispatch_records_the_variants_it_skips() {
+    // The table jumps to `C` on "c"; `A` and `B` were candidates too.
+    let err = Four::parse("cy").unwrap_err();
+    assert_eq!(err.pos(), 0);
+    assert_eq!(
+        expectations(&err),
+        [r#""a""#, r#""b""#, r#""cx""#, r#""d""#]
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+enum FourOrNone {
+    A(StringEq!("a")),
+    B(StringEq!("b")),
+    C(StringEq!("c")),
+    D(Option<StringEq!("d")>),
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+struct FourOrNoneThenBang(FourOrNone, StringEq!("!"));
+
+#[test]
+fn enum_dispatch_records_the_variants_it_skips_when_matching_empty() {
+    let err = FourOrNoneThenBang::parse("x").unwrap_err();
+    assert_eq!(
+        expectations(&err),
+        [r#""!""#, r#""a""#, r#""b""#, r#""c""#, r#""d""#]
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+struct Div(StringEq!("/"), NotFollowedBy<StringEq!("/")>);
+
+#[test]
+fn negative_lookahead_records_what_it_ruled_out() {
+    let err = Div::parse("//").unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "parse error at byte 1, expected:\n\t- anything but 1..2"
+    );
+    assert_error(
+        err,
+        vec![Trace {
+            context: vec![frame("Div", 0)],
+            expectation: Expectation::NotFollowedBy(1..2),
+        }],
+        1,
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+struct Key(StringEq!("k"), FollowedBy<StringEq!(":")>);
+
+#[test]
+fn positive_lookahead_records_what_it_expected() {
+    assert_error(
+        Key::parse("k").unwrap_err(),
+        vec![Trace {
+            context: vec![frame("Key", 0)],
+            expectation: token(":"),
+        }],
+        1,
+    );
+}
+
+#[derive(Grammar, Debug, PartialEq, Eq)]
+struct Nest(StringEq!("("), Option<Box<Nest>>, StringEq!(")"));
+
+#[test]
+fn deep_nesting_records_too_deep() {
+    let err = Nest::parse(&"(".repeat(1_000_000)).unwrap_err();
+    assert!(
+        err.traces()
+            .iter()
+            .any(|trace| trace.expectation == Expectation::TooDeep)
+    );
+    assert!(err.to_string().contains("\t- shallower nesting"));
 }

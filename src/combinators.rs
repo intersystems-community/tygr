@@ -13,7 +13,8 @@ use std::ops::Deref;
 use tygr_derive::Grammar;
 
 // `()`: the empty sequence.
-impl Parse for () {
+// SAFETY: ends where it starts.
+unsafe impl Parse for () {
     type First = Optional<byte_set::Emp>;
 
     #[inline]
@@ -49,7 +50,8 @@ macro_rules! concat_first {
 
 macro_rules! impl_tuple {
     ($($idx:tt $T:ident),+) => {
-        impl<$($T: Parse),+> Parse for ($($T,)+) {
+        // SAFETY: ends where its last part ends.
+        unsafe impl<$($T: Parse),+> Parse for ($($T,)+) {
             type First = concat_first!(Optional<byte_set::Emp>; $($T),+);
 
             #[inline]
@@ -229,7 +231,8 @@ impl<T, S> IntoInner<T> for Suffix<T, S> {
     }
 }
 
-impl<A: Parse, B: Parse> Parse for Either<A, B> {
+// SAFETY: ends where `A` or `B` ends.
+unsafe impl<A: Parse, B: Parse> Parse for Either<A, B> {
     type First = <A::First as First>::Alt<B::First>;
 
     #[inline]
@@ -270,7 +273,8 @@ impl<A: Print, B: Print> Print for Either<A, B> {
     }
 }
 
-impl<T: Parse> Parse for Option<T> {
+// SAFETY: ends where `T` ends, or where it starts.
+unsafe impl<T: Parse> Parse for Option<T> {
     type First = <T::First as First>::Opt;
 
     #[inline]
@@ -307,7 +311,8 @@ impl<T: Print> Print for Option<T> {
     }
 }
 
-impl<T: Parse> Parse for Vec<T> {
+// SAFETY: ends where its last item ends, or where it starts.
+unsafe impl<T: Parse> Parse for Vec<T> {
     type First = <T::First as First>::Opt;
 
     #[inline]
@@ -316,6 +321,9 @@ impl<T: Parse> Parse for Vec<T> {
         mut pos: usize,
         mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
+        if !state.room(pos) {
+            return None;
+        }
         let mut items = M::build(|_| Vec::new());
         while let Some((item, end)) = T::parse_at::<M>(input, pos, state.reborrow())
             && end != pos
@@ -380,7 +388,8 @@ impl<T> TryFrom<Vec<T>> for Vec1<T> {
     }
 }
 
-impl<T: Parse> Parse for Vec1<T> {
+// SAFETY: ends where its last item ends.
+unsafe impl<T: Parse> Parse for Vec1<T> {
     type First = T::First;
 
     // `Vec` stops at an item that matches empty, so an empty match is no items.
@@ -423,7 +432,8 @@ pub struct VecSep<T, S> {
 }
 
 // By hand, so items and separators are pushed straight into their vectors.
-impl<T: Parse, S: Parse> Parse for VecSep<T, S> {
+// SAFETY: ends where its last item ends.
+unsafe impl<T: Parse, S: Parse> Parse for VecSep<T, S> {
     type First = <T::First as First>::Seq<Vec<(S, T)>>;
 
     #[inline]
@@ -432,6 +442,9 @@ impl<T: Parse, S: Parse> Parse for VecSep<T, S> {
         pos: usize,
         mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
+        if !state.room(pos) {
+            return None;
+        }
         let (first, mut pos) = T::parse_at::<M>(input, pos, state.reborrow())?;
         let mut vec_sep = M::build(|_| VecSep {
             items: Vec::new(),
@@ -512,7 +525,8 @@ impl<T, S> VecSep<T, S> {
 /// ```
 pub struct NotFollowedBy<G>(PhantomData<G>);
 
-impl<G: Parse> Parse for NotFollowedBy<G> {
+// SAFETY: ends where it starts.
+unsafe impl<G: Parse> Parse for NotFollowedBy<G> {
     type First = Optional<byte_set::Emp>;
 
     #[inline]
@@ -521,9 +535,15 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
         pos: usize,
         mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        // Probe so the lookahead doesn't touch the error trace.
+        if !state.room(pos) {
+            return None;
+        }
+        // Probe, so only what `G` matched is recorded, not what it expected.
         match state.probe(|state| G::parse_at::<Check>(input, pos, state)) {
-            Some(_) => None,
+            Some(((), end)) => {
+                state.not_followed_by(pos..end);
+                None
+            }
             None => Some((M::build(|_| NotFollowedBy(PhantomData)), pos)),
         }
     }
@@ -541,43 +561,6 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
     }
 }
 
-impl<G> Print for NotFollowedBy<G> {
-    fn print_to(&self, _buf: &mut Vec<u8>) {}
-}
-
-// Not derived: `G` is phantom, so no bounds on it.
-impl<G> Default for NotFollowedBy<G> {
-    fn default() -> Self {
-        NotFollowedBy(PhantomData)
-    }
-}
-
-impl<G> fmt::Debug for NotFollowedBy<G> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("NotFollowedBy")
-    }
-}
-
-impl<G> Clone for NotFollowedBy<G> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<G> Copy for NotFollowedBy<G> {}
-
-impl<G> PartialEq for NotFollowedBy<G> {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl<G> Eq for NotFollowedBy<G> {}
-
-impl<G> std::hash::Hash for NotFollowedBy<G> {
-    fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
-}
-
 /// Positive lookahead: matches empty input only when `G` matches next.
 ///
 /// ```
@@ -588,4 +571,79 @@ impl<G> std::hash::Hash for NotFollowedBy<G> {
 /// assert!(Key::parse("k").is_err());
 /// assert_eq!(Key::parse_prefix("k:").unwrap().1, 1);
 /// ```
-pub type FollowedBy<G> = NotFollowedBy<NotFollowedBy<G>>;
+pub struct FollowedBy<G>(PhantomData<G>);
+
+// SAFETY: ends where it starts.
+unsafe impl<G: Parse> Parse for FollowedBy<G> {
+    type First = G::First;
+
+    #[inline]
+    fn parse_at<M: Mode>(
+        input: &[u8],
+        pos: usize,
+        mut state: State,
+    ) -> Option<(M::Output<Self>, usize)> {
+        if !state.room(pos) {
+            return None;
+        }
+        G::parse_at::<Check>(input, pos, state)?;
+        Some((M::build(|_| FollowedBy(PhantomData)), pos))
+    }
+
+    fn fail_at(pos: usize, state: State) -> bool {
+        G::fail_at(pos, state)
+    }
+
+    // `!!G`: Wirth's EBNF has no positive lookahead.
+    fn to_bnf() -> Expr {
+        Expr::not_followed_by(Expr::not_followed_by(G::to_bnf()))
+    }
+
+    fn visit_rules(rules: &mut Rules) {
+        G::visit_rules(rules);
+    }
+}
+
+// Not derived: `G` is phantom, so no bounds on it.
+macro_rules! impl_lookahead {
+    ($Lookahead:ident) => {
+        impl<G> Print for $Lookahead<G> {
+            fn print_to(&self, _buf: &mut Vec<u8>) {}
+        }
+
+        impl<G> Default for $Lookahead<G> {
+            fn default() -> Self {
+                $Lookahead(PhantomData)
+            }
+        }
+
+        impl<G> fmt::Debug for $Lookahead<G> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(stringify!($Lookahead))
+            }
+        }
+
+        impl<G> Clone for $Lookahead<G> {
+            fn clone(&self) -> Self {
+                *self
+            }
+        }
+
+        impl<G> Copy for $Lookahead<G> {}
+
+        impl<G> PartialEq for $Lookahead<G> {
+            fn eq(&self, _other: &Self) -> bool {
+                true
+            }
+        }
+
+        impl<G> Eq for $Lookahead<G> {}
+
+        impl<G> std::hash::Hash for $Lookahead<G> {
+            fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
+        }
+    };
+}
+
+impl_lookahead!(NotFollowedBy);
+impl_lookahead!(FollowedBy);

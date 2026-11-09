@@ -14,7 +14,14 @@ use std::io::Write;
 /// Implement this by hand only for leaf/wrapper types; for `struct`s and
 /// `enum`s, `#[derive(Parse)]` or `#[derive(Grammar)]` generates it (see
 /// the crate-level docs).
-pub trait Parse: Sized + 'static {
+///
+/// # Safety
+///
+/// tygr's `unsafe` UTF-8 conversions rely on this: [`parse_at`](Self::parse_at)
+/// gets valid UTF-8 `input` and a char-boundary `pos`, and must return a
+/// char-boundary end. An implementation passes other grammars only its
+/// `input`, at char boundaries.
+pub unsafe trait Parse: Sized + 'static {
     /// The bytes (and whether empty input) this grammar can start with, used
     /// to skip alternatives that can't match. A manual impl delegates
     /// (`T::First`), combines ([`Seq`](crate::first::First::Seq) /
@@ -43,9 +50,9 @@ pub trait Parse: Sized + 'static {
 
     /// Parse the entire `input` as `Self`, failing if any input is left unconsumed.
     fn parse(input: &str) -> Result<Self, Error> {
-        run(|state| {
-            let (value, end) = Self::parse_at::<Build>(input.as_bytes(), 0, state)?;
-            (end == input.len()).then_some(value)
+        run(|mut state| {
+            let (value, end) = Self::parse_at::<Build>(input.as_bytes(), 0, state.reborrow())?;
+            state.at_end(input.as_bytes(), end).then_some(value)
         })
     }
 
@@ -57,9 +64,9 @@ pub trait Parse: Sized + 'static {
 
     /// Like [`parse`](Self::parse), but only checks `input`.
     fn check(input: &str) -> Result<(), Error> {
-        run(|state| {
-            let ((), end) = Self::parse_at::<Check>(input.as_bytes(), 0, state)?;
-            (end == input.len()).then_some(())
+        run(|mut state| {
+            let ((), end) = Self::parse_at::<Check>(input.as_bytes(), 0, state.reborrow())?;
+            state.at_end(input.as_bytes(), end).then_some(())
         })
     }
 
@@ -89,11 +96,8 @@ pub trait Parse: Sized + 'static {
     }
 
     /// Parse `Self` at byte offset `pos`, returning its output in mode `M`
-    /// (the value, or nothing when checking) and the end offset.
-    ///
-    /// Invariant, relied on by `unsafe` UTF-8 conversions: `input` is valid
-    /// UTF-8 and every position is a char boundary. Public grammars only
-    /// advance by whole chars; byte-level ones (`ByteEq`) are internal.
+    /// (the value, or nothing when checking) and the end offset. See
+    /// [`Parse`]'s safety section.
     fn parse_at<M: Mode>(
         input: &[u8],
         pos: usize,

@@ -2,64 +2,94 @@
 //! code units (as in the Language Server Protocol).
 
 /// Converts between byte offsets and `(line, character)` in one input.
+/// Lines end at `\n`, `\r\n` or `\r`.
 pub struct OLC {
-    // Per line: start offset, and a (byte, UTF-16) checkpoint after each
-    // non-ASCII char; offsets agree between checkpoints.
-    lines: Vec<(usize, Vec<(usize, usize)>)>,
+    lines: Vec<Line>,
+}
+
+/// One line: its start and end offsets (before its line break), and each
+/// non-ASCII char's start in bytes and UTF-16 units into the line, with its
+/// length in bytes. Bytes and units agree between them.
+struct Line {
+    start: usize,
+    end: usize,
+    wide: Vec<(usize, usize, usize)>,
 }
 
 impl OLC {
     /// Index `input`.
     pub fn new(input: &str) -> Self {
         let mut lines = vec![];
-        let mut line_start = 0;
-        let mut checkpoints = vec![];
-        let mut utf16_in_line = 0;
-        for (i, ch) in input.char_indices() {
-            if ch == '\n' {
-                lines.push((line_start, checkpoints));
-                line_start = i + 1;
-                checkpoints = vec![];
-                utf16_in_line = 0;
+        let mut line = Line::new(0);
+        let mut unit = 0;
+        let mut chars = input.char_indices().peekable();
+        while let Some((i, ch)) = chars.next() {
+            if ch == '\n' || ch == '\r' {
+                let crlf = ch == '\r' && chars.next_if(|&(_, next)| next == '\n').is_some();
+                line.end = i;
+                lines.push(std::mem::replace(
+                    &mut line,
+                    Line::new(i + 1 + crlf as usize),
+                ));
+                unit = 0;
                 continue;
             }
-            let byte_len = ch.len_utf8();
-            utf16_in_line += ch.len_utf16();
-            if byte_len > 1 {
-                checkpoints.push((i - line_start + byte_len, utf16_in_line));
+            if !ch.is_ascii() {
+                line.wide.push((i - line.start, unit, ch.len_utf8()));
             }
+            unit += ch.len_utf16();
         }
-        lines.push((line_start, checkpoints));
+        line.end = input.len();
+        lines.push(line);
         Self { lines }
     }
 
-    /// Byte offset → zero-indexed `(line, character)`.
+    /// Byte offset → zero-indexed `(line, character)`. An offset inside a
+    /// char or a line break counts as that char's start or the line's end.
     pub fn offset_to_line_character(&self, offset: usize) -> (usize, usize) {
-        let line = self.lines.partition_point(|&(start, _)| start <= offset) - 1;
-        let (line_start, checkpoints) = &self.lines[line];
-        let byte_in_line = offset - line_start;
-        let idx = checkpoints.partition_point(|&(cb, _)| cb <= byte_in_line);
-        let character = if idx == 0 {
-            byte_in_line
-        } else {
-            let (cb, cu) = checkpoints[idx - 1];
-            cu + (byte_in_line - cb)
+        let index = self.lines.partition_point(|line| line.start <= offset) - 1;
+        let line = &self.lines[index];
+        let byte = offset.min(line.end) - line.start;
+        let k = line.wide.partition_point(|&(start, _, _)| start <= byte);
+        let character = match k.checked_sub(1).map(|k| line.wide[k]) {
+            None => byte,
+            Some((start, unit, len)) if byte < start + len => unit,
+            Some((start, unit, len)) => unit + units(len) + (byte - start - len),
         };
-        (line, character)
+        (index, character)
     }
 
-    /// Zero-indexed `(line, character)` → byte offset.
+    /// Zero-indexed `(line, character)` → byte offset. As in the Language
+    /// Server Protocol, a character past the line's end means its end, and a
+    /// line past the last means the input's end; a character inside a
+    /// surrogate pair counts as the pair's start.
     pub fn line_character_to_offset(&self, (line, character): (usize, usize)) -> usize {
-        let (line_start, checkpoints) = &self.lines[line];
-        let idx = checkpoints.partition_point(|&(_, cu)| cu <= character);
-        let byte_in_line = if idx == 0 {
-            character
-        } else {
-            let (cb, cu) = checkpoints[idx - 1];
-            cb + (character - cu)
+        let Some(line) = self.lines.get(line) else {
+            return self.lines.last().map_or(0, |line| line.end);
         };
-        line_start + byte_in_line
+        let k = line.wide.partition_point(|&(_, unit, _)| unit <= character);
+        let byte = match k.checked_sub(1).map(|k| line.wide[k]) {
+            None => character,
+            Some((start, unit, len)) if character < unit + units(len) => start,
+            Some((start, unit, len)) => (start + len).saturating_add(character - unit - units(len)),
+        };
+        line.start.saturating_add(byte).min(line.end)
     }
+}
+
+impl Line {
+    fn new(start: usize) -> Self {
+        Line {
+            start,
+            end: start,
+            wide: vec![],
+        }
+    }
+}
+
+/// The UTF-16 units of a char that's `len` bytes in UTF-8.
+fn units(len: usize) -> usize {
+    if len == 4 { 2 } else { 1 }
 }
 
 #[cfg(test)]
@@ -68,15 +98,26 @@ mod tests {
 
     fn reference_offset_to_line_char(input: &str, offset: usize) -> (usize, usize) {
         let (mut line, mut character) = (0, 0);
-        for (i, ch) in input.char_indices() {
+        let mut chars = input.char_indices().peekable();
+        while let Some((i, ch)) = chars.next() {
             if i >= offset {
                 break;
             }
-            if ch == '\n' {
-                line += 1;
-                character = 0;
-            } else {
-                character += ch.len_utf16();
+            match ch {
+                '\r' if chars.peek().is_some_and(|&(_, next)| next == '\n') => {
+                    // Between `\r` and `\n` is still the line's end.
+                    if i + 1 >= offset {
+                        break;
+                    }
+                    chars.next();
+                    line += 1;
+                    character = 0;
+                }
+                '\n' | '\r' => {
+                    line += 1;
+                    character = 0;
+                }
+                _ => character += ch.len_utf16(),
             }
         }
         (line, character)
@@ -94,6 +135,15 @@ mod tests {
                 actual, expected,
                 "mismatch at offset {offset} in {input:?}: got {actual:?}, expected {expected:?}"
             );
+            let inside_crlf =
+                offset > 0 && input[..offset].ends_with('\r') && input[offset..].starts_with('\n');
+            if !inside_crlf {
+                assert_eq!(
+                    olc.line_character_to_offset(actual),
+                    offset,
+                    "round trip of {offset} in {input:?}"
+                );
+            }
         }
     }
 
@@ -166,15 +216,28 @@ mod tests {
     }
 
     #[test]
-    fn line_character_to_offset_round_trips() {
-        let input = "café\n平安\na😀b\nplain";
-        let olc = OLC::new(input);
-        for offset in 0..=input.len() {
-            if !input.is_char_boundary(offset) {
-                continue;
-            }
-            let lc = olc.offset_to_line_character(offset);
-            assert_eq!(olc.line_character_to_offset(lc), offset);
-        }
+    fn crlf_and_cr_break_lines() {
+        check_all_offsets("a\r\nb\rc\n\r\n😀\r");
+        let olc = OLC::new("a\r\nb\rc");
+        assert_eq!(olc.offset_to_line_character(3), (1, 0));
+        assert_eq!(olc.offset_to_line_character(5), (2, 0));
+        assert_eq!(olc.line_character_to_offset((2, 0)), 5);
+    }
+
+    #[test]
+    fn out_of_range_positions_clamp() {
+        let olc = OLC::new("ab\r\ncd");
+        assert_eq!(olc.line_character_to_offset((0, 9)), 2);
+        assert_eq!(olc.line_character_to_offset((1, usize::MAX)), 6);
+        assert_eq!(olc.line_character_to_offset((9, 0)), 6);
+        assert_eq!(olc.offset_to_line_character(99), (1, 2));
+    }
+
+    #[test]
+    fn inside_a_char_counts_as_its_start() {
+        let olc = OLC::new("a😀b");
+        assert_eq!(olc.line_character_to_offset((0, 2)), 1);
+        assert_eq!(olc.offset_to_line_character(2), (0, 1));
+        assert_eq!(olc.line_character_to_offset((0, 3)), 5);
     }
 }

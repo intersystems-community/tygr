@@ -16,7 +16,11 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
         shape,
         ..
     } = model;
-    let generics = model.bounded(quote! { ::tygr::Parse });
+    // Only the parameters it parses need `Parse`, but all need `'static`.
+    let mut generics = model.bounded(quote! { ::tygr::Parse }, model.fields().map(Field::source));
+    for param in generics.type_params_mut() {
+        param.bounds.push(syn::parse_quote!('static));
+    }
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let (first, parse_at, fail_at, def, inherent) = match shape {
         Shape::Struct(variant) => (
@@ -32,9 +36,9 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
                 .iter()
                 .map(|variant| parse(model, variant))
                 .collect();
-            let fail_ats = variants.iter().map(fail_at);
+            let fail_ats: Vec<_> = variants.iter().map(fail_at).collect();
             let sequences = variants.iter().map(sequence);
-            let (parse_at, items) = dispatch(&arms, &firsts);
+            let (parse_at, items) = dispatch(&arms, &firsts, &fail_ats);
             let inherent = quote! {
                 impl #impl_generics #ident #ty_generics #where_clause {
                     #items
@@ -64,17 +68,21 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     } else {
         def
     };
-    let sources = model
-        .variants()
-        .iter()
-        .flat_map(|variant| &variant.fields)
-        .map(Field::source);
+    let sources = model.fields().map(Field::source);
     let visit_parts = quote! { #(<#sources as ::tygr::Parse>::visit_rules(rules);)* };
-    // A hidden grammar refers to nothing; an inline one has no rule of its own.
+    // A hidden grammar refers to nothing; an inline one has no rule of its
+    // own, unless it refers to itself.
     let (to_bnf, visit_rules) = if *hidden {
         (quote! { ::tygr::bnf::Expr::Hidden }, quote! {})
     } else if *inline {
-        (def, visit_parts)
+        (
+            quote! { ::tygr::__private::inline_bnf::<Self>(#name, || #def) },
+            quote! {
+                ::tygr::__private::visit_inline::<Self>(rules, #name, || #def, |rules| {
+                    #visit_parts
+                });
+            },
+        )
     } else {
         (
             quote! { ::tygr::bnf::Expr::RuleRef(#name.to_string()) },
@@ -90,7 +98,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     quote! {
         #inherent
 
-        impl #impl_generics ::tygr::Parse for #ident #ty_generics #where_clause {
+        unsafe impl #impl_generics ::tygr::Parse for #ident #ty_generics #where_clause {
             type First = #first;
 
             #[inline(always)]
@@ -200,7 +208,7 @@ fn parse_field(field: &Field, mode: &TokenStream, name: &str) -> TokenStream {
             }
         }
         Field::Dropped(source) => quote! {
-            let ((), pos) = <#source as ::tygr::Parse>::parse_at::<::tygr::Check>(input, pos, state.reborrow())?;
+            let ((), pos) = ::tygr::__private::dropped::<#source>(input, pos, state.reborrow())?;
         },
     }
 }
@@ -233,11 +241,12 @@ pub(crate) fn read_fields(model: &Model) -> TokenStream {
     let ident = &model.ident;
     let (impl_generics, ty_generics, where_clause) = model.generics.split_for_impl();
     let constructors = model.variants().iter().map(|variant| &variant.constructor);
+    let value = model.matched(quote! { value });
     quote! {
         const _: () = {
             #[allow(dead_code)]
             fn read_fields #impl_generics (value: &#ident #ty_generics) #where_clause {
-                match value {
+                match #value {
                     #(#constructors => {})*
                 }
             }

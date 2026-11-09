@@ -408,3 +408,21 @@ fn any_conversion_on_a_unit_variant_matches_and_drops_its_source() {
     }
     assert_eq!(rule::<Unit>(), r#"Unit = "a" | "b" | "c" | "d" ."#);
 }
+
+#[derive(Grammar)]
+enum Never {}
+
+#[test]
+fn an_empty_enum_never_parses() {
+    assert!(Never::parse("").is_err());
+    assert!(<Option<Never>>::parse("").unwrap().is_none());
+}
+
+#[derive(Parse)]
+struct Num<T: FromStr + 'static>(#[tygr(from_str = StringOf1<IsDigit>)] T);
+
+#[test]
+fn a_converted_field_can_be_generic() {
+    assert_eq!(Num::<u32>::parse("42").unwrap().0, 42);
+    assert_eq!(Num::<i8>::parse("42").unwrap().0, 42);
+}

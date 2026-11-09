@@ -14,6 +14,10 @@
 //! | `struct`       | concatenation (`A B C`)      |
 //! | `enum`         | alternation (`A B \| C`) |
 //! | `(A, B, …)`    | inline concatenation         |
+//! | `()`           | the empty sequence           |
+//! | [`StringEq!`] / [`StringEqCI!`] | a literal (`"if"` / `"if"i`) |
+//! | `char`         | any one char (`'any'`)       |
+//! | a [`char_class!`] type | one char of the class (`'digit'`) |
 //! | [`Either<A, B>`](either::Either) | inline alternation (`A \| B`) |
 //! | [`Vec<T>`]     | repetition (`{ T }`)         |
 //! | [`Vec1<T>`]    | one-or-more repetition (`T { T }`)      |
@@ -24,11 +28,15 @@
 //! | [`Hidden<T>`]  | parsed/printed, omitted from BNF |
 //! | [`Raw<T>`] | parsed via `T`, kept as the raw matched text |
 //! | [`Ranged<T>`] | parsed via `T`, kept alongside its `start..end` byte range |
+//! | [`PhantomData<T>`](std::marker::PhantomData) | parsed via `T`, kept and printed as nothing (e.g. whitespace) |
 //! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | concatenation shorthands, [`Deref`](std::ops::Deref)-ing to `T` |
 //! | [`VecSep<T, S>`] | one-or-more repetition with separators (`T { S T }`) |
 //!
 //! [`Parse::bnf_rules`] lists a grammar's rules, each once, to sort,
 //! [rename](bnf::Rule::rename) and print.
+//!
+//! Parsing uses at most [`MAX_STACK`] of stack, so deeply nested input
+//! fails to parse rather than overflow the stack.
 //!
 //! `#[tygr(...)]` on a derived type:
 //! - `name = "..."` — override the BNF rule name (defaults to the type name).
@@ -73,7 +81,7 @@
 //! | `trace` | Enables all tracing features. |
 //! | `trace_pos` | Traces parser positions. |
 //! | `trace_one_node` | Traces only the nearest grammar node for each attempt. |
-//! | `trace_all_nodes` | Traces the complete grammar node chain for each attempt. |
+//! | `trace_all_nodes` | Traces the complete grammar node chain for each attempt; much slower, as it copies the chain each time. |
 //!
 //! ## Quick Example
 //!
@@ -148,8 +156,9 @@ pub use wrappers::{Hidden, IntoInner, Ranged, Raw};
 // Paths the macros expand to, whatever the user has in scope.
 #[doc(hidden)]
 pub mod __private {
+    pub use crate::bnf::{inline_bnf, visit_inline};
     pub use crate::convert::{
-        CONVERTIBLE, from_str, from_str_infallible, try_from, try_from_infallible,
+        CONVERTIBLE, dropped, from_str, from_str_infallible, try_from, try_from_infallible,
     };
     pub use crate::token::{
         ByteEq, Literal, NonAsciiStart, Token, class_fail_at, class_parse_at, class_print_to,

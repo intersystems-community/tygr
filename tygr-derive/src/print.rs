@@ -9,7 +9,10 @@ use syn::spanned::Spanned;
 /// The `Print` impl, printing each field in turn.
 pub(crate) fn expand(model: &Model) -> TokenStream {
     let ident = &model.ident;
-    let generics = model.bounded(quote! { ::tygr::Print });
+    let generics = model.bounded(
+        quote! { ::tygr::Print },
+        model.fields().filter_map(Field::printed),
+    );
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let variants = model.variants();
     let constructors = variants.iter().map(|variant| &variant.constructor);
@@ -17,10 +20,11 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
         let fields = variant.fields.iter().map(print_field);
         quote! { #(#fields)* }
     });
+    let value = model.matched(quote! { self });
     quote! {
         impl #impl_generics ::tygr::Print for #ident #ty_generics #where_clause {
             fn print_to(&self, #[allow(unused_variables)] buf: &mut ::std::vec::Vec<u8>) {
-                match self {
+                match #value {
                     #(#constructors => { #prints })*
                 }
             }

@@ -83,3 +83,17 @@ fn inline_or_hidden_roots_have_no_rule_of_their_own() {
     );
     assert!(Spaces::bnf_rules().is_empty());
 }
+
+#[test]
+fn recursive_inline_grammars_get_a_rule_of_their_own() {
+    #[derive(Parse)]
+    #[tygr(inline)]
+    struct Nest(StringEq!("("), Option<Box<Nest>>, StringEq!(")"));
+    #[derive(Parse)]
+    struct Group(Nest, StringEq!(";"));
+    assert_eq!(printed(Nest::bnf_rules()), [r#"Nest = "(" [ Nest ] ")" ."#]);
+    assert_eq!(
+        printed(Group::bnf_rules()),
+        [r#"Group = Nest ";" ."#, r#"Nest = "(" [ Nest ] ")" ."#]
+    );
+}

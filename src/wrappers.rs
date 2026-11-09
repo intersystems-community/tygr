@@ -77,15 +77,19 @@ impl<T> Raw<T> {
     }
 }
 
-impl<T: Parse> Parse for Raw<T> {
+// SAFETY: ends where `T` ends.
+unsafe impl<T: Parse> Parse for Raw<T> {
     type First = T::First;
 
     #[inline]
     fn parse_at<M: Mode>(
         input: &[u8],
         pos: usize,
-        state: State,
+        mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
+        if !state.room(pos) {
+            return None;
+        }
         let ((), end) = T::parse_at::<Check>(input, pos, state)?;
         Some((M::build(|_| Raw::from(text(input, pos, end))), end))
     }
@@ -233,7 +237,8 @@ impl<T> IntoInner<T> for Ranged<T> {
     }
 }
 
-impl<T: Parse> Parse for Ranged<T> {
+// SAFETY: ends where `T` ends.
+unsafe impl<T: Parse> Parse for Ranged<T> {
     type First = T::First;
 
     #[inline]
@@ -265,14 +270,18 @@ impl<T: Print> Print for Ranged<T> {
     }
 }
 
-impl<T: Parse> Parse for Box<T> {
+// SAFETY: ends where `T` ends.
+unsafe impl<T: Parse> Parse for Box<T> {
     type First = T::First;
 
     fn parse_at<M: Mode>(
         input: &[u8],
         pos: usize,
-        state: State,
+        mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
+        if !state.room(pos) {
+            return None;
+        }
         let (value, end) = T::parse_at::<M>(input, pos, state)?;
         Some((M::map(value, Box::new), end))
     }
@@ -296,16 +305,21 @@ impl<T: Print> Print for Box<T> {
     }
 }
 
-/// Matches `T` and discards it; prints nothing.
-impl<T: Parse> Parse for PhantomData<T> {
+/// Matches `T` and discards it; prints nothing, so it suits text that may
+/// be empty, such as whitespace. Keep a required token instead.
+// SAFETY: ends where `T` ends.
+unsafe impl<T: Parse> Parse for PhantomData<T> {
     type First = T::First;
 
     #[inline]
     fn parse_at<M: Mode>(
         input: &[u8],
         pos: usize,
-        state: State,
+        mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
+        if !state.room(pos) {
+            return None;
+        }
         let ((), end) = T::parse_at::<Check>(input, pos, state)?;
         Some((M::build(|_| PhantomData), end))
     }
@@ -330,6 +344,6 @@ impl<T> Print for PhantomData<T> {
 /// The text of `input[pos..end]`.
 #[inline(always)]
 pub(crate) fn text(input: &[u8], pos: usize, end: usize) -> &str {
-    // SAFETY: see the invariant on `Parse::parse_at`.
+    // SAFETY: see `Parse`'s safety section.
     unsafe { std::str::from_utf8_unchecked(&input[pos..end]) }
 }

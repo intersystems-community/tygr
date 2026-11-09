@@ -1,6 +1,6 @@
 //! A derive's input, read into what the generated code needs.
 
-use proc_macro2::TokenStream;
+use proc_macro2::{TokenStream, TokenTree};
 use quote::{format_ident, quote};
 use syn::{Attribute, Data, DeriveInput, Fields, Generics, Ident, LitStr, Path, Type};
 
@@ -123,14 +123,45 @@ impl Model {
         }
     }
 
-    /// The generics, each type parameter bounded by `bound`.
-    pub(crate) fn bounded(&self, bound: TokenStream) -> Generics {
+    /// The fields, in every variant.
+    pub(crate) fn fields(&self) -> impl Iterator<Item = &Field> {
+        self.variants().iter().flat_map(|variant| &variant.fields)
+    }
+
+    /// What to `match` for `reference`'s variants: the value itself for an
+    /// empty enum, as a reference is never empty.
+    pub(crate) fn matched(&self, reference: TokenStream) -> TokenStream {
+        if self.variants().is_empty() {
+            quote! { *#reference }
+        } else {
+            reference
+        }
+    }
+
+    /// The generics, with `bound` on each type parameter that `types` use.
+    pub(crate) fn bounded<'a>(
+        &self,
+        bound: TokenStream,
+        types: impl Iterator<Item = &'a Type>,
+    ) -> Generics {
+        let types: Vec<TokenStream> = types.map(|ty| quote! { #ty }).collect();
         let mut generics = self.generics.clone();
         for param in generics.type_params_mut() {
-            param.bounds.push(syn::parse_quote!(#bound));
+            if types.iter().any(|ty| mentions(ty.clone(), &param.ident)) {
+                param.bounds.push(syn::parse_quote!(#bound));
+            }
         }
         generics
     }
+}
+
+/// Does `tokens` use `ident`?
+fn mentions(tokens: TokenStream, ident: &Ident) -> bool {
+    tokens.into_iter().any(|token| match token {
+        TokenTree::Ident(other) => other == *ident,
+        TokenTree::Group(group) => mentions(group.stream(), ident),
+        _ => false,
+    })
 }
 
 impl Variant {
@@ -200,6 +231,17 @@ impl Field {
                 ..
             } => &conversion.source,
             Field::Kept { ty, .. } | Field::Dropped(ty) => ty,
+        }
+    }
+
+    /// The type it prints with `Print`: its own, unless `write_to` prints
+    /// it; a dropped source's.
+    pub(crate) fn printed(&self) -> Option<&Type> {
+        match self {
+            Field::Kept {
+                write_to: Some(_), ..
+            } => None,
+            Field::Kept { ty, .. } | Field::Dropped(ty) => Some(ty),
         }
     }
 

@@ -1,4 +1,6 @@
-//! Derived code must work whatever the user has imported or named.
+//! Derived code must work whatever the user has imported or named, and in
+//! crates that forbid `unsafe`.
+#![forbid(unsafe_code)]
 
 #[derive(tygr::Grammar)]
 struct Kw(tygr::StringEq!("if"));

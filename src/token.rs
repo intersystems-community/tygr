@@ -17,7 +17,9 @@ use crate::{Raw, Vec1};
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ByteEq<const B: u8>;
 
-impl<const B: u8> Parse for ByteEq<B> {
+// SAFETY: it can end mid-char, so only literal macros use it, for a whole
+// char's bytes at a time.
+unsafe impl<const B: u8> Parse for ByteEq<B> {
     type First = Required<byte_set::One<B>>;
 
     // Records nothing on failure: its `Token` reports the whole literal.
@@ -119,7 +121,8 @@ impl<A: Literal, B: Literal> Literal for Either<A, B> {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Token<G: Literal>(G);
 
-impl<G: Literal> Parse for Token<G> {
+// SAFETY: a literal is whole chars.
+unsafe impl<G: Literal> Parse for Token<G> {
     type First = G::First;
 
     #[inline(always)]
@@ -197,7 +200,8 @@ pub(crate) type CharStart = byte_set::Union<byte_set::Between<0x00, 0x7F>, NonAs
 const ANY_CHAR: &str = "any";
 
 /// Any one char. Fails only at end of input.
-impl Parse for char {
+// SAFETY: ends after a whole char.
+unsafe impl Parse for char {
     type First = Required<CharStart>;
 
     #[inline(always)]
@@ -244,7 +248,7 @@ impl Print for char {
 /// The char at `pos` and its end; `None` at end of input.
 #[inline(always)]
 fn decode_char(input: &[u8], pos: usize) -> Option<(char, usize)> {
-    // SAFETY: see the invariant on `Parse::parse_at`.
+    // SAFETY: see `Parse`'s safety section.
     let ch = unsafe { std::str::from_utf8_unchecked(input.get(pos..)?) }
         .chars()
         .next()?;
@@ -346,7 +350,8 @@ macro_rules! char_class {
             };
         }
 
-        impl $crate::Parse for $class {
+        // SAFETY: ends after a whole char.
+        unsafe impl $crate::Parse for $class {
             type First = $crate::first::Required<$class>;
 
             #[inline(always)]

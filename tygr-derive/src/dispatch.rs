@@ -10,8 +10,14 @@ const THRESHOLD: usize = 4;
 
 /// The `parse_at` body trying `arms` (one per variant) in order, and the
 /// inherent fns it needs. With enough variants, a table on the next byte
-/// skips to the first variant that can start there.
-pub(crate) fn dispatch(arms: &[TokenStream], firsts: &[TokenStream]) -> (TokenStream, TokenStream) {
+/// skips to the first variant that can start there; when tracing, the
+/// variants it skipped are reported with `fail_ats`, unless one matched
+/// input.
+pub(crate) fn dispatch(
+    arms: &[TokenStream],
+    firsts: &[TokenStream],
+    fail_ats: &[TokenStream],
+) -> (TokenStream, TokenStream) {
     let n = arms.len();
     if n < THRESHOLD {
         let body = quote! {
@@ -26,15 +32,47 @@ pub(crate) fn dispatch(arms: &[TokenStream], firsts: &[TokenStream]) -> (TokenSt
         .iter()
         .skip(1)
         .map(|next| quote! { Self::#next::<__Mode>(input, pos, state) })
-        .chain([quote! { None }]);
+        .chain([quote! {{
+            if ::tygr::__private::TRACING {
+                Self::__fail_at_skipped(input, pos, state);
+            }
+            None
+        }}]);
+    let (indices, skips) = (0..n, 0..n);
     let items = quote! {
         #(
             #[inline]
             fn #cases<__Mode: ::tygr::Mode>(input: &[u8], pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> #output {
-                if let Some(result) = (|| { #arms })() { return Some(result); }
+                if let Some(result) = (|| { #arms })() {
+                    // Matching empty, it rules out none of the variants skipped.
+                    if ::tygr::__private::TRACING && ::tygr::first::contains::<#firsts>(None) && result.1 == pos {
+                        Self::__fail_at_skipped(input, pos, state);
+                    }
+                    return Some(result);
+                }
                 #nexts
             }
         )*
+
+        // Report the variants the table skipped for the next byte: those
+        // before the first that can start with it (all, if none can).
+        #[cold]
+        fn __fail_at_skipped(input: &[u8], #[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) {
+            let skipped: &'static [usize; 257] = &const {
+                let mut skipped = [#n; 257];
+                let mut slot = 0;
+                while slot < 257 {
+                    let next = if slot < 256 { Some(slot as u8) } else { None };
+                    skipped[slot] = #( if ::tygr::first::contains::<#firsts>(next) {
+                        #skips
+                    } else )* { #n };
+                    slot += 1;
+                }
+                skipped
+            };
+            let k = skipped[input.get(pos).map_or(256, |&byte| byte as usize)];
+            #( if #indices < k { let _ = #fail_ats; } )*
+        }
 
         // No variant can start here: report them all.
         #[inline]

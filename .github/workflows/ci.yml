@@ -62,6 +62,7 @@ jobs:
           - { name: default, flags: "" }
           - { name: no-features, flags: "--no-default-features" }
           - { name: all-features, flags: "--all-features" }
+          - { name: trace-pos, flags: "--no-default-features --features trace_pos" }
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -75,6 +76,11 @@ jobs:
       - name: Clippy (${{ matrix.features.name }})
         run: cargo clippy --all-targets ${{ matrix.features.flags }} -- -D warnings
 
+      # tygr-derive isn't a workspace member, so the step above skips it.
+      - name: Clippy (tygr-derive)
+        if: matrix.features.name == 'default'
+        run: cargo clippy --manifest-path tygr-derive/Cargo.toml --all-targets -- -D warnings
+
       - name: Test (${{ matrix.features.name }})
         run: cargo test --lib --bins --examples --tests ${{ matrix.features.flags }}
 
@@ -83,3 +89,17 @@ jobs:
 
       - name: Docs (${{ matrix.features.name }})
         run: cargo doc --no-deps ${{ matrix.features.flags }}
+
+  msrv:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88"
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check on the rust-version (1.88)
+        run: cargo check --all-targets --all-features

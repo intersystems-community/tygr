@@ -3,6 +3,7 @@
 
 use crate::Parse;
 use std::any::TypeId;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt;
 
@@ -359,6 +360,67 @@ pub(crate) fn rules<G: Parse>() -> Vec<Rule> {
     };
     G::visit_rules(&mut rules);
     rules.rules
+}
+
+thread_local! {
+    /// The inline grammars being expanded, innermost last, each with
+    /// whether it referred to itself.
+    static EXPANDING: RefCell<Vec<(TypeId, bool)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// `def()`, expanded with `T` marked, and whether it referred to `T`.
+fn expand<T: 'static>(def: impl FnOnce() -> Expr) -> (Expr, bool) {
+    /// Unmarks `T`, even if `def` panics.
+    struct Unmark;
+    impl Drop for Unmark {
+        fn drop(&mut self) {
+            EXPANDING.with_borrow_mut(|stack| {
+                stack.pop();
+            });
+        }
+    }
+    EXPANDING.with_borrow_mut(|stack| stack.push((TypeId::of::<T>(), false)));
+    let _unmark = Unmark;
+    let expr = def();
+    let recursive = EXPANDING.with_borrow(|stack| stack.last().is_some_and(|&(_, found)| found));
+    (expr, recursive)
+}
+
+/// An inline grammar `T`'s BNF: `def()` spliced in, or, if it refers to
+/// itself, a reference to its own rule.
+#[doc(hidden)]
+pub fn inline_bnf<T: 'static>(name: &str, def: impl FnOnce() -> Expr) -> Expr {
+    let id = TypeId::of::<T>();
+    let expanding = EXPANDING.with_borrow_mut(|stack| {
+        let marked = stack.iter_mut().find(|(other, _)| *other == id);
+        marked.map(|(_, found)| *found = true).is_some()
+    });
+    if !expanding {
+        let (expr, recursive) = expand::<T>(def);
+        if !recursive {
+            return expr;
+        }
+    }
+    Expr::RuleRef(name.to_string())
+}
+
+/// Visit an inline grammar `T`'s rules: its parts', and, if it refers to
+/// itself, its own rule, as a named grammar would.
+#[doc(hidden)]
+pub fn visit_inline<T: 'static>(
+    rules: &mut Rules,
+    name: &str,
+    def: impl FnOnce() -> Expr,
+    visit_parts: impl FnOnce(&mut Rules),
+) {
+    match expand::<T>(def) {
+        (expr, true) => {
+            if rules.insert::<T>(name, || expr) {
+                visit_parts(rules);
+            }
+        }
+        (_, false) => visit_parts(rules),
+    }
 }
 
 /// `s` escaped for a literal between `quote`s.

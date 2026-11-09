@@ -6,7 +6,7 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
 
 The parser now works on bytes, with string and character grammars built
 on top. On the JSON benchmark (`canada.json`), parsing is about 12× faster
-with the default tracing (6.6 → 82 MB/s) and about 3.5× faster without it
+with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
 (33 → 114 MB/s).
 
 ### Breaking Changes
@@ -33,6 +33,9 @@ with the default tracing (6.6 → 82 MB/s) and about 3.5× faster without it
 - `parse_at` takes `input: &[u8]`, the UTF-8 bytes of the `&str` passed
   to `parse` and friends (whose signatures are unchanged). Every position
   is a char boundary; hand-written grammars must keep it that way.
+- `Parse` is an `unsafe trait`, as tygr's UTF-8 conversions rely on that
+  rule: a hand-written grammar is an `unsafe impl Parse`. Derived and
+  `char_class!` impls need no change, even under `#![forbid(unsafe_code)]`.
 - `Print::print_to` writes to `&mut Vec<u8>`. `print()` still returns a
   `String`.
 - Removed `CharOf<M>`: a `char_class!` type is now itself the grammar for
@@ -64,6 +67,13 @@ with the default tracing (6.6 → 82 MB/s) and about 3.5× faster without it
     carries the conversion error's message.
   - `Display` changed to match: `"->"`, `NonZero at 0..3 must be
     non-zero`, `SmallNumber at 0..3 must be convertible`.
+  - It's `#[non_exhaustive]`, and gains `NotFollowedBy(range)`, `End` and
+    `TooDeep`.
+- `Error`'s fields are private: read them with `pos()` and `traces()`. Its
+  `Display` no longer ends with a newline.
+- `FollowedBy<G>` is its own type rather than
+  `NotFollowedBy<NotFollowedBy<G>>`, so when it fails it reports what `G`
+  expected.
 - `bnf::Expr::StringEq` and `StringEqCI` merged into
   `Expr::Token { text, case_insensitive }`. A case-insensitive literal
   without cased chars now prints without the `i` (`"123"`).
@@ -110,7 +120,23 @@ with the default tracing (6.6 → 82 MB/s) and about 3.5× faster without it
 - Fixed derived code failing to compile unless tygr's traits were in
   scope (e.g. with `use tygr::Grammar;` instead of `use tygr::*;`).
 - Failed literals, validations and conversions no longer allocate when
-  recording what was expected.
+  recording what was expected, nor lookaheads when probing.
+- Deeply nested input fails to parse, as `Expectation::TooDeep`, once
+  parsing has used `MAX_STACK` (1 MiB) of stack, rather than overflow it.
+- Errors report input left over after a match, as `Expectation::End`,
+  and a failed negative lookahead, as `NotFollowedBy`; both recorded
+  nothing.
+- An enum of four or more variants reports every variant that could have
+  matched, as a smaller one does, rather than only those from the first
+  that could start with the next byte.
+- Derived impls bound only the type parameters their fields parse or
+  print, so a converted field can be generic. Deriving works for an empty
+  enum, and a recursive `#[tygr(inline)]` type gets a BNF rule of its own
+  rather than recursing forever.
+- `OLC` breaks lines at `\r\n` and `\r` too, and `line_character_to_offset`
+  clamps out-of-range positions, as LSP does, and maps one inside a
+  surrogate pair to the pair's start.
+- Declared `rust-version = "1.88"`.
 
 ## [0.6.2] - 2026-09-04
 
