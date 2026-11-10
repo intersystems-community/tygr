@@ -462,3 +462,21 @@ fn positive_lookahead_records_what_it_expected() {
         1,
     );
 }
+
+// `S = "a" S "b" | "a" S "c" | ()` backtracks exponentially, expecting the
+// same few things at the same position each time.
+#[derive(Grammar, Debug, PartialEq, Eq)]
+enum Exponential {
+    B(StringEq!("a"), Box<Exponential>, StringEq!("b")),
+    C(StringEq!("a"), Box<Exponential>, StringEq!("c")),
+    Empty,
+}
+
+#[test]
+fn repeated_traces_are_reported_once() {
+    let input = format!("{}x", "a".repeat(18));
+    let err = Exponential::parse(&input).unwrap_err();
+    assert_eq!(err.pos(), 18);
+    assert_eq!(expectations(&err), [r#""a""#, r#""b""#, r#""c""#]);
+    assert_eq!(err.traces().len(), 3);
+}

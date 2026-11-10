@@ -164,7 +164,7 @@ struct History {
 
 /// A recorded trace, with its context kept cheap until the parse fails.
 #[cfg(feature = "trace_one_node")]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct Pending {
     frames: Frames,
     expectation: Expectation,
@@ -217,7 +217,25 @@ impl History {
         }
     }
 
-    fn into_error(self) -> Error {
+    /// Drop repeated traces, keeping the first of each in order: a
+    /// backtracking grammar can expect the same few things exponentially
+    /// often. Not on each record: the JSON benchmark makes 1.5 records per
+    /// byte, and one more instruction there costs it 15%.
+    #[cfg(feature = "trace_one_node")]
+    fn dedup(&mut self) {
+        let mut kept = 0;
+        for i in 0..self.traces.len() {
+            if !self.traces[..kept].contains(&self.traces[i]) {
+                self.traces.swap(kept, i);
+                kept += 1;
+            }
+        }
+        self.traces.truncate(kept);
+    }
+
+    fn into_error(#[allow(unused_mut)] mut self) -> Error {
+        #[cfg(feature = "trace_one_node")]
+        self.dedup();
         #[cfg(feature = "trace_one_node")]
         let traces = self
             .traces
