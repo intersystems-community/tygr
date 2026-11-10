@@ -62,7 +62,10 @@ jobs:
           - { name: default, flags: "" }
           - { name: no-features, flags: "--no-default-features" }
           - { name: all-features, flags: "--all-features" }
+          # Each tracing level by name too, whatever the default or all-features mean.
           - { name: trace-pos, flags: "--no-default-features --features trace_pos" }
+          - { name: trace-one-node, flags: "--no-default-features --features trace_one_node" }
+          - { name: trace-all-nodes, flags: "--no-default-features --features trace_all_nodes" }
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
