@@ -1,7 +1,7 @@
 //! Terminal grammars: literals (`StringEq!` / `StringEqCI!`), `char`,
 //! [`CharClass`]es and [`StringOf`] / [`StringOf1`].
 
-use either::Either;
+use either::Either::{self, Left, Right};
 use std::fmt;
 use std::ops::Range;
 
@@ -17,32 +17,6 @@ use crate::{Raw, Vec1};
 #[doc(hidden)]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ByteEq<const B: u8>;
-
-// SAFETY: it can end mid-char, so only literal macros use it, for a whole
-// char's bytes at a time.
-unsafe impl<const B: u8> Parse for ByteEq<B> {
-    type First = Required<byte_set::One<B>>;
-
-    // Records nothing on failure: its `Token` reports the whole literal.
-    #[inline(always)]
-    fn parse_at<M: Mode>(
-        input: &[u8],
-        pos: usize,
-        _state: State,
-    ) -> Option<(M::Output<Self>, usize)> {
-        (input.get(pos) == Some(&B)).then(|| (M::build(|_| ByteEq), pos + 1))
-    }
-
-    fn fail_at(_pos: usize, _state: State) -> bool {
-        true
-    }
-
-    fn to_bnf() -> Expr {
-        unreachable!("internal: literal wrappers provide BNF")
-    }
-
-    fn visit_rules(_rules: &mut Rules) {}
-}
 
 impl<const B: u8> Print for ByteEq<B> {
     fn print_to(&self, buf: &mut Vec<u8>) {
@@ -88,9 +62,19 @@ impl LiteralBuf {
     }
 }
 
-/// A byte grammar for a fixed literal.
+/// A fixed literal as byte atoms. Only [`Token`] parses one, asserting when
+/// its `parse_at` is instantiated (so on build, not `cargo check`) that
+/// each alternative is whole chars, so the byte level can't break `Parse`'s
+/// char-boundary rule.
+///
+/// # Safety
+///
+/// `match_at` and `reach` must consume exactly one of the texts `BYTES` and
+/// `WHOLE_CHARS` describe, and `Start` must hold every text's first byte:
+/// [`Token`]'s `unsafe impl Parse` trusts them, so only this crate
+/// implements the trait.
 #[doc(hidden)]
-pub trait Literal: Grammar {
+pub unsafe trait Literal: Copy + Print + 'static {
     /// Does any part match other cases (contain an `Either`)?
     const CASE_INSENSITIVE: bool;
     /// The literal's bytes.
@@ -101,15 +85,32 @@ pub trait Literal: Grammar {
     const BYTES: &'static [u8] = Self::BUF_REF.as_slice();
     /// The most bytes any of its case variants matches.
     const LONGEST: usize;
+    /// Is each `Either` side whole chars?
+    const WHOLE_CHARS: bool;
+    /// The value matching `BYTES`.
+    const DEFAULT: Self;
+    /// The bytes it can start with.
+    type Start: ByteSet;
+
+    /// Match from `pos`: the value and the end.
+    fn match_at<M: Mode>(input: &[u8], pos: usize) -> Option<(M::Output<Self>, usize)>;
 
     /// Where a match from `pos` ends, or else where it diverged.
     fn reach(input: &[u8], pos: usize) -> Result<usize, usize>;
 }
 
-impl<const B: u8> Literal for ByteEq<B> {
+unsafe impl<const B: u8> Literal for ByteEq<B> {
     const CASE_INSENSITIVE: bool = false;
     const BUF: LiteralBuf = LiteralBuf::one(B);
     const LONGEST: usize = 1;
+    const WHOLE_CHARS: bool = true;
+    const DEFAULT: Self = ByteEq;
+    type Start = byte_set::One<B>;
+
+    #[inline(always)]
+    fn match_at<M: Mode>(input: &[u8], pos: usize) -> Option<(M::Output<Self>, usize)> {
+        (input.get(pos) == Some(&B)).then(|| (M::build(|_| ByteEq), pos + 1))
+    }
 
     fn reach(input: &[u8], pos: usize) -> Result<usize, usize> {
         if input.get(pos) == Some(&B) {
@@ -120,10 +121,20 @@ impl<const B: u8> Literal for ByteEq<B> {
     }
 }
 
-impl<A: Literal, B: Literal> Literal for (A, B) {
+unsafe impl<A: Literal, B: Literal> Literal for (A, B) {
     const CASE_INSENSITIVE: bool = A::CASE_INSENSITIVE || B::CASE_INSENSITIVE;
     const BUF: LiteralBuf = A::BUF.concat(B::BUF);
     const LONGEST: usize = A::LONGEST + B::LONGEST;
+    const WHOLE_CHARS: bool = A::WHOLE_CHARS && B::WHOLE_CHARS;
+    const DEFAULT: Self = (A::DEFAULT, B::DEFAULT);
+    type Start = A::Start;
+
+    #[inline(always)]
+    fn match_at<M: Mode>(input: &[u8], pos: usize) -> Option<(M::Output<Self>, usize)> {
+        let (a, pos) = A::match_at::<M>(input, pos)?;
+        let (b, pos) = B::match_at::<M>(input, pos)?;
+        Some((M::build(|mode| (mode.get(a), mode.get(b))), pos))
+    }
 
     fn reach(input: &[u8], pos: usize) -> Result<usize, usize> {
         B::reach(input, A::reach(input, pos)?)
@@ -131,7 +142,7 @@ impl<A: Literal, B: Literal> Literal for (A, B) {
 }
 
 /// The left side is the literal: `StringEqCI!` puts each char first.
-impl<A: Literal, B: Literal> Literal for Either<A, B> {
+unsafe impl<A: Literal, B: Literal> Literal for Either<A, B> {
     const CASE_INSENSITIVE: bool = true;
     const BUF: LiteralBuf = A::BUF;
     const LONGEST: usize = if A::LONGEST > B::LONGEST {
@@ -139,10 +150,46 @@ impl<A: Literal, B: Literal> Literal for Either<A, B> {
     } else {
         B::LONGEST
     };
+    const WHOLE_CHARS: bool = A::WHOLE_CHARS
+        && B::WHOLE_CHARS
+        && std::str::from_utf8(A::BYTES).is_ok()
+        && std::str::from_utf8(B::BYTES).is_ok();
+    const DEFAULT: Self = Left(A::DEFAULT);
+    type Start = byte_set::Union<A::Start, B::Start>;
+
+    #[inline(always)]
+    fn match_at<M: Mode>(input: &[u8], pos: usize) -> Option<(M::Output<Self>, usize)> {
+        if let Some((a, end)) = A::match_at::<M>(input, pos) {
+            return Some((M::map(a, Left), end));
+        }
+        let (b, end) = B::match_at::<M>(input, pos)?;
+        Some((M::map(b, Right), end))
+    }
 
     fn reach(input: &[u8], pos: usize) -> Result<usize, usize> {
         A::reach(input, pos).or_else(|a| B::reach(input, pos).map_err(|b| a.max(b)))
     }
+}
+
+/// A literal with one text: no case variants, so nothing is lost
+/// converting it to `()`.
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is a case-insensitive literal, so has more than one text",
+    note = "a unit variant converts a literal into `()` only if it has one text: use `StringEq!`, or keep the literal as a field"
+)]
+pub trait Unambiguous: Literal {}
+
+impl<const B: u8> Unambiguous for ByteEq<B> {}
+
+// Reported once for the whole literal, not once per cased char.
+#[diagnostic::do_not_recommend]
+impl<A: Unambiguous, B: Unambiguous> Unambiguous for (A, B) {}
+
+/// A unit variant's `try_from_infallible = StringEq!("…")`: the text is the
+/// type's.
+impl<G: Unambiguous> From<Token<G>> for () {
+    fn from(_: Token<G>) {}
 }
 
 /// A `StringEq!` / `StringEqCI!` literal; keeps the matched `G`.
@@ -150,17 +197,25 @@ impl<A: Literal, B: Literal> Literal for Either<A, B> {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Token<G: Literal>(G);
 
-// SAFETY: a literal is whole chars.
+// SAFETY: `Literal` is this crate's alone, and `WHOLE_CHARS` with the `BYTES`
+// check below makes each alternative whole chars, so a match ends on a char
+// boundary.
 unsafe impl<G: Literal> Parse for Token<G> {
-    type First = G::First;
+    type First = Required<G::Start>;
 
     #[inline(always)]
     fn parse_at<M: Mode>(
         input: &[u8],
         pos: usize,
-        mut state: State,
+        #[allow(unused_variables)] state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        let result = G::parse_at::<M>(input, pos, state.reborrow());
+        const {
+            assert!(
+                G::WHOLE_CHARS && std::str::from_utf8(G::BYTES).is_ok(),
+                "a literal must be whole chars"
+            )
+        };
+        let result = G::match_at::<M>(input, pos);
         #[cfg(feature = "trace_pos")]
         if result.is_none() {
             Self::expected(pos..diverged::<G>(input, pos), state);
@@ -231,7 +286,7 @@ fn diverged<G: Literal>(input: &[u8], pos: usize) -> usize {
 
 impl<G: Literal> Default for Token<G> {
     fn default() -> Self {
-        Self::parse(&Self::text()).unwrap()
+        Token(G::DEFAULT)
     }
 }
 
@@ -372,10 +427,17 @@ pub trait CharClass: Grammar + ByteSet {
 #[macro_export]
 macro_rules! char_class {
     ($vis:vis $class:ident, |$ch:ident| $pred:expr) => {
-        $crate::char_class!($vis $class, stringify!($class), |$ch| $pred);
+        $crate::char_class!($vis $class, ::core::stringify!($class), |$ch| $pred);
     };
     ($vis:vis $class:ident, $name:expr, |$ch:ident| $pred:expr) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[derive(
+            ::core::fmt::Debug,
+            ::core::clone::Clone,
+            ::core::marker::Copy,
+            ::core::cmp::PartialEq,
+            ::core::cmp::Eq,
+            ::core::hash::Hash
+        )]
         $vis struct $class(pub char);
 
         impl $crate::CharClass for $class {
@@ -388,12 +450,12 @@ macro_rules! char_class {
         // First bytes: the ASCII ones that match, and every UTF-8 lead byte.
         impl $crate::first::ByteSet for $class {
             const BYTE_SET: $crate::first::byte_set::Type = {
-                const fn matches($ch: char) -> bool { $pred }
+                const fn __tygr_pred($ch: char) -> bool { $pred }
                 let mut bytes =
                     <$crate::__private::NonAsciiStart as $crate::first::ByteSet>::BYTE_SET;
                 let mut b = 0u8;
                 while b < 0x80 {
-                    if matches(b as char) {
+                    if __tygr_pred(b as char) {
                         bytes = bytes.with(b);
                     }
                     b += 1;
@@ -411,7 +473,7 @@ macro_rules! char_class {
                 input: &[u8],
                 pos: usize,
                 state: $crate::State,
-            ) -> Option<(M::Output<Self>, usize)> {
+            ) -> ::core::option::Option<(M::Output<Self>, usize)> {
                 $crate::__private::class_parse_at::<Self, M>(input, pos, state)
             }
 
@@ -507,7 +569,7 @@ mod tests {
     use super::*;
     use crate::{StringEq, StringEqCI};
 
-    type Bom = (ByteEq<0xEF>, (ByteEq<0xBB>, ByteEq<0xBF>));
+    type Bom = Token<(ByteEq<0xEF>, (ByteEq<0xBB>, ByteEq<0xBF>))>;
 
     fn printed(grammar: &impl Print) -> Vec<u8> {
         let mut buf = Vec::new();
@@ -516,7 +578,7 @@ mod tests {
     }
 
     #[test]
-    fn byte_eq_matches_and_prints_exact_bytes() {
+    fn literal_matches_and_prints_exact_bytes() {
         let bom = Bom::parse("\u{FEFF}").unwrap();
         assert_eq!(printed(&bom), b"\xEF\xBB\xBF");
         assert!(Bom::parse("x").is_err());
@@ -524,7 +586,7 @@ mod tests {
 
     #[test]
     fn print_is_lossy_on_invalid_utf8() {
-        let (lead, _) = ByteEq::<0xC3>::parse_prefix("é").unwrap();
+        let lead = ByteEq::<0xC3>;
         assert_eq!(printed(&lead), b"\xC3");
         assert_eq!(lead.print(), "\u{FFFD}");
     }

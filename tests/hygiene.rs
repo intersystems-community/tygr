@@ -28,9 +28,9 @@ impl tygr::Validate for NonZero {
 
 #[derive(tygr::Grammar)]
 struct Field(
-    #[tygr(from_str = tygr::StringOf1<Digit>, write_to = tygr::write_display)] u32,
+    #[tygr(from_str = tygr::StringOf1<Digit>, print_to = tygr::print_display)] u32,
     tygr::StringEq!(","),
-    #[tygr(try_from = Kw, write_to = write_kw)] Keyword,
+    #[tygr(try_from = Kw, print_to = print_kw)] Keyword,
 );
 
 struct Keyword;
@@ -42,7 +42,7 @@ impl TryFrom<Kw> for Keyword {
     }
 }
 
-fn write_kw(_: &Keyword, buf: &mut Vec<u8>) {
+fn print_kw(_: &Keyword, buf: &mut Vec<u8>) {
     buf.extend_from_slice(b"if");
 }
 
@@ -64,6 +64,57 @@ enum Generic<M> {
     B(tygr::StringEq!("b")),
     C(tygr::StringEq!("c")),
     D(tygr::StringEq!("d")),
+}
+
+// No prelude at all, and items named like the prelude's.
+mod bare {
+    #![no_implicit_prelude]
+    #![allow(dead_code)]
+
+    struct Option;
+    struct Some;
+    struct None;
+    struct Vec;
+    // Never called: `char_class!` must not pick it up for its default name.
+    #[allow(unused_macros)]
+    macro_rules! stringify {
+        ($($t:tt)*) => {
+            "shadowed"
+        };
+    }
+
+    ::tygr::char_class!(pub(super) Digit, |ch| ch.is_ascii_digit());
+
+    #[derive(::tygr::Grammar)]
+    pub(super) enum Op {
+        Add(::tygr::StringEq!("+")),
+        Sub(::tygr::StringEq!("-")),
+        Mul(::tygr::StringEq!("*")),
+        Div(::tygr::StringEq!("/")),
+    }
+
+    #[derive(::tygr::Grammar)]
+    #[tygr(validated)]
+    pub(super) struct NonZero(
+        #[tygr(from_str = ::tygr::StringOf1<Digit>, print_to = ::tygr::print_display)]
+        pub(super)  u32,
+    );
+
+    impl ::tygr::Validate for NonZero {
+        const REQUIREMENT: &'static str = "be non-zero";
+        fn validate(&self) -> bool {
+            self.0 != 0
+        }
+    }
+}
+
+#[test]
+fn derives_work_without_a_prelude() {
+    use tygr::{CharClass as _, Parse as _, Print as _};
+    assert!(bare::Op::parse("*").is_ok() && bare::Op::parse("x").is_err());
+    assert_eq!(bare::NonZero::parse("42").unwrap().print(), "42");
+    assert!(bare::NonZero::parse("0").is_err());
+    assert_eq!(bare::Digit::name(), "Digit");
 }
 
 #[test]

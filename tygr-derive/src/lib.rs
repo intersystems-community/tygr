@@ -16,7 +16,8 @@ use quote::quote;
 ///
 /// `#[tygr(name = "…", hidden, inline, validated)]` on the type, and
 /// `#[tygr(try_from/try_from_infallible/from_str/from_str_infallible = S,
-/// write_to = f)]` on a field, are optional (see `tygr`'s crate docs).
+/// print_to = f)]` on a field, are optional, except that a converted field
+/// prints only with `print_to` (see `tygr`'s crate docs).
 #[proc_macro_derive(Grammar, attributes(tygr))]
 pub fn derive_grammar(input: TokenStream) -> TokenStream {
     derive(input, |model| {

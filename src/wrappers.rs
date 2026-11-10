@@ -307,8 +307,8 @@ impl<T: Print> Print for Box<T> {
     }
 }
 
-/// Matches `T` and discards it; prints `T::default()`, e.g. nothing for
-/// whitespace.
+/// Matches `T` and keeps nothing, so it doesn't print: derive `Parse` alone,
+/// or give the field a `print_to`.
 // SAFETY: ends where `T` ends.
 unsafe impl<T: Parse> Parse for PhantomData<T> {
     type First = T::First;
@@ -333,12 +333,6 @@ unsafe impl<T: Parse> Parse for PhantomData<T> {
 
     fn visit_rules(rules: &mut Rules) {
         T::visit_rules(rules);
-    }
-}
-
-impl<T: Default + Print> Print for PhantomData<T> {
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        T::default().print_to(buf);
     }
 }
 

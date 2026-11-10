@@ -18,8 +18,9 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
   `#[derive(Print)]` derive one, e.g. a grammar that is only parsed
   needs no printing.
 - Removed `GrammarFrom` and its derives (`GrammarFromStr`,
-  `GrammarFromOther`, `GrammarTryFromOther`). Convert a field instead:
-  `struct Port(#[tygr(from_str = Digits)] u16);`.
+  `GrammarFromOther`, `GrammarTryFromOther`). Convert a field instead,
+  with `print_to` where `GrammarFrom::print_to` was:
+  `struct Port(#[tygr(from_str = Digits, print_to = print_display)] u16);`.
 - `scan` and `scan_prefix` are renamed `check` and `check_prefix`.
 - Removed `GrammarRule` and `bnf_rules!`. `Parse::bnf_rules()` collects a
   grammar's rules, each type's once, depth first, as `bnf::Rule`s to sort,
@@ -50,10 +51,9 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
   use a `#[tygr(validated)]` type wrapping `char`.
 - `StringOf<C>` and `StringOf1<C>` are type aliases for `Raw<Vec<C>>` and
   `Raw<Vec1<C>>`, so they `Debug`-print as `Raw(..)`.
-- `PhantomData<T>` prints `T::default()` rather than nothing, so a dropped
-  token prints back; printing it needs `T: Default`. `Raw<T>` defaults to
-  the text `T::default()` prints (empty for `StringOf`), and `Hidden`,
-  `Wrap`, `Prefix` and `Suffix` derive `Default`.
+- `PhantomData<T>` no longer implements `Print` (it kept nothing to print
+  back): a type with such a field derives `Parse` alone, or prints the
+  field with `#[tygr(print_to = f)]`.
 - Renamed `Range<T>` to `Ranged<T>`, freeing the name for
   `std::ops::Range`. It gains `range() -> Range<usize>`.
 - `StringEqCI!` matches each char's Unicode case mappings rather than only
@@ -107,11 +107,16 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
   (`Error = Infallible`, as for every `From`), `from_str` (`T: FromStr`
   on the matched text) or `from_str_infallible`. A failed conversion
   backtracks and is recorded as `Rejected`; an infallible one is skipped
-  when checking. The field prints with its type's `Print`, or with
-  `write_to = f`, such as the new `write_display`. On a unit variant, any
-  kind matches `S` and keeps nothing.
+  when checking. Printing a converted field needs `print_to = f`, such as
+  the new `print_display`. A unit variant is a field of type `()`:
+  `try_from_infallible = S` converts `S` into `()`, which a literal with
+  one text does (`StringEq!`, or `StringEqCI!` without cased chars), as
+  does a grammar with `impl From<S> for ()`; `try_from` if the conversion
+  can fail. Its `print_to` takes `&()`.
 - `Prefix` and `Suffix` fields are public, like `Wrap`'s, and so is
-  `Hidden`'s. `Vec1` gains `IntoInner` and `TryFrom<Vec<T>>`. Every
+  `Hidden`'s. `Vec1` gains `IntoInner` and `TryFrom<Vec<T>>`. `Raw<T>`
+  defaults to the text `T::default()` prints (empty for `StringOf`), and
+  `Hidden`, `Wrap`, `Prefix` and `Suffix` derive `Default`. Every
   combinator can be built by hand, e.g. to print.
 - `Error` implements `std::error::Error`, and `Expectation` is `Display`
   whatever the features.
@@ -122,7 +127,9 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
 - The name argument of `char_class!` is optional and defaults to the type
   name.
 - Fixed derived code failing to compile unless tygr's traits were in
-  scope (e.g. with `use tygr::Grammar;` instead of `use tygr::*;`).
+  scope (e.g. with `use tygr::Grammar;` instead of `use tygr::*;`), or
+  when the prelude's names (`Option`, `Vec`, `stringify!`) were shadowed
+  or absent.
 - Failed literals, validations and conversions no longer allocate when
   recording what was expected, nor lookaheads when probing.
 - Errors report input left over after a match, as `Expectation::End`,

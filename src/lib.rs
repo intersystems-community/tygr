@@ -28,7 +28,7 @@
 //! | [`Hidden<T>`]  | parsed/printed, omitted from BNF |
 //! | [`Raw<T>`] | parsed via `T`, kept as the raw matched text |
 //! | [`Ranged<T>`] | parsed via `T`, kept alongside its `start..end` byte range |
-//! | [`PhantomData<T>`](std::marker::PhantomData) | parsed via `T`, kept as nothing, printed as `T::default()` (e.g. whitespace) |
+//! | [`PhantomData<T>`](std::marker::PhantomData) | parsed via `T`, kept as nothing; doesn't print |
 //! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | concatenation shorthands, [`Deref`](std::ops::Deref)-ing to `T` |
 //! | [`VecSep<T, S>`] | one-or-more repetition with separators (`T { S T }`) |
 //!
@@ -57,15 +57,19 @@
 //!
 //! A failed conversion backtracks, recorded and footnoted in BNF like a
 //! failed [`Validate`] check; an infallible one is skipped when checking.
-//! The field prints with its type's [`Print`], or with `write_to = f`, an
-//! `fn(&T, &mut Vec<u8>)` such as [`write_display`]. On a unit variant, any
-//! of them matches `S` and keeps nothing, printing `S::default()`.
+//! Converting loses the text, so to print, the field needs `print_to = f`,
+//! an `fn(&T, &mut Vec<u8>)` such as [`print_display`] (or
+//! [`Print::print_to`], if `T` is a grammar). A unit variant is a field of
+//! type `()`: `try_from_infallible = S` converts `S` into `()`, which a
+//! literal with one text does (`StringEq!`, or `StringEqCI!` without cased
+//! chars), as does a grammar of yours with `impl From<S> for ()`; `try_from`
+//! if the conversion can fail. Its `print_to` takes `&()`.
 //!
 //! ```
 //! # use tygr::*;
 //! # char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
 //! #[derive(Grammar)]
-//! struct Port(#[tygr(from_str = StringOf1<IsDigit>, write_to = write_display)] u16);
+//! struct Port(#[tygr(from_str = StringOf1<IsDigit>, print_to = print_display)] u16);
 //! assert_eq!(Port::parse("8080").unwrap().0, 8080);
 //! assert!(Port::parse("99999").is_err());
 //! assert_eq!(Port(443).print(), "443");
@@ -160,8 +164,8 @@ pub mod __private {
     pub use crate::bnf::{inline_bnf, visit_inline};
     pub use crate::convert::{from_str, from_str_infallible, try_from, try_from_infallible};
     pub use crate::token::{
-        ByteEq, Literal, NonAsciiStart, Token, class_fail_at, class_parse_at, class_print_to,
-        class_to_bnf,
+        ByteEq, Literal, NonAsciiStart, Token, Unambiguous, class_fail_at, class_parse_at,
+        class_print_to, class_to_bnf,
     };
     pub use either::Either;
 

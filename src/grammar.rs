@@ -122,11 +122,10 @@ pub unsafe trait Parse: Sized + 'static {
 ///
 /// Implemented for tygr's own grammars; for `struct`s and `enum`s,
 /// `#[derive(Print)]` or `#[derive(Grammar)]` generates it. A converted field
-/// whose type isn't a grammar prints with `#[tygr(write_to = f)]` instead,
-/// such as [`write_display`].
+/// prints with `#[tygr(print_to = f)]` instead, such as [`print_display`].
 #[diagnostic::on_unimplemented(
     message = "`{Self}` doesn't print as a grammar",
-    note = "derive `Print` for it, or print a converted field with `#[tygr(write_to = f)]`, e.g. `tygr::write_display`"
+    note = "derive `Print` for it, or print the field with `#[tygr(print_to = f)]`, e.g. `tygr::print_display`"
 )]
 pub trait Print {
     /// Append `self`'s text to `buf`.
@@ -143,16 +142,16 @@ pub trait Print {
     }
 }
 
-/// Print `value` with its `Display`, for `#[tygr(write_to = write_display)]`.
+/// Print `value` with its `Display`, for `#[tygr(print_to = print_display)]`.
 ///
 /// ```
 /// # use tygr::*;
 /// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 /// #[derive(Grammar)]
-/// struct Port(#[tygr(from_str = StringOf1<Digit>, write_to = write_display)] u16);
+/// struct Port(#[tygr(from_str = StringOf1<Digit>, print_to = print_display)] u16);
 /// assert_eq!(Port(8080).print(), "8080");
 /// ```
-pub fn write_display<T: fmt::Display>(value: &T, buf: &mut Vec<u8>) {
+pub fn print_display<T: fmt::Display>(value: &T, buf: &mut Vec<u8>) {
     write!(buf, "{value}").expect("a Display implementation returned an error");
 }
 

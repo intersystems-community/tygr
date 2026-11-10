@@ -251,21 +251,26 @@ impl TryFrom<Digit> for bool {
 }
 
 /// `true` as the digit `1`, `false` as `0`.
-fn write_flag(flag: &bool, buf: &mut Vec<u8>) {
+fn print_flag(flag: &bool, buf: &mut Vec<u8>) {
     buf.push(if *flag { b'1' } else { b'0' });
+}
+
+/// A unit variant's `print_to` takes `&()`.
+fn print_null(_: &(), buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"null");
 }
 
 #[derive(Debug, PartialEq, Grammar)]
 enum Converted {
-    #[tygr(try_from = StringEq!("null"))]
+    #[tygr(try_from_infallible = StringEq!("null"), print_to = print_null)]
     Null,
     Fields(
-        #[tygr(from_str = StringOf1<IsDigit>, write_to = write_display)] u32,
+        #[tygr(from_str = StringOf1<IsDigit>, print_to = print_display)] u32,
         StringEq!(","),
-        #[tygr(from_str_infallible = StringOf1<IsDigit>, write_to = write_display)] String,
+        #[tygr(from_str_infallible = StringOf1<IsDigit>, print_to = print_display)] String,
         StringEq!(";"),
-        #[tygr(try_from_infallible = Digit, write_to = write_display)] u8,
-        #[tygr(try_from = Digit, write_to = write_flag)] bool,
+        #[tygr(try_from_infallible = Digit, print_to = print_display)] u8,
+        #[tygr(try_from = Digit, print_to = print_flag)] bool,
     ),
 }
 
@@ -277,6 +282,7 @@ fn field_conversions() {
     };
     assert_eq!((n, text.as_str(), digit, flag), (42, "07", 5, true));
     assert_eq!(Converted::parse("null").unwrap(), Converted::Null);
+    assert_eq!(Converted::Null.print(), "null");
     assert_eq!(Converted::parse("42,07;51").unwrap().print(), "42,07;51");
     assert_eq!(
         rule::<Converted>(),
@@ -410,45 +416,66 @@ fn values_build_by_hand_to_print() {
     assert!(Vec1::<IsDigit>::try_from(vec![]).is_err());
 }
 
+/// Prints byte `B`, for a unit variant.
+fn print_byte<const B: u8>(_: &(), buf: &mut Vec<u8>) {
+    buf.push(B);
+}
+
+/// A unit variant's source of the user's own: it converts into `()` by hand.
+#[derive(Debug, PartialEq, Grammar)]
+struct Keyword(StringEqCI!("kw"));
+
+impl From<Keyword> for () {
+    fn from(_: Keyword) {}
+}
+
+fn print_keyword(_: &(), buf: &mut Vec<u8>) {
+    buf.extend_from_slice(b"kw");
+}
+
 #[derive(Debug, PartialEq, Grammar)]
 enum Unit {
-    #[tygr(try_from = StringEq!("a"))]
+    #[tygr(try_from = StringEq!("a"), print_to = print_byte::<b'a'>)]
     A,
-    #[tygr(try_from_infallible = StringEq!("b"))]
-    B,
-    #[tygr(from_str = StringEq!("c"))]
-    C,
-    #[tygr(from_str_infallible = StringEq!("d"))]
-    D,
+    // Case-insensitive, but with one text, so it still converts.
+    #[tygr(try_from_infallible = StringEqCI!("1"), print_to = print_byte::<b'1'>)]
+    One,
+    #[tygr(try_from_infallible = Keyword, print_to = print_keyword)]
+    Kw,
 }
 
 #[test]
-fn any_conversion_on_a_unit_variant_matches_and_drops_its_source() {
-    for (text, unit) in [
-        ("a", Unit::A),
-        ("b", Unit::B),
-        ("c", Unit::C),
-        ("d", Unit::D),
-    ] {
+fn a_unit_variant_converts_its_source_into_unit() {
+    for (text, unit) in [("a", Unit::A), ("1", Unit::One), ("kw", Unit::Kw)] {
         assert_eq!(Unit::parse(text).unwrap(), unit);
         assert_eq!(unit.print(), text);
     }
-    assert_eq!(rule::<Unit>(), r#"Unit = "a" | "b" | "c" | "d" ."#);
+    assert_eq!(Unit::parse("KW").unwrap(), Unit::Kw);
+    assert_eq!(
+        rule::<Unit>(),
+        "Unit = \"a\" ^1 | \"1\" | Keyword .\n\n^1: be convertible to ()"
+    );
 }
 
 char_class!(IsSpace, "space", |ch| ch == ' ');
 
-/// Drops a required comma and optional spaces.
+fn print_comma<T>(_: &T, buf: &mut Vec<u8>) {
+    buf.push(b',');
+}
+
+fn print_nothing<T>(_: &T, _: &mut Vec<u8>) {}
+
+/// Drops a required comma and optional spaces; printing them is up to us.
 #[derive(Grammar)]
 struct Pair(
     Digits,
-    PhantomData<StringEq!(",")>,
-    PhantomData<StringOf<IsSpace>>,
+    #[tygr(print_to = print_comma)] PhantomData<StringEq!(",")>,
+    #[tygr(print_to = print_nothing)] PhantomData<StringOf<IsSpace>>,
     Digits,
 );
 
 #[test]
-fn phantom_data_prints_its_grammars_default() {
+fn phantom_data_prints_only_with_print_to() {
     assert_eq!(Pair::parse("1,  2").unwrap().print(), "1,2");
     assert_eq!(<Raw<StringEq!(",")>>::default().as_str(), ",");
 }

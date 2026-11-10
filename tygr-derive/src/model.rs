@@ -36,15 +36,21 @@ pub(crate) struct Variant {
 #[allow(clippy::large_enum_variant)] // Built once per field, at compile time.
 pub(crate) enum Field {
     /// A field, parsed as its type or converted, bound as `binding`, and
-    /// printed with its `Print` or `write_to`.
+    /// printed with `print_to` if given, else its `Print` (a converted field
+    /// needs `print_to`).
     Kept {
         binding: Ident,
         ty: Type,
         conversion: Option<Conversion>,
-        write_to: Option<Path>,
+        print_to: Option<Path>,
     },
-    /// A unit variant's source grammar: matched, then dropped.
-    Dropped(Type),
+    /// A unit variant's source grammar, converted into `()`; printed with
+    /// `print_to`, which takes `&()`.
+    Dropped {
+        kind: Kind,
+        source: Type,
+        print_to: Option<Path>,
+    },
 }
 
 /// `#[tygr(<kind> = source)]` on a field.
@@ -171,15 +177,32 @@ impl Variant {
         if let Fields::Unit = fields {
             let FieldAttrs {
                 conversion,
-                write_to,
+                print_to,
             } = FieldAttrs::new(attrs)?;
-            if let Some(write_to) = write_to {
-                return Err(syn::Error::new_spanned(
-                    write_to,
-                    "a unit variant prints its source's default, not `write_to`",
-                ));
-            }
-            let dropped = conversion.map(|conversion| Field::Dropped(conversion.source));
+            let dropped = match (conversion, print_to) {
+                (Some(Conversion { kind, source }), print_to) => {
+                    if let Kind::FromStr | Kind::FromStrInfallible = kind {
+                        return Err(syn::Error::new_spanned(
+                            source,
+                            "a unit variant converts its source into `()`, with `try_from` or \
+                             `try_from_infallible`",
+                        ));
+                    }
+                    Some(Field::Dropped {
+                        kind,
+                        source,
+                        print_to,
+                    })
+                }
+                (None, Some(print_to)) => {
+                    return Err(syn::Error::new_spanned(
+                        print_to,
+                        "`print_to` on a unit variant needs a source, e.g. `try_from_infallible = S`; \
+                         without one it matches the empty text, with nothing to print",
+                    ));
+                }
+                (None, None) => None,
+            };
             return Ok(Variant {
                 constructor: path,
                 fields: dropped.into_iter().collect(),
@@ -205,13 +228,13 @@ impl Variant {
             .map(|(field, binding)| {
                 let FieldAttrs {
                     conversion,
-                    write_to,
+                    print_to,
                 } = FieldAttrs::new(&field.attrs)?;
                 Ok(Field::Kept {
                     binding,
                     ty: field.ty.clone(),
                     conversion,
-                    write_to,
+                    print_to,
                 })
             })
             .collect::<syn::Result<_>>()?;
@@ -230,18 +253,39 @@ impl Field {
                 conversion: Some(conversion),
                 ..
             } => &conversion.source,
-            Field::Kept { ty, .. } | Field::Dropped(ty) => ty,
+            Field::Kept { ty, .. } | Field::Dropped { source: ty, .. } => ty,
         }
     }
 
-    /// The type it prints with `Print`: its own, unless `write_to` prints
-    /// it; a dropped source's.
+    /// The type it prints with `Print`: its own, unless converted or
+    /// `print_to` prints it.
     pub(crate) fn printed(&self) -> Option<&Type> {
         match self {
             Field::Kept {
-                write_to: Some(_), ..
-            } => None,
-            Field::Kept { ty, .. } | Field::Dropped(ty) => Some(ty),
+                ty,
+                conversion: None,
+                print_to: None,
+                ..
+            } => Some(ty),
+            _ => None,
+        }
+    }
+
+    /// The source of a converted field that nothing prints: converting
+    /// loses the text, so only `print_to` can print it back.
+    pub(crate) fn unprintable(&self) -> Option<&Type> {
+        match self {
+            Field::Kept {
+                conversion: Some(Conversion { source, .. }),
+                print_to: None,
+                ..
+            }
+            | Field::Dropped {
+                source,
+                print_to: None,
+                ..
+            } => Some(source),
+            _ => None,
         }
     }
 
@@ -249,25 +293,25 @@ impl Field {
     pub(crate) fn binding(&self) -> Option<&Ident> {
         match self {
             Field::Kept { binding, .. } => Some(binding),
-            Field::Dropped(_) => None,
+            Field::Dropped { .. } => None,
         }
     }
 
     /// What its text must do if its conversion can fail, in errors and BNF:
     /// be convertible to its type.
     pub(crate) fn requirement(&self) -> Option<String> {
-        match self {
+        let (kind, ty) = match self {
             Field::Kept {
                 ty,
-                conversion:
-                    Some(Conversion {
-                        kind: Kind::TryFrom | Kind::FromStr,
-                        ..
-                    }),
+                conversion: Some(Conversion { kind, .. }),
                 ..
-            } => Some(format!("be convertible to {}", written(ty))),
-            _ => None,
-        }
+            } => (kind, written(ty)),
+            Field::Dropped { kind, .. } => (kind, "()".to_string()),
+            Field::Kept {
+                conversion: None, ..
+            } => return None,
+        };
+        matches!(kind, Kind::TryFrom | Kind::FromStr).then(|| format!("be convertible to {ty}"))
     }
 }
 
@@ -317,7 +361,7 @@ impl Kind {
 #[derive(Default)]
 struct FieldAttrs {
     conversion: Option<Conversion>,
-    write_to: Option<Path>,
+    print_to: Option<Path>,
 }
 
 impl FieldAttrs {
@@ -325,8 +369,11 @@ impl FieldAttrs {
         let mut field = FieldAttrs::default();
         for attr in tygr_attrs(attrs) {
             attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("write_to") {
-                    field.write_to = Some(meta.value()?.parse()?);
+                if meta.path.is_ident("print_to") {
+                    if field.print_to.is_some() {
+                        return Err(meta.error("a field prints only one way"));
+                    }
+                    field.print_to = Some(meta.value()?.parse()?);
                 } else if let Some(kind) = Kind::ALL
                     .into_iter()
                     .find(|kind| meta.path.is_ident(kind.keyword()))
@@ -339,7 +386,7 @@ impl FieldAttrs {
                 } else {
                     return Err(meta.error(
                         "expected `try_from`, `try_from_infallible`, `from_str`, \
-                         `from_str_infallible`, or `write_to`",
+                         `from_str_infallible`, or `print_to`",
                     ));
                 }
                 Ok(())

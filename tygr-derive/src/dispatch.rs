@@ -21,12 +21,12 @@ pub(crate) fn dispatch(
     let n = arms.len();
     if n < THRESHOLD {
         let body = quote! {
-            #( if let Some(result) = (|| { #arms })() { return Some(result); } )*
-            None
+            #( if let ::core::option::Option::Some(result) = (|| { #arms })() { return ::core::option::Option::Some(result); } )*
+            ::core::option::Option::None
         };
         return (body, quote! {});
     }
-    let output = quote! { Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> };
+    let output = quote! { ::core::option::Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> };
     let cases: Vec<Ident> = (0..n).map(|k| format_ident!("__parse_case_{k}")).collect();
     let nexts = cases
         .iter()
@@ -36,19 +36,19 @@ pub(crate) fn dispatch(
             if ::tygr::__private::TRACING {
                 Self::__fail_at_skipped(input, pos, state);
             }
-            None
+            ::core::option::Option::None
         }}]);
     let (indices, skips) = (0..n, 0..n);
     let items = quote! {
         #(
             #[inline]
             fn #cases<__Mode: ::tygr::Mode>(input: &[u8], pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> #output {
-                if let Some(result) = (|| { #arms })() {
+                if let ::core::option::Option::Some(result) = (|| { #arms })() {
                     // Matching empty, it rules out none of the variants skipped.
-                    if ::tygr::__private::TRACING && ::tygr::first::contains::<#firsts>(None) && result.1 == pos {
+                    if ::tygr::__private::TRACING && ::tygr::first::contains::<#firsts>(::core::option::Option::None) && result.1 == pos {
                         Self::__fail_at_skipped(input, pos, state);
                     }
-                    return Some(result);
+                    return ::core::option::Option::Some(result);
                 }
                 #nexts
             }
@@ -62,7 +62,7 @@ pub(crate) fn dispatch(
                 let mut skipped = [#n; 257];
                 let mut slot = 0;
                 while slot < 257 {
-                    let next = if slot < 256 { Some(slot as u8) } else { None };
+                    let next = if slot < 256 { ::core::option::Option::Some(slot as u8) } else { ::core::option::Option::None };
                     skipped[slot] = #( if ::tygr::first::contains::<#firsts>(next) {
                         #skips
                     } else )* { #n };
@@ -80,7 +80,7 @@ pub(crate) fn dispatch(
             if ::tygr::__private::TRACING {
                 Self::__fail_at_variants(pos, state);
             }
-            None
+            ::core::option::Option::None
         }
     };
     let fn_ty = quote! { fn(&[u8], usize, ::tygr::State<'_>) -> #output };
@@ -92,7 +92,7 @@ pub(crate) fn dispatch(
             let mut table: [#fn_ty; 257] = [Self::__parse_miss::<__Mode>; 257];
             let mut slot = 0;
             while slot < 257 {
-                let next = if slot < 256 { Some(slot as u8) } else { None };
+                let next = if slot < 256 { ::core::option::Option::Some(slot as u8) } else { ::core::option::Option::None };
                 table[slot] = #( if ::tygr::first::contains::<#firsts>(next) {
                     cases[#indices]
                 } else )* { Self::__parse_miss::<__Mode> };

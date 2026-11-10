@@ -58,7 +58,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
                 ),
                 parse_at,
                 quote! { Self::__fail_at_variants(pos, state) },
-                quote! { ::tygr::bnf::Expr::alternation(vec![#(#sequences),*]) },
+                quote! { ::tygr::bnf::Expr::alternation(::std::vec![#(#sequences),*]) },
                 inherent,
             )
         }
@@ -85,7 +85,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
         )
     } else {
         (
-            quote! { ::tygr::bnf::Expr::RuleRef(#name.to_string()) },
+            quote! { ::tygr::bnf::Expr::RuleRef(::std::string::ToString::to_string(#name)) },
             quote! {
                 if rules.insert::<Self>(#name, || #def) {
                     #visit_parts
@@ -94,7 +94,8 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
         )
     };
     let (parse_at, fail_at) = (with_node(model, parse_at), with_node(model, fail_at));
-    // `__Mode`, not `M`, so it can't shadow a type parameter of the user's.
+    // `__Mode`, not `M`, so it can't shadow a type parameter of the user's
+    // (short of one named `__Mode`, a name the derive reserves).
     quote! {
         #inherent
 
@@ -102,7 +103,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
             type First = #first;
 
             #[inline(always)]
-            fn parse_at<__Mode: ::tygr::Mode>(input: &[u8], pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> {
+            fn parse_at<__Mode: ::tygr::Mode>(input: &[u8], pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> ::core::option::Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> {
                 #parse_at
             }
 
@@ -160,9 +161,9 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
             let value = #constructor;
             if !::tygr::Validate::validate(&value) {
                 state.reject(::core::option::Option::Some(#name), start..pos, <Self as ::tygr::Validate>::REQUIREMENT);
-                return None;
+                return ::core::option::Option::None;
             }
-            Some((<__Mode as ::tygr::Mode>::build(|_| value), pos))
+            ::core::option::Option::Some((<__Mode as ::tygr::Mode>::build(|_| value), pos))
         };
     }
     let bindings: Vec<_> = variant.fields.iter().filter_map(Field::binding).collect();
@@ -173,39 +174,37 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
     };
     quote! {
         #(#steps)*
-        Some((<__Mode as ::tygr::Mode>::build(|#mode| {
+        ::core::option::Option::Some((<__Mode as ::tygr::Mode>::build(|#mode| {
             #(let #bindings = <__Mode as ::tygr::Mode>::get(mode, #bindings);)*
             #constructor
         }), pos))
     }
 }
 
-/// Parse `field` in `mode`, binding it; a dropped one is only matched.
+/// Parse `field` in `mode`, binding it; a dropped one is converted to `()`.
 fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
-    match field {
+    let (binding, ty, kind) = match field {
         Field::Kept {
             binding,
             ty,
             conversion: None,
             ..
-        } => quote! {
-            let (#binding, pos) = <#ty as ::tygr::Parse>::parse_at::<#mode>(input, pos, state.reborrow())?;
-        },
+        } => {
+            return quote! {
+                let (#binding, pos) = <#ty as ::tygr::Parse>::parse_at::<#mode>(input, pos, state.reborrow())?;
+            };
+        }
         Field::Kept {
             binding,
             ty,
-            conversion: Some(Conversion { kind, source }),
+            conversion: Some(Conversion { kind, .. }),
             ..
-        } => {
-            let helper = kind.helper();
-            let requirement = field.requirement();
-            quote! {
-                let (#binding, pos) = ::tygr::__private::#helper::<#source, #ty, #mode>(input, pos, state.reborrow(), #requirement)?;
-            }
-        }
-        Field::Dropped(source) => quote! {
-            let ((), pos) = <#source as ::tygr::Parse>::parse_at::<::tygr::Check>(input, pos, state.reborrow())?;
-        },
+        } => (quote! { #binding }, quote! { #ty }, kind),
+        Field::Dropped { kind, .. } => (quote! { _ }, quote! { () }, kind),
+    };
+    let (source, helper, requirement) = (field.source(), kind.helper(), field.requirement());
+    quote! {
+        let (#binding, pos) = ::tygr::__private::#helper::<#source, #ty, #mode>(input, pos, state.reborrow(), #requirement)?;
     }
 }
 
@@ -227,7 +226,7 @@ fn sequence(variant: &Variant) -> TokenStream {
             None => bnf,
         }
     });
-    quote! { ::tygr::bnf::Expr::sequence(vec![#(#bnfs),*]) }
+    quote! { ::tygr::bnf::Expr::sequence(::std::vec![#(#bnfs),*]) }
 }
 
 /// Reads every field, as a derived `Print` would: a grammar's fields are
