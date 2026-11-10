@@ -77,13 +77,12 @@ impl<T> Raw<T> {
     }
 }
 
-// SAFETY: ends where `T` ends.
-unsafe impl<T: Parse> Parse for Raw<T> {
+impl<T: Parse> Parse for Raw<T> {
     type First = T::First;
 
     #[inline]
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         pos: usize,
         state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -242,13 +241,12 @@ impl<T> IntoInner<T> for Ranged<T> {
     }
 }
 
-// SAFETY: ends where `T` ends.
-unsafe impl<T: Parse> Parse for Ranged<T> {
+impl<T: Parse> Parse for Ranged<T> {
     type First = T::First;
 
     #[inline]
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         pos: usize,
         state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -275,12 +273,11 @@ impl<T: Print> Print for Ranged<T> {
     }
 }
 
-// SAFETY: ends where `T` ends.
-unsafe impl<T: Parse> Parse for Box<T> {
+impl<T: Parse> Parse for Box<T> {
     type First = T::First;
 
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         pos: usize,
         state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -309,13 +306,12 @@ impl<T: Print> Print for Box<T> {
 
 /// Matches `T` and keeps nothing, so it doesn't print: derive `Parse` alone,
 /// or give the field a `print_to`.
-// SAFETY: ends where `T` ends.
-unsafe impl<T: Parse> Parse for PhantomData<T> {
+impl<T: Parse> Parse for PhantomData<T> {
     type First = T::First;
 
     #[inline]
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         pos: usize,
         state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -336,9 +332,8 @@ unsafe impl<T: Parse> Parse for PhantomData<T> {
     }
 }
 
-/// The text of `input[pos..end]`.
+/// The text of `input[pos..end]`; a grammar that ended mid-char panics here.
 #[inline(always)]
-pub(crate) fn text(input: &[u8], pos: usize, end: usize) -> &str {
-    // SAFETY: see `Parse`'s safety section.
-    unsafe { std::str::from_utf8_unchecked(&input[pos..end]) }
+pub(crate) fn text(input: &str, pos: usize, end: usize) -> &str {
+    input.get(pos..end).expect("a grammar ended mid-char")
 }

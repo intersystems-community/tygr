@@ -13,13 +13,12 @@ use std::ops::Deref;
 use tygr_derive::Grammar;
 
 // `()`: the empty sequence.
-// SAFETY: ends where it starts.
-unsafe impl Parse for () {
+impl Parse for () {
     type First = Optional<byte_set::Emp>;
 
     #[inline]
     fn parse_at<M: Mode>(
-        _input: &[u8],
+        _input: &str,
         pos: usize,
         _state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -50,13 +49,12 @@ macro_rules! concat_first {
 
 macro_rules! impl_tuple {
     ($($idx:tt $T:ident),+) => {
-        // SAFETY: ends where its last part ends.
-        unsafe impl<$($T: Parse),+> Parse for ($($T,)+) {
+        impl<$($T: Parse),+> Parse for ($($T,)+) {
             type First = concat_first!(Optional<byte_set::Emp>; $($T),+);
 
             #[inline]
             fn parse_at<M: Mode>(
-                input: &[u8],
+                input: &str,
                 pos: usize,
                 mut state: State,
             ) -> Option<(M::Output<Self>, usize)> {
@@ -231,13 +229,12 @@ impl<T, S> IntoInner<T> for Suffix<T, S> {
     }
 }
 
-// SAFETY: ends where `A` or `B` ends.
-unsafe impl<A: Parse, B: Parse> Parse for Either<A, B> {
+impl<A: Parse, B: Parse> Parse for Either<A, B> {
     type First = <A::First as First>::Alt<B::First>;
 
     #[inline]
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         pos: usize,
         mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -273,13 +270,12 @@ impl<A: Print, B: Print> Print for Either<A, B> {
     }
 }
 
-// SAFETY: ends where `T` ends, or where it starts.
-unsafe impl<T: Parse> Parse for Option<T> {
+impl<T: Parse> Parse for Option<T> {
     type First = <T::First as First>::Opt;
 
     #[inline]
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         pos: usize,
         state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -311,13 +307,12 @@ impl<T: Print> Print for Option<T> {
     }
 }
 
-// SAFETY: ends where its last item ends, or where it starts.
-unsafe impl<T: Parse> Parse for Vec<T> {
+impl<T: Parse> Parse for Vec<T> {
     type First = <T::First as First>::Opt;
 
     #[inline]
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         mut pos: usize,
         mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -385,14 +380,13 @@ impl<T> TryFrom<Vec<T>> for Vec1<T> {
     }
 }
 
-// SAFETY: ends where its last item ends.
-unsafe impl<T: Parse> Parse for Vec1<T> {
+impl<T: Parse> Parse for Vec1<T> {
     type First = T::First;
 
     // `Vec` stops at an item that matches empty, so an empty match is no items.
     #[inline]
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         pos: usize,
         state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -429,13 +423,12 @@ pub struct VecSep<T, S> {
 }
 
 // By hand, so items and separators are pushed straight into their vectors.
-// SAFETY: ends where its last item ends.
-unsafe impl<T: Parse, S: Parse> Parse for VecSep<T, S> {
+impl<T: Parse, S: Parse> Parse for VecSep<T, S> {
     type First = <T::First as First>::Seq<Vec<(S, T)>>;
 
     #[inline]
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         pos: usize,
         mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -519,13 +512,12 @@ impl<T, S> VecSep<T, S> {
 /// ```
 pub struct NotFollowedBy<G>(PhantomData<G>);
 
-// SAFETY: ends where it starts.
-unsafe impl<G: Parse> Parse for NotFollowedBy<G> {
+impl<G: Parse> Parse for NotFollowedBy<G> {
     type First = Optional<byte_set::Emp>;
 
     #[inline]
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         pos: usize,
         mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -564,13 +556,12 @@ unsafe impl<G: Parse> Parse for NotFollowedBy<G> {
 /// ```
 pub struct FollowedBy<G>(PhantomData<G>);
 
-// SAFETY: ends where it starts.
-unsafe impl<G: Parse> Parse for FollowedBy<G> {
+impl<G: Parse> Parse for FollowedBy<G> {
     type First = G::First;
 
     #[inline]
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         pos: usize,
         state: State,
     ) -> Option<(M::Output<Self>, usize)> {

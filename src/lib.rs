@@ -139,6 +139,7 @@
 //! Op2 = "*" | "/" .
 //! Op1 = "+" | "-" ."#);
 //! ```
+#![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 pub mod bnf;

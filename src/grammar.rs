@@ -14,13 +14,11 @@ use std::fmt::{self, Write};
 /// `enum`s, `#[derive(Parse)]` or `#[derive(Grammar)]` generates it (see
 /// the crate-level docs).
 ///
-/// # Safety
-///
-/// tygr's `unsafe` UTF-8 conversions rely on this: [`parse_at`](Self::parse_at)
-/// gets valid UTF-8 `input` and a char-boundary `pos`, and must return a
-/// char-boundary end. An implementation passes other grammars only its
-/// `input`, at char boundaries.
-pub unsafe trait Parse: Sized + 'static {
+/// [`parse_at`](Self::parse_at) gets a char-boundary `pos` and must return a
+/// char-boundary end, passing other grammars only its `input`. Mid-char, no
+/// `char` is found, and a [`Raw`](crate::Raw) or conversion keeping the text
+/// panics.
+pub trait Parse: Sized + 'static {
     /// The bytes (and whether empty input) this grammar can start with, used
     /// to skip alternatives that can't match. A manual impl delegates
     /// (`T::First`), combines ([`Seq`](crate::first::First::Seq) /
@@ -50,29 +48,29 @@ pub unsafe trait Parse: Sized + 'static {
     /// Parse the entire `input` as `Self`, failing if any input is left unconsumed.
     fn parse(input: &str) -> Result<Self, Error> {
         run(|mut state| {
-            let (value, end) = Self::parse_at::<Build>(input.as_bytes(), 0, state.reborrow())?;
-            state.at_end(input.as_bytes(), end).then_some(value)
+            let (value, end) = Self::parse_at::<Build>(input, 0, state.reborrow())?;
+            state.at_end(input, end).then_some(value)
         })
     }
 
     /// Like [`parse`](Self::parse), but may stop early; returns the end
     /// position too.
     fn parse_prefix(input: &str) -> Result<(Self, usize), Error> {
-        run(|state| Self::parse_at::<Build>(input.as_bytes(), 0, state))
+        run(|state| Self::parse_at::<Build>(input, 0, state))
     }
 
     /// Like [`parse`](Self::parse), but only checks `input`.
     fn check(input: &str) -> Result<(), Error> {
         run(|mut state| {
-            let ((), end) = Self::parse_at::<Check>(input.as_bytes(), 0, state.reborrow())?;
-            state.at_end(input.as_bytes(), end).then_some(())
+            let ((), end) = Self::parse_at::<Check>(input, 0, state.reborrow())?;
+            state.at_end(input, end).then_some(())
         })
     }
 
     /// Like [`check`](Self::check), but may stop early; returns the end
     /// position.
     fn check_prefix(input: &str) -> Result<usize, Error> {
-        run(|state| Some(Self::parse_at::<Check>(input.as_bytes(), 0, state)?.1))
+        run(|state| Some(Self::parse_at::<Check>(input, 0, state)?.1))
     }
 
     /// This grammar's rule (unless inline or hidden), then each rule it
@@ -95,13 +93,10 @@ pub unsafe trait Parse: Sized + 'static {
     }
 
     /// Parse `Self` at byte offset `pos`, returning its output in mode `M`
-    /// (the value, or nothing when checking) and the end offset. See
-    /// [`Parse`]'s safety section.
-    fn parse_at<M: Mode>(
-        input: &[u8],
-        pos: usize,
-        state: State,
-    ) -> Option<(M::Output<Self>, usize)>;
+    /// (the value, or nothing when checking) and the end offset, a char
+    /// boundary (see [`Parse`]).
+    fn parse_at<M: Mode>(input: &str, pos: usize, state: State)
+    -> Option<(M::Output<Self>, usize)>;
 
     /// Record what this grammar expected at `pos`, without parsing (e.g.
     /// when `First` already ruled it out). Returns whether it's required
@@ -165,7 +160,7 @@ impl<T: Parse + Print> Grammar for T {}
 /// struct Paren<T>(T);
 ///
 /// fn parse_paren<T: Parse, M: Mode>(
-///     input: &[u8],
+///     input: &str,
 ///     pos: usize,
 ///     mut state: State,
 /// ) -> Option<(M::Output<Paren<T>>, usize)> {

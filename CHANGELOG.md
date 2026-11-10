@@ -31,12 +31,6 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
 - `Grammar::scan_at` is merged into `Parse::parse_at::<M: Mode>`, which
   returns `M::Output<Self>`: the value in mode `Build`, `()` in mode
   `Check`. Hand-written grammars build outputs with `Mode::build`/`map`.
-- `parse_at` takes `input: &[u8]`, the UTF-8 bytes of the `&str` passed
-  to `parse` and friends (whose signatures are unchanged). Every position
-  is a char boundary; hand-written grammars must keep it that way.
-- `Parse` is an `unsafe trait`, as tygr's UTF-8 conversions rely on that
-  rule: a hand-written grammar is an `unsafe impl Parse`. Derived and
-  `char_class!` impls need no change, even under `#![forbid(unsafe_code)]`.
 - Removed `CharOf<M>`: a `char_class!` type is now itself the grammar for
   one matching char (`struct IsDigit(pub char)`). Replace `CharOf<IsDigit>`
   with `IsDigit`. `CharClass` now requires `Grammar` and gains `new` and
@@ -130,6 +124,9 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
   or absent.
 - Failed literals, validations and conversions no longer allocate when
   recording what was expected, nor lookaheads when probing.
+- tygr has no `unsafe` code (`#![forbid(unsafe_code)]`), so a hand-written
+  grammar that ends mid-char can't cause undefined behaviour: no char is
+  found there, and a `Raw` or conversion keeping such text panics.
 - Errors report input left over after a match, as `Expectation::End`,
   and a failed negative lookahead, as `NotFollowedBy`; both recorded
   nothing.

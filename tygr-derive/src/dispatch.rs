@@ -42,7 +42,7 @@ pub(crate) fn dispatch(
     let items = quote! {
         #(
             #[inline]
-            fn #cases<__Mode: ::tygr::Mode>(input: &[u8], pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> #output {
+            fn #cases<__Mode: ::tygr::Mode>(input: &str, pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> #output {
                 if let ::core::option::Option::Some(result) = (|| { #arms })() {
                     // Matching empty, it rules out none of the variants skipped.
                     if ::tygr::__private::TRACING && ::tygr::first::contains::<#firsts>(::core::option::Option::None) && result.1 == pos {
@@ -57,7 +57,7 @@ pub(crate) fn dispatch(
         // Report the variants the table skipped for the next byte: those
         // before the first that can start with it (all, if none can).
         #[cold]
-        fn __fail_at_skipped(input: &[u8], #[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) {
+        fn __fail_at_skipped(input: &str, #[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) {
             let skipped: &'static [usize; 257] = &const {
                 let mut skipped = [#n; 257];
                 let mut slot = 0;
@@ -70,20 +70,20 @@ pub(crate) fn dispatch(
                 }
                 skipped
             };
-            let k = skipped[input.get(pos).map_or(256, |&byte| byte as usize)];
+            let k = skipped[input.as_bytes().get(pos).map_or(256, |&byte| byte as usize)];
             #( if #indices < k { let _ = #fail_ats; } )*
         }
 
         // No variant can start here: report them all.
         #[inline]
-        fn __parse_miss<__Mode: ::tygr::Mode>(_input: &[u8], pos: usize, state: ::tygr::State) -> #output {
+        fn __parse_miss<__Mode: ::tygr::Mode>(_input: &str, pos: usize, state: ::tygr::State) -> #output {
             if ::tygr::__private::TRACING {
                 Self::__fail_at_variants(pos, state);
             }
             ::core::option::Option::None
         }
     };
-    let fn_ty = quote! { fn(&[u8], usize, ::tygr::State<'_>) -> #output };
+    let fn_ty = quote! { fn(&str, usize, ::tygr::State<'_>) -> #output };
     let indices = 0..n;
     let body = quote! {
         // Slots 0-255: the next byte; 256: end of input. One per mode.
@@ -100,7 +100,7 @@ pub(crate) fn dispatch(
             }
             table
         };
-        table[input.get(pos).map_or(256, |&byte| byte as usize)](input, pos, state)
+        table[input.as_bytes().get(pos).map_or(256, |&byte| byte as usize)](input, pos, state)
     };
     (body, items)
 }

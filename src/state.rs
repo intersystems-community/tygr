@@ -59,7 +59,7 @@ impl<'a> State<'a> {
 
     /// Whether `pos` is the end of `input`; if not, records that it was
     /// expected.
-    pub(crate) fn at_end(&mut self, input: &[u8], pos: usize) -> bool {
+    pub(crate) fn at_end(&mut self, input: &str, pos: usize) -> bool {
         let end = pos == input.len();
         #[cfg(feature = "trace_pos")]
         if !end {

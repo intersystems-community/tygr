@@ -58,17 +58,10 @@ impl LiteralBuf {
 
 /// A fixed literal as byte atoms. Only [`Token`] parses one, asserting when
 /// its `parse_at` is instantiated (so on build, not `cargo check`) that
-/// each alternative is whole chars, so the byte level can't break `Parse`'s
+/// each alternative is whole chars, so the byte level keeps `Parse`'s
 /// char-boundary rule.
-///
-/// # Safety
-///
-/// `match_at` and `reach` must consume exactly one of the texts `BYTES` and
-/// `WHOLE_CHARS` describe, and `Start` must hold every text's first byte:
-/// [`Token`]'s `unsafe impl Parse` trusts them, so only this crate
-/// implements the trait.
 #[doc(hidden)]
-pub unsafe trait Literal: Copy + 'static {
+pub trait Literal: Copy + 'static {
     /// Does any part match other cases (contain an `Either`)?
     const CASE_INSENSITIVE: bool;
     /// The literal's bytes.
@@ -96,7 +89,7 @@ pub unsafe trait Literal: Copy + 'static {
     fn reach(input: &[u8], pos: usize) -> Result<usize, usize>;
 }
 
-unsafe impl<const B: u8> Literal for ByteEq<B> {
+impl<const B: u8> Literal for ByteEq<B> {
     const CASE_INSENSITIVE: bool = false;
     const BUF: LiteralBuf = LiteralBuf::one(B);
     const LONGEST: usize = 1;
@@ -123,7 +116,7 @@ unsafe impl<const B: u8> Literal for ByteEq<B> {
     }
 }
 
-unsafe impl<A: Literal, B: Literal> Literal for (A, B) {
+impl<A: Literal, B: Literal> Literal for (A, B) {
     const CASE_INSENSITIVE: bool = A::CASE_INSENSITIVE || B::CASE_INSENSITIVE;
     const BUF: LiteralBuf = A::BUF.concat(B::BUF);
     const LONGEST: usize = A::LONGEST + B::LONGEST;
@@ -149,7 +142,7 @@ unsafe impl<A: Literal, B: Literal> Literal for (A, B) {
 }
 
 /// The left side is the literal: `StringEqCI!` puts each char first.
-unsafe impl<A: Literal, B: Literal> Literal for Either<A, B> {
+impl<A: Literal, B: Literal> Literal for Either<A, B> {
     const CASE_INSENSITIVE: bool = true;
     const BUF: LiteralBuf = A::BUF;
     const LONGEST: usize = if A::LONGEST > B::LONGEST {
@@ -214,15 +207,12 @@ const LONGEST_CAP: usize = 3 * LiteralBuf::CAP;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Token<G: Literal>(G);
 
-// SAFETY: `Literal` is this crate's alone, and `WHOLE_CHARS` with the `BYTES`
-// check below makes each alternative whole chars, so a match ends on a char
-// boundary.
-unsafe impl<G: Literal> Parse for Token<G> {
+impl<G: Literal> Parse for Token<G> {
     type First = Required<G::Start>;
 
     #[inline(always)]
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         pos: usize,
         #[allow(unused_variables)] state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -231,10 +221,10 @@ unsafe impl<G: Literal> Parse for Token<G> {
             assert!(G::LONGEST <= LONGEST_CAP, "literal over 256 bytes");
             let _ = Self::TEXT;
         };
-        let result = G::match_at::<M>(input, pos);
+        let result = G::match_at::<M>(input.as_bytes(), pos);
         #[cfg(feature = "trace_pos")]
         if result.is_none() {
-            Self::expected(pos..diverged::<G>(input, pos), state);
+            Self::expected(pos..diverged::<G>(input.as_bytes(), pos), state);
         }
         result.map(|(matched, end)| (M::map(matched, Token), end))
     }
@@ -330,13 +320,12 @@ pub(crate) type CharStart = byte_set::Union<byte_set::Between<0x00, 0x7F>, NonAs
 const ANY_CHAR: &str = "any";
 
 /// Any one char. Fails only at end of input.
-// SAFETY: ends after a whole char.
-unsafe impl Parse for char {
+impl Parse for char {
     type First = Required<CharStart>;
 
     #[inline(always)]
     fn parse_at<M: Mode>(
-        input: &[u8],
+        input: &str,
         pos: usize,
         state: State,
     ) -> Option<(M::Output<Self>, usize)> {
@@ -375,13 +364,15 @@ impl Print for char {
     }
 }
 
-/// The char at `pos` and its end; `None` at end of input.
+/// The char at `pos` and its end; `None` at end of input, or mid-char (where
+/// no grammar should be).
 #[inline(always)]
-fn decode_char(input: &[u8], pos: usize) -> Option<(char, usize)> {
-    // SAFETY: see `Parse`'s safety section.
-    let ch = unsafe { std::str::from_utf8_unchecked(input.get(pos..)?) }
-        .chars()
-        .next()?;
+fn decode_char(input: &str, pos: usize) -> Option<(char, usize)> {
+    let &lead = input.as_bytes().get(pos)?;
+    if lead.is_ascii() {
+        return Some((lead as char, pos + 1));
+    }
+    let ch = input.get(pos..)?.chars().next()?;
     Some((ch, pos + ch.len_utf8()))
 }
 
@@ -483,13 +474,12 @@ macro_rules! char_class {
             };
         }
 
-        // SAFETY: ends after a whole char.
-        unsafe impl $crate::Parse for $class {
+        impl $crate::Parse for $class {
             type First = $crate::first::Required<$class>;
 
             #[inline(always)]
             fn parse_at<M: $crate::Mode>(
-                input: &[u8],
+                input: &str,
                 pos: usize,
                 state: $crate::State,
             ) -> ::core::option::Option<(M::Output<Self>, usize)> {
@@ -519,11 +509,11 @@ macro_rules! char_class {
 #[doc(hidden)]
 #[inline(always)]
 pub fn class_parse_at<C: CharClass, M: Mode>(
-    input: &[u8],
+    input: &str,
     pos: usize,
     state: State,
 ) -> Option<(M::Output<C>, usize)> {
-    let matched = match input.get(pos) {
+    let matched = match input.as_bytes().get(pos) {
         // The byte set is exact for ASCII: no decoding or predicate needed.
         Some(&b) if b.is_ascii() => C::BYTE_SET.contains(b).then_some((b as char, pos + 1)),
         _ => decode_char(input, pos).filter(|&(ch, _)| C::matches(ch)),

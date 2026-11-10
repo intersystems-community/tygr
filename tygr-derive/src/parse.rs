@@ -99,11 +99,11 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     quote! {
         #inherent
 
-        unsafe impl #impl_generics ::tygr::Parse for #ident #ty_generics #where_clause {
+        impl #impl_generics ::tygr::Parse for #ident #ty_generics #where_clause {
             type First = #first;
 
             #[inline(always)]
-            fn parse_at<__Mode: ::tygr::Mode>(input: &[u8], pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> ::core::option::Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> {
+            fn parse_at<__Mode: ::tygr::Mode>(input: &str, pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> ::core::option::Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> {
                 #parse_at
             }
 

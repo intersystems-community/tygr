@@ -12,7 +12,7 @@ use std::str::FromStr;
 /// conversion can fail. A failure rejects the text, which must `requirement`.
 #[inline(always)]
 pub fn try_from<S: Parse + TryInto<T>, T, M: Mode>(
-    input: &[u8],
+    input: &str,
     pos: usize,
     mut state: State,
     requirement: &'static str,
@@ -25,7 +25,7 @@ pub fn try_from<S: Parse + TryInto<T>, T, M: Mode>(
 /// `try_from_infallible = S`: parse `S`, then convert it.
 #[inline(always)]
 pub fn try_from_infallible<S: Parse + TryInto<T, Error = Infallible>, T, M: Mode>(
-    input: &[u8],
+    input: &str,
     pos: usize,
     state: State,
 ) -> Option<(M::Output<T>, usize)> {
@@ -44,7 +44,7 @@ pub fn try_from_infallible<S: Parse + TryInto<T, Error = Infallible>, T, M: Mode
 /// `requirement`.
 #[inline(always)]
 pub fn from_str<S: Parse, T: FromStr, M: Mode>(
-    input: &[u8],
+    input: &str,
     pos: usize,
     mut state: State,
     requirement: &'static str,
@@ -62,7 +62,7 @@ pub fn from_str<S: Parse, T: FromStr, M: Mode>(
 /// `from_str_infallible = S`: check `S`, then convert its text.
 #[inline(always)]
 pub fn from_str_infallible<S: Parse, T: FromStr<Err = Infallible>, M: Mode>(
-    input: &[u8],
+    input: &str,
     pos: usize,
     state: State,
 ) -> Option<(M::Output<T>, usize)> {
