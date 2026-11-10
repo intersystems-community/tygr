@@ -6,8 +6,7 @@ use crate::bnf::{self, Expr, Rule, Rules};
 use crate::first::First;
 use crate::state::run;
 use crate::{Error, State};
-use std::fmt;
-use std::io::Write;
+use std::fmt::{self, Write};
 
 /// Parse and describe (as BNF) a grammar element.
 ///
@@ -129,16 +128,13 @@ pub unsafe trait Parse: Sized + 'static {
 )]
 pub trait Print {
     /// Append `self`'s text to `buf`.
-    fn print_to(&self, buf: &mut Vec<u8>);
+    fn print_to(&self, buf: &mut String);
 
-    /// `self`'s text as a new `String` (invalid UTF-8 becomes `U+FFFD`).
+    /// `self`'s text as a new `String`.
     fn print(&self) -> String {
-        let mut buf = Vec::new();
+        let mut buf = String::new();
         self.print_to(&mut buf);
-        match String::from_utf8(buf) {
-            Ok(text) => text,
-            Err(err) => String::from_utf8_lossy(err.as_bytes()).into_owned(),
-        }
+        buf
     }
 }
 
@@ -151,7 +147,7 @@ pub trait Print {
 /// struct Port(#[tygr(from_str = StringOf1<Digit>, print_to = print_display)] u16);
 /// assert_eq!(Port(8080).print(), "8080");
 /// ```
-pub fn print_display<T: fmt::Display>(value: &T, buf: &mut Vec<u8>) {
+pub fn print_display<T: fmt::Display>(value: &T, buf: &mut String) {
     write!(buf, "{value}").expect("a Display implementation returned an error");
 }
 

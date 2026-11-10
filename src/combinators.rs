@@ -38,7 +38,7 @@ unsafe impl Parse for () {
 }
 
 impl Print for () {
-    fn print_to(&self, _buf: &mut Vec<u8>) {}
+    fn print_to(&self, _buf: &mut String) {}
 }
 
 macro_rules! concat_first {
@@ -81,7 +81,7 @@ macro_rules! impl_tuple {
         }
 
         impl<$($T: Print),+> Print for ($($T,)+) {
-            fn print_to(&self, buf: &mut Vec<u8>) {
+            fn print_to(&self, buf: &mut String) {
                 $(self.$idx.print_to(buf);)+
             }
         }
@@ -265,7 +265,7 @@ unsafe impl<A: Parse, B: Parse> Parse for Either<A, B> {
 }
 
 impl<A: Print, B: Print> Print for Either<A, B> {
-    fn print_to(&self, buf: &mut Vec<u8>) {
+    fn print_to(&self, buf: &mut String) {
         match self {
             Left(a) => a.print_to(buf),
             Right(b) => b.print_to(buf),
@@ -304,7 +304,7 @@ unsafe impl<T: Parse> Parse for Option<T> {
 }
 
 impl<T: Print> Print for Option<T> {
-    fn print_to(&self, buf: &mut Vec<u8>) {
+    fn print_to(&self, buf: &mut String) {
         if let Some(value) = self {
             value.print_to(buf);
         }
@@ -348,7 +348,7 @@ unsafe impl<T: Parse> Parse for Vec<T> {
 }
 
 impl<T: Print> Print for Vec<T> {
-    fn print_to(&self, buf: &mut Vec<u8>) {
+    fn print_to(&self, buf: &mut String) {
         for item in self {
             item.print_to(buf);
         }
@@ -414,7 +414,7 @@ unsafe impl<T: Parse> Parse for Vec1<T> {
 }
 
 impl<T: Print> Print for Vec1<T> {
-    fn print_to(&self, buf: &mut Vec<u8>) {
+    fn print_to(&self, buf: &mut String) {
         self.0.print_to(buf);
     }
 }
@@ -478,7 +478,7 @@ unsafe impl<T: Parse, S: Parse> Parse for VecSep<T, S> {
 }
 
 impl<T: Print, S: Print> Print for VecSep<T, S> {
-    fn print_to(&self, buf: &mut Vec<u8>) {
+    fn print_to(&self, buf: &mut String) {
         let mut items = self.items.iter();
         if let Some(first) = items.next() {
             first.print_to(buf);
@@ -596,7 +596,7 @@ unsafe impl<G: Parse> Parse for FollowedBy<G> {
 macro_rules! impl_lookahead {
     ($Lookahead:ident) => {
         impl<G> Print for $Lookahead<G> {
-            fn print_to(&self, _buf: &mut Vec<u8>) {}
+            fn print_to(&self, _buf: &mut String) {}
         }
 
         impl<G> Default for $Lookahead<G> {

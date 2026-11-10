@@ -105,8 +105,8 @@ unsafe impl<T: Parse> Parse for Raw<T> {
 }
 
 impl<T> Print for Raw<T> {
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        buf.extend_from_slice(self.0.as_bytes());
+    fn print_to(&self, buf: &mut String) {
+        buf.push_str(&self.0);
     }
 }
 
@@ -270,7 +270,7 @@ unsafe impl<T: Parse> Parse for Ranged<T> {
 }
 
 impl<T: Print> Print for Ranged<T> {
-    fn print_to(&self, buf: &mut Vec<u8>) {
+    fn print_to(&self, buf: &mut String) {
         self.ranged.print_to(buf);
     }
 }
@@ -302,7 +302,7 @@ unsafe impl<T: Parse> Parse for Box<T> {
 }
 
 impl<T: Print> Print for Box<T> {
-    fn print_to(&self, buf: &mut Vec<u8>) {
+    fn print_to(&self, buf: &mut String) {
         (**self).print_to(buf);
     }
 }

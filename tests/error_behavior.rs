@@ -12,10 +12,7 @@ fn rule<G: Parse>() -> String {
 char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
 
 fn token(text: &'static str, range: Range<usize>) -> Expectation {
-    Expectation::Token {
-        bytes: text.as_bytes(),
-        range,
-    }
+    Expectation::Token { text, range }
 }
 
 fn frame(node: &'static str, pos: usize) -> Frame {

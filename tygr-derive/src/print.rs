@@ -18,7 +18,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     let mut unprintable = model.fields().filter_map(Field::unprintable).map(|source| {
         syn::Error::new_spanned(
             source,
-            "a converted field needs `print_to = f` to print (`f: fn(&T, &mut Vec<u8>)`, e.g. \
+            "a converted field needs `print_to = f` to print (`f: fn(&T, &mut String)`, e.g. \
              `print_display`; `&()` for a unit variant), or derive only `Parse`",
         )
     });
@@ -29,7 +29,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
         return quote! {
             #error
             impl #impl_generics ::tygr::Print for #ident #ty_generics #where_clause {
-                fn print_to(&self, _: &mut ::std::vec::Vec<u8>) {}
+                fn print_to(&self, _: &mut ::std::string::String) {}
             }
         };
     }
@@ -42,7 +42,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     let value = model.matched(quote! { self });
     quote! {
         impl #impl_generics ::tygr::Print for #ident #ty_generics #where_clause {
-            fn print_to(&self, #[allow(unused_variables)] buf: &mut ::std::vec::Vec<u8>) {
+            fn print_to(&self, #[allow(unused_variables)] buf: &mut ::std::string::String) {
                 match #value {
                     #(#constructors => { #prints })*
                 }

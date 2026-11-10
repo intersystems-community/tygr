@@ -18,12 +18,6 @@ use crate::{Raw, Vec1};
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ByteEq<const B: u8>;
 
-impl<const B: u8> Print for ByteEq<B> {
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        buf.push(B);
-    }
-}
-
 /// A literal's bytes, built at compile time (stable Rust can't concatenate
 /// `&'static [u8]` constants generically).
 #[doc(hidden)]
@@ -74,7 +68,7 @@ impl LiteralBuf {
 /// [`Token`]'s `unsafe impl Parse` trusts them, so only this crate
 /// implements the trait.
 #[doc(hidden)]
-pub unsafe trait Literal: Copy + Print + 'static {
+pub unsafe trait Literal: Copy + 'static {
     /// Does any part match other cases (contain an `Either`)?
     const CASE_INSENSITIVE: bool;
     /// The literal's bytes.
@@ -95,6 +89,9 @@ pub unsafe trait Literal: Copy + Print + 'static {
     /// Match from `pos`: the value and the end.
     fn match_at<M: Mode>(input: &[u8], pos: usize) -> Option<(M::Output<Self>, usize)>;
 
+    /// Write the matched bytes to `out` from `at`, returning the new end.
+    fn write(&self, out: &mut [u8], at: usize) -> usize;
+
     /// Where a match from `pos` ends, or else where it diverged.
     fn reach(input: &[u8], pos: usize) -> Result<usize, usize>;
 }
@@ -110,6 +107,11 @@ unsafe impl<const B: u8> Literal for ByteEq<B> {
     #[inline(always)]
     fn match_at<M: Mode>(input: &[u8], pos: usize) -> Option<(M::Output<Self>, usize)> {
         (input.get(pos) == Some(&B)).then(|| (M::build(|_| ByteEq), pos + 1))
+    }
+
+    fn write(&self, out: &mut [u8], at: usize) -> usize {
+        out[at] = B;
+        at + 1
     }
 
     fn reach(input: &[u8], pos: usize) -> Result<usize, usize> {
@@ -134,6 +136,11 @@ unsafe impl<A: Literal, B: Literal> Literal for (A, B) {
         let (a, pos) = A::match_at::<M>(input, pos)?;
         let (b, pos) = B::match_at::<M>(input, pos)?;
         Some((M::build(|mode| (mode.get(a), mode.get(b))), pos))
+    }
+
+    fn write(&self, out: &mut [u8], at: usize) -> usize {
+        let at = self.0.write(out, at);
+        self.1.write(out, at)
     }
 
     fn reach(input: &[u8], pos: usize) -> Result<usize, usize> {
@@ -166,6 +173,13 @@ unsafe impl<A: Literal, B: Literal> Literal for Either<A, B> {
         Some((M::map(b, Right), end))
     }
 
+    fn write(&self, out: &mut [u8], at: usize) -> usize {
+        match self {
+            Left(a) => a.write(out, at),
+            Right(b) => b.write(out, at),
+        }
+    }
+
     fn reach(input: &[u8], pos: usize) -> Result<usize, usize> {
         A::reach(input, pos).or_else(|a| B::reach(input, pos).map_err(|b| a.max(b)))
     }
@@ -192,6 +206,9 @@ impl<G: Unambiguous> From<Token<G>> for () {
     fn from(_: Token<G>) {}
 }
 
+/// The most bytes a literal's case variant takes: three per byte of its text.
+const LONGEST_CAP: usize = 3 * LiteralBuf::CAP;
+
 /// A `StringEq!` / `StringEqCI!` literal; keeps the matched `G`.
 #[doc(hidden)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -210,10 +227,9 @@ unsafe impl<G: Literal> Parse for Token<G> {
         #[allow(unused_variables)] state: State,
     ) -> Option<(M::Output<Self>, usize)> {
         const {
-            assert!(
-                G::WHOLE_CHARS && std::str::from_utf8(G::BYTES).is_ok(),
-                "a literal must be whole chars"
-            )
+            assert!(G::WHOLE_CHARS, "a literal must be whole chars");
+            assert!(G::LONGEST <= LONGEST_CAP, "literal over 256 bytes");
+            let _ = Self::TEXT;
         };
         let result = G::match_at::<M>(input, pos);
         #[cfg(feature = "trace_pos")]
@@ -230,7 +246,7 @@ unsafe impl<G: Literal> Parse for Token<G> {
 
     fn to_bnf() -> Expr {
         Expr::Token {
-            text: Self::text(),
+            text: Self::TEXT.to_string(),
             case_insensitive: G::CASE_INSENSITIVE,
         }
     }
@@ -239,17 +255,24 @@ unsafe impl<G: Literal> Parse for Token<G> {
 }
 
 impl<G: Literal> Print for Token<G> {
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        self.0.print_to(buf);
+    fn print_to(&self, buf: &mut String) {
+        if G::CASE_INSENSITIVE {
+            // The alternative matched: whole chars, by `WHOLE_CHARS`.
+            let mut bytes = [0; LONGEST_CAP];
+            let len = self.0.write(&mut bytes, 0);
+            buf.push_str(std::str::from_utf8(&bytes[..len]).expect("a literal is whole chars"));
+        } else {
+            buf.push_str(Self::TEXT);
+        }
     }
 }
 
 impl<G: Literal> Token<G> {
-    const BYTES: &[u8] = G::BYTES;
-
-    fn text() -> String {
-        String::from_utf8_lossy(Self::BYTES).into_owned()
-    }
+    /// The literal's text.
+    const TEXT: &'static str = match std::str::from_utf8(G::BYTES) {
+        Ok(text) => text,
+        Err(_) => panic!("a literal must be whole chars"),
+    };
 
     /// Record the literal as expected where it diverged, having matched
     /// `range`, like a rejected validation.
@@ -262,7 +285,7 @@ impl<G: Literal> Token<G> {
             range.end,
             #[cfg(feature = "trace_one_node")]
             Expectation::Token {
-                bytes: Self::BYTES,
+                text: Self::TEXT,
                 range,
             },
         );
@@ -347,8 +370,8 @@ unsafe impl Parse for char {
 }
 
 impl Print for char {
-    fn print_to(&self, buf: &mut Vec<u8>) {
-        push_char(buf, *self);
+    fn print_to(&self, buf: &mut String) {
+        buf.push(*self);
     }
 }
 
@@ -360,10 +383,6 @@ fn decode_char(input: &[u8], pos: usize) -> Option<(char, usize)> {
         .chars()
         .next()?;
     Some((ch, pos + ch.len_utf8()))
-}
-
-fn push_char(buf: &mut Vec<u8>, ch: char) {
-    buf.extend_from_slice(ch.encode_utf8(&mut [0; 4]).as_bytes());
 }
 
 /// A character class, defined by [`char_class!`](crate::char_class): the
@@ -489,7 +508,7 @@ macro_rules! char_class {
         }
 
         impl $crate::Print for $class {
-            fn print_to(&self, buf: &mut ::std::vec::Vec<u8>) {
+            fn print_to(&self, buf: &mut ::std::string::String) {
                 $crate::__private::class_print_to(self, buf)
             }
         }
@@ -520,8 +539,8 @@ pub fn class_parse_at<C: CharClass, M: Mode>(
 
 /// `Print::print_to` for a `char_class!` type.
 #[doc(hidden)]
-pub fn class_print_to<C: CharClass>(class: &C, buf: &mut Vec<u8>) {
-    push_char(buf, class.value());
+pub fn class_print_to<C: CharClass>(class: &C, buf: &mut String) {
+    buf.push(class.value());
 }
 
 /// `Parse::to_bnf` for a `char_class!` type.
@@ -571,24 +590,11 @@ mod tests {
 
     type Bom = Token<(ByteEq<0xEF>, (ByteEq<0xBB>, ByteEq<0xBF>))>;
 
-    fn printed(grammar: &impl Print) -> Vec<u8> {
-        let mut buf = Vec::new();
-        grammar.print_to(&mut buf);
-        buf
-    }
-
     #[test]
     fn literal_matches_and_prints_exact_bytes() {
         let bom = Bom::parse("\u{FEFF}").unwrap();
-        assert_eq!(printed(&bom), b"\xEF\xBB\xBF");
+        assert_eq!(bom.print(), "\u{FEFF}");
         assert!(Bom::parse("x").is_err());
-    }
-
-    #[test]
-    fn print_is_lossy_on_invalid_utf8() {
-        let lead = ByteEq::<0xC3>;
-        assert_eq!(printed(&lead), b"\xC3");
-        assert_eq!(lead.print(), "\u{FFFD}");
     }
 
     #[test]

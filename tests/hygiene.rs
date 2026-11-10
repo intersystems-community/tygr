@@ -42,8 +42,8 @@ impl TryFrom<Kw> for Keyword {
     }
 }
 
-fn print_kw(_: &Keyword, buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"if");
+fn print_kw(_: &Keyword, buf: &mut String) {
+    buf.push_str("if");
 }
 
 // Fields named like the derived code's own variables.

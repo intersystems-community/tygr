@@ -37,8 +37,6 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
 - `Parse` is an `unsafe trait`, as tygr's UTF-8 conversions rely on that
   rule: a hand-written grammar is an `unsafe impl Parse`. Derived and
   `char_class!` impls need no change, even under `#![forbid(unsafe_code)]`.
-- `Print::print_to` writes to `&mut Vec<u8>`. `print()` still returns a
-  `String`.
 - Removed `CharOf<M>`: a `char_class!` type is now itself the grammar for
   one matching char (`struct IsDigit(pub char)`). Replace `CharOf<IsDigit>`
   with `IsDigit`. `CharClass` now requires `Grammar` and gains `new` and
@@ -63,7 +61,7 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
   validation is: `"->"` against `"-x"` reads `"->" at 0..1` at byte 1,
   not `"->"'s ">"`.
 - `Expectation`:
-  - `StringEq` and `StringEqCI` merged into `Token { bytes, range }`.
+  - `StringEq` and `StringEqCI` merged into `Token { text, range }`.
   - `Valid` and `GrammarFrom` merged into
     `Rejected { node, range, requirement }`. It records the rejected byte
     range instead of its text; slice your input to recover it. A failed

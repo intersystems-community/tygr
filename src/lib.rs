@@ -58,7 +58,7 @@
 //! A failed conversion backtracks, recorded and footnoted in BNF like a
 //! failed [`Validate`] check; an infallible one is skipped when checking.
 //! Converting loses the text, so to print, the field needs `print_to = f`,
-//! an `fn(&T, &mut Vec<u8>)` such as [`print_display`] (or
+//! an `fn(&T, &mut String)` such as [`print_display`] (or
 //! [`Print::print_to`], if `T` is a grammar). A unit variant is a field of
 //! type `()`: `try_from_infallible = S` converts `S` into `()`, which a
 //! literal with one text does (`StringEq!`, or `StringEqCI!` without cased

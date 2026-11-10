@@ -251,8 +251,8 @@ pub enum Expectation {
     /// A literal (`StringEq!` / `StringEqCI!`) matched `range`, then
     /// diverged: it's recorded at the range's end.
     Token {
-        /// The literal's bytes.
-        bytes: &'static [u8],
+        /// The literal.
+        text: &'static str,
         /// What it matched; empty if it diverged at once.
         range: Range<usize>,
     },
@@ -280,8 +280,8 @@ pub enum Expectation {
 impl fmt::Display for Expectation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expectation::Token { bytes, range } => {
-                write!(f, "\"{}\"", escape(&String::from_utf8_lossy(bytes), '"'))?;
+            Expectation::Token { text, range } => {
+                write!(f, "\"{}\"", escape(text, '"'))?;
                 if !range.is_empty() {
                     write!(f, " at {range:?}")?;
                 }

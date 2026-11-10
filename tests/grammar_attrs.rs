@@ -251,13 +251,13 @@ impl TryFrom<Digit> for bool {
 }
 
 /// `true` as the digit `1`, `false` as `0`.
-fn print_flag(flag: &bool, buf: &mut Vec<u8>) {
-    buf.push(if *flag { b'1' } else { b'0' });
+fn print_flag(flag: &bool, buf: &mut String) {
+    buf.push(if *flag { '1' } else { '0' });
 }
 
 /// A unit variant's `print_to` takes `&()`.
-fn print_null(_: &(), buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"null");
+fn print_null(_: &(), buf: &mut String) {
+    buf.push_str("null");
 }
 
 #[derive(Debug, PartialEq, Grammar)]
@@ -416,9 +416,9 @@ fn values_build_by_hand_to_print() {
     assert!(Vec1::<IsDigit>::try_from(vec![]).is_err());
 }
 
-/// Prints byte `B`, for a unit variant.
-fn print_byte<const B: u8>(_: &(), buf: &mut Vec<u8>) {
-    buf.push(B);
+/// Prints `C`, for a unit variant.
+fn print_char<const C: char>(_: &(), buf: &mut String) {
+    buf.push(C);
 }
 
 /// A unit variant's source of the user's own: it converts into `()` by hand.
@@ -429,16 +429,16 @@ impl From<Keyword> for () {
     fn from(_: Keyword) {}
 }
 
-fn print_keyword(_: &(), buf: &mut Vec<u8>) {
-    buf.extend_from_slice(b"kw");
+fn print_keyword(_: &(), buf: &mut String) {
+    buf.push_str("kw");
 }
 
 #[derive(Debug, PartialEq, Grammar)]
 enum Unit {
-    #[tygr(try_from = StringEq!("a"), print_to = print_byte::<b'a'>)]
+    #[tygr(try_from = StringEq!("a"), print_to = print_char::<'a'>)]
     A,
     // Case-insensitive, but with one text, so it still converts.
-    #[tygr(try_from_infallible = StringEqCI!("1"), print_to = print_byte::<b'1'>)]
+    #[tygr(try_from_infallible = StringEqCI!("1"), print_to = print_char::<'1'>)]
     One,
     #[tygr(try_from_infallible = Keyword, print_to = print_keyword)]
     Kw,
@@ -459,11 +459,11 @@ fn a_unit_variant_converts_its_source_into_unit() {
 
 char_class!(IsSpace, "space", |ch| ch == ' ');
 
-fn print_comma<T>(_: &T, buf: &mut Vec<u8>) {
-    buf.push(b',');
+fn print_comma<T>(_: &T, buf: &mut String) {
+    buf.push(',');
 }
 
-fn print_nothing<T>(_: &T, _: &mut Vec<u8>) {}
+fn print_nothing<T>(_: &T, _: &mut String) {}
 
 /// Drops a required comma and optional spaces; printing them is up to us.
 #[derive(Grammar)]
