@@ -90,7 +90,7 @@ jobs:
       - name: Docs (${{ matrix.features.name }})
         run: cargo doc --no-deps ${{ matrix.features.flags }}
 
-  msrv:
+  minimum-supported-rust-version:
     permissions:
       contents: read
     runs-on: ubuntu-latest

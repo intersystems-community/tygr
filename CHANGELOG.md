@@ -141,7 +141,8 @@ faster without it (33 → 114 MB/s).
 - `OLC` breaks lines at `\r\n` and `\r` too, and `line_character_to_offset`
   clamps out-of-range positions, as LSP does, and maps one inside a
   surrogate pair to the pair's start.
-- Declared `rust-version = "1.88"`.
+- Declared the minimum supported Rust version, `rust-version = "1.88"`,
+  which CI builds on. Raising it is a minor change while tygr is 0.x.
 
 ## [0.6.2] - 2026-09-04
 
