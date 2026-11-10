@@ -4,10 +4,10 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
 
 ## [Unreleased]
 
-The parser now works on bytes, with string and character grammars built
-on top. On the JSON benchmark (`canada.json`), parsing is about 12× faster
-with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
-(33 → 114 MB/s).
+Literals, first sets and enum dispatch now match on bytes, under grammars
+that still see `&str`. On the JSON benchmark (`canada.json`), parsing is
+about 12× faster with the default tracing (6.6 → 80 MB/s) and about 3.5×
+faster without it (33 → 114 MB/s).
 
 ### Breaking Changes
 
@@ -124,9 +124,10 @@ with the default tracing (6.6 → 80 MB/s) and about 3.5× faster without it
   or absent.
 - Failed literals, validations and conversions no longer allocate when
   recording what was expected, nor lookaheads when probing.
-- tygr has no `unsafe` code (`#![forbid(unsafe_code)]`), so a hand-written
-  grammar that ends mid-char can't cause undefined behaviour: no char is
-  found there, and a `Raw` or conversion keeping such text panics.
+- The crate is `#![forbid(unsafe_code)]`. A hand-written grammar that ends
+  mid-char now finds no char there, rather than panicking as 0.6.2's
+  `CharOf` did; a `Raw` or `from_str` conversion keeping such text still
+  panics.
 - Errors report input left over after a match, as `Expectation::End`,
   and a failed negative lookahead, as `NotFollowedBy`; both recorded
   nothing.

@@ -218,7 +218,10 @@ impl<G: Literal> Parse for Token<G> {
     ) -> Option<(M::Output<Self>, usize)> {
         const {
             assert!(G::WHOLE_CHARS, "a literal must be whole chars");
-            assert!(G::LONGEST <= LONGEST_CAP, "literal over 256 bytes");
+            assert!(
+                G::LONGEST <= LONGEST_CAP,
+                "a literal's case variants take over 768 bytes"
+            );
             let _ = Self::TEXT;
         };
         let result = G::match_at::<M>(input.as_bytes(), pos);
@@ -246,13 +249,13 @@ impl<G: Literal> Parse for Token<G> {
 
 impl<G: Literal> Print for Token<G> {
     fn print_to(&self, buf: &mut String) {
-        if G::CASE_INSENSITIVE {
-            // The alternative matched: whole chars, by `WHOLE_CHARS`.
-            let mut bytes = [0; LONGEST_CAP];
-            let len = self.0.write(&mut bytes, 0);
-            buf.push_str(std::str::from_utf8(&bytes[..len]).expect("a literal is whole chars"));
-        } else {
+        if !G::CASE_INSENSITIVE {
             buf.push_str(Self::TEXT);
+        } else if G::LONGEST <= 32 {
+            // A short buffer for the usual keyword: zeroing 768 bytes shows.
+            Self::push_variant(&self.0, &mut [0; 32], buf);
+        } else {
+            Self::push_variant(&self.0, &mut [0; LONGEST_CAP], buf);
         }
     }
 }
@@ -263,6 +266,13 @@ impl<G: Literal> Token<G> {
         Ok(text) => text,
         Err(_) => panic!("a literal must be whole chars"),
     };
+
+    /// Push the alternative `matched`, written into `bytes`: whole chars, by
+    /// `WHOLE_CHARS`.
+    fn push_variant(matched: &G, bytes: &mut [u8], buf: &mut String) {
+        let len = matched.write(bytes, 0);
+        buf.push_str(std::str::from_utf8(&bytes[..len]).expect("a literal is whole chars"));
+    }
 
     /// Record the literal as expected where it diverged, having matched
     /// `range`, like a rejected validation.
@@ -291,7 +301,7 @@ fn diverged<G: Literal>(input: &[u8], pos: usize) -> usize {
         return pos;
     }
     let (Ok(mut end) | Err(mut end)) = G::reach(input, pos);
-    while input.get(end).is_some_and(|&byte| byte & 0xC0 == 0x80) {
+    while end > pos && input.get(end).is_some_and(|&byte| byte & 0xC0 == 0x80) {
         end -= 1;
     }
     end
@@ -319,7 +329,8 @@ pub(crate) type CharStart = byte_set::Union<byte_set::Between<0x00, 0x7F>, NonAs
 /// `char`'s name in errors and BNF.
 const ANY_CHAR: &str = "any";
 
-/// Any one char. Fails only at end of input.
+/// Any one char. Fails only at end of input (or mid-char, where no grammar
+/// should be).
 impl Parse for char {
     type First = Required<CharStart>;
 
@@ -366,7 +377,7 @@ impl Print for char {
 
 /// The char at `pos` and its end; `None` at end of input, or mid-char (where
 /// no grammar should be).
-#[inline(always)]
+#[inline]
 fn decode_char(input: &str, pos: usize) -> Option<(char, usize)> {
     let &lead = input.as_bytes().get(pos)?;
     if lead.is_ascii() {
@@ -581,7 +592,7 @@ mod tests {
     type Bom = Token<(ByteEq<0xEF>, (ByteEq<0xBB>, ByteEq<0xBF>))>;
 
     #[test]
-    fn literal_matches_and_prints_exact_bytes() {
+    fn literal_matches_and_prints_its_text() {
         let bom = Bom::parse("\u{FEFF}").unwrap();
         assert_eq!(bom.print(), "\u{FEFF}");
         assert!(Bom::parse("x").is_err());
