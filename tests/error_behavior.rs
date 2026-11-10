@@ -436,13 +436,16 @@ fn negative_lookahead_records_what_it_ruled_out() {
     let err = Div::parse("//").unwrap_err();
     assert_eq!(
         err.to_string(),
-        "parse error at byte 1, expected:\n\t- anything but 1..2"
+        "parse error at byte 1, expected:\n\t- anything but \"/\" at 1..2"
     );
     assert_error(
         err,
         vec![Trace {
             context: vec![frame("Div", 0)],
-            expectation: Expectation::NotFollowedBy(1..2),
+            expectation: Expectation::NotFollowedBy {
+                excluded: bnf::Lazy(<StringEq!("/")>::to_bnf),
+                range: 1..2,
+            },
         }],
         1,
     );

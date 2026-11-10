@@ -524,7 +524,7 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
         // Probe, so only what `G` matched is recorded, not what it expected.
         match state.probe(|state| G::parse_at::<Check>(input, pos, state)) {
             Some(((), end)) => {
-                state.not_followed_by(pos..end);
+                state.not_followed_by(G::to_bnf, pos..end);
                 None
             }
             None => Some((M::build(|_| NotFollowedBy(PhantomData)), pos)),

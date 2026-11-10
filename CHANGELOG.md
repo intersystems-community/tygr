@@ -64,7 +64,9 @@ faster without it (33 → 114 MB/s).
   - `Display` changed to match: `"->"` (or `"->" at 0..1` once partly
     matched), `NonZero at 0..3 must be non-zero`, `Text at 0..3 must be
     convertible to u8`.
-  - It's `#[non_exhaustive]`, and gains `NotFollowedBy(range)` and `End`.
+  - It's `#[non_exhaustive]`, and gains `End` and
+    `NotFollowedBy { excluded, range }`: the excluded grammar's BNF, a
+    `bnf::Lazy`, and what it matched.
 - `Error`'s fields are private: read them with `pos()` and `traces()`. Its
   `Display` no longer ends with a newline.
 - `FollowedBy<G>` is its own type rather than

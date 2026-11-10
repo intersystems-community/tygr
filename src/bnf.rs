@@ -283,6 +283,32 @@ impl fmt::Display for Expr {
     }
 }
 
+/// A grammar's BNF, built on demand by its [`to_bnf`](crate::Parse::to_bnf),
+/// so recording one costs a function pointer. Equal when the BNF is.
+#[derive(Clone, Copy)]
+pub struct Lazy(pub fn() -> Expr);
+
+impl PartialEq for Lazy {
+    fn eq(&self, other: &Self) -> bool {
+        // Function addresses aren't unique, so fall back to the BNF built.
+        std::ptr::fn_addr_eq(self.0, other.0) || (self.0)() == (other.0)()
+    }
+}
+
+impl Eq for Lazy {}
+
+impl fmt::Debug for Lazy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&(self.0)(), f)
+    }
+}
+
+impl fmt::Display for Lazy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&(self.0)(), f)
+    }
+}
+
 /// A named rule, `name = expr .`, as [`Parse::bnf_rules`] collects it.
 /// `Display` footnotes its side-conditions.
 #[derive(Debug, Clone, PartialEq, Eq)]

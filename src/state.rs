@@ -1,6 +1,6 @@
 //! The state threaded through parsing, and the [`Error`] it traces.
 
-use crate::bnf::escape;
+use crate::bnf::{Expr, Lazy, escape};
 #[cfg(feature = "trace_pos")]
 use std::cmp::Ordering;
 use std::fmt;
@@ -72,13 +72,21 @@ impl<'a> State<'a> {
         end
     }
 
-    /// Record that a negative lookahead ruled out the text at `range`.
-    pub(crate) fn not_followed_by(&mut self, #[allow(unused_variables)] range: Range<usize>) {
+    /// Record that a negative lookahead ruled out `excluded`, which matched
+    /// the text at `range`.
+    pub(crate) fn not_followed_by(
+        &mut self,
+        #[allow(unused_variables)] excluded: fn() -> Expr,
+        #[allow(unused_variables)] range: Range<usize>,
+    ) {
         #[cfg(feature = "trace_pos")]
         self.expect(
             range.start,
             #[cfg(feature = "trace_one_node")]
-            Expectation::NotFollowedBy(range),
+            Expectation::NotFollowedBy {
+                excluded: Lazy(excluded),
+                range,
+            },
         );
     }
 
@@ -288,9 +296,15 @@ pub enum Expectation {
         /// `"be convertible to T"` for a field of type `T`.
         requirement: &'static str,
     },
-    /// Anything but the text at this range, which a
-    /// [`NotFollowedBy`](crate::NotFollowedBy) rules out.
-    NotFollowedBy(Range<usize>),
+    /// Anything but `excluded`, which a
+    /// [`NotFollowedBy`](crate::NotFollowedBy) rules out and which matched
+    /// the text at `range`.
+    NotFollowedBy {
+        /// The excluded grammar, as BNF.
+        excluded: Lazy,
+        /// What it matched.
+        range: Range<usize>,
+    },
     /// The end of input: the grammar matched only part of it.
     End,
 }
@@ -315,7 +329,9 @@ impl fmt::Display for Expectation {
                 "{} at {range:?} must {requirement}",
                 node.unwrap_or("Text")
             ),
-            Expectation::NotFollowedBy(range) => write!(f, "anything but {range:?}"),
+            Expectation::NotFollowedBy { excluded, range } => {
+                write!(f, "anything but {excluded} at {range:?}")
+            }
             Expectation::End => write!(f, "end of input"),
         }
     }
