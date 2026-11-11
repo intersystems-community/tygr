@@ -558,16 +558,22 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
 pub struct FollowedBy<G>(PhantomData<G>);
 
 impl<G: Parse> Parse for FollowedBy<G> {
-    type First = G::First;
+    // Nullable, as it consumes nothing: a recursion behind it is left recursion.
+    type First = Optional<byte_set::Empty>;
 
     #[inline]
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        state: State,
+        mut state: State,
     ) -> Option<(M::Output<Self>, usize)> {
-        G::parse_at::<Check>(input, pos, state)?;
-        Some((M::build(|_| FollowedBy(PhantomData)), pos))
+        // Probe, so a match records nothing past `pos`; on failure, rerun `G`
+        // to record what it expected.
+        let matched = state.probe(|state| G::parse_at::<Check>(input, pos, state));
+        if matched.is_none() {
+            G::parse_at::<Check>(input, pos, state);
+        }
+        matched.map(|_| (M::build(|_| FollowedBy(PhantomData)), pos))
     }
 
     fn fail_at(pos: usize, state: State) -> bool {

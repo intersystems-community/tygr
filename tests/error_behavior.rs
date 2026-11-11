@@ -379,6 +379,13 @@ fn positive_lookahead_records_what_it_expected() {
 }
 
 // `S = "a" S "b" | "a" S "c" | ()` backtracks exponentially, expecting the
+#[derive(Parse, Debug)]
+#[tygr(inline)]
+struct InlineSmallNumber(#[tygr(from_str = StringOf1<Digit>)] u8);
+
+#[derive(Parse, Debug)]
+struct NotSmallNumber(NotFollowedBy<InlineSmallNumber>, StringEq!("x"));
+
 // same few things at the same position each time.
 #[derive(Grammar, Debug)]
 enum Exponential {
@@ -395,3 +402,17 @@ fn repeated_traces_are_reported_once() {
     assert_eq!(expectations(&err), [r#""a""#, r#""b""#, r#""c""#]);
     assert_eq!(err.traces().len(), 3);
 }
+    // An inline grammar's side-conditions are footnoted on the line.
+    assert_eq!(
+        NotSmallNumber::parse("12x").unwrap_err().to_string(),
+        "parse error at byte 0, expected:\n\t- anything but ( 'digit' { 'digit' } ) ^1 at 0..2 (^1: be convertible to u8)"
+    );
+#[derive(Grammar, Debug)]
+struct DigitsThenX(FollowedBy<Digits>, StringEq!("x"));
+
+    // Matching, it records nothing: not the 'digit' `Digits` stopped at.
+    assert_error(
+        DigitsThenX::parse("12").unwrap_err(),
+        vec![trace("DigitsThenX", token("x", 0..0))],
+        0,
+    );

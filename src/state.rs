@@ -306,7 +306,13 @@ impl fmt::Display for Expectation {
             ),
             Expectation::NotFollowedBy { excluded, range } => match (excluded.0)() {
                 Expr::Hidden => write!(f, "anything but the text at {range:?}"),
-                excluded => write!(f, "anything but {excluded} at {range:?}"),
+                excluded => {
+                    write!(f, "anything but {excluded} at {range:?}")?;
+                    for (i, text) in excluded.side_conditions().into_iter().enumerate() {
+                        write!(f, " (^{}: {text})", i + 1)?;
+                    }
+                    Ok(())
+                }
             },
             Expectation::End => write!(f, "end of input"),
         }
