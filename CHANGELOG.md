@@ -81,7 +81,7 @@ faster without it (33 → 114 MB/s).
   dropped from EBNF, rather than making the rest optional (`[ A ]`).
 - Reworked `tygr::first` around bytes, for hand-written `Parse::First`:
   - Name a constant set with `Required<S>` (not nullable) or `Optional<S>`
-    (nullable), where `S` is built from `byte_set::{Emp, All, One,
+    (nullable), where `S` is built from `byte_set::{Empty, All, One,
     Between, Union}`.
   - Combine sets with `First::Seq<G>` (`G` a grammar), `First::Alt<X>`
     and `First::Opt`.

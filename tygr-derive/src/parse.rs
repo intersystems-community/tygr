@@ -53,7 +53,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
             };
             (
                 firsts.iter().fold(
-                    quote! { ::tygr::first::Required<::tygr::first::byte_set::Emp> },
+                    quote! { ::tygr::first::Required<::tygr::first::byte_set::Empty> },
                     |first, variant| quote! { <#first as ::tygr::first::First>::Alt<#variant> },
                 ),
                 parse_at,
@@ -137,7 +137,7 @@ fn with_node(model: &Model, body: TokenStream) -> TokenStream {
 /// The FIRST set of `variant`'s fields in sequence.
 fn first(variant: &Variant) -> TokenStream {
     variant.fields.iter().map(Field::source).fold(
-        quote! { ::tygr::first::Optional<::tygr::first::byte_set::Emp> },
+        quote! { ::tygr::first::Optional<::tygr::first::byte_set::Empty> },
         |first, source| quote! { <#first as ::tygr::first::First>::Seq<#source> },
     )
 }

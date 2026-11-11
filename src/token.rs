@@ -456,7 +456,7 @@ macro_rules! char_class {
 
         // First bytes: the ASCII ones that match, and every UTF-8 lead byte.
         impl $crate::first::ByteSet for $class {
-            const BYTE_SET: $crate::first::byte_set::Type = {
+            const BYTE_SET: $crate::first::byte_set::Set = {
                 const fn __tygr_pred($ch: char) -> bool { $pred }
                 let mut bytes =
                     <$crate::__private::NonAsciiStart as $crate::first::ByteSet>::BYTE_SET;

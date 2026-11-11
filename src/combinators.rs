@@ -14,7 +14,7 @@ use tygr_derive::Grammar;
 
 // `()`: the empty sequence.
 impl Parse for () {
-    type First = Optional<byte_set::Emp>;
+    type First = Optional<byte_set::Empty>;
 
     #[inline]
     fn parse_at<M: Mode>(
@@ -50,7 +50,7 @@ macro_rules! concat_first {
 macro_rules! impl_tuple {
     ($($idx:tt $T:ident),+) => {
         impl<$($T: Parse),+> Parse for ($($T,)+) {
-            type First = concat_first!(Optional<byte_set::Emp>; $($T),+);
+            type First = concat_first!(Optional<byte_set::Empty>; $($T),+);
 
             #[inline]
             fn parse_at<M: Mode>(
@@ -513,7 +513,7 @@ impl<T, S> VecSep<T, S> {
 pub struct NotFollowedBy<G>(PhantomData<G>);
 
 impl<G: Parse> Parse for NotFollowedBy<G> {
-    type First = Optional<byte_set::Emp>;
+    type First = Optional<byte_set::Empty>;
 
     #[inline]
     fn parse_at<M: Mode>(

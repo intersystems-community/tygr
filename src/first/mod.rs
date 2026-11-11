@@ -30,18 +30,18 @@ pub trait First {
     type MapUnion<B: ByteSet>: First;
     /// The starting bytes.
     #[doc(hidden)]
-    const BYTES: byte_set::Type;
+    const BYTES: byte_set::Set;
     /// Can it match empty input?
     #[doc(hidden)]
-    const NIL: bool;
+    const NULLABLE: bool;
 }
 
 /// Can a grammar with FIRST set `F` match when the next byte is `next`
 /// (`None` at end of input)?
 pub const fn contains<F: First>(next: Option<u8>) -> bool {
     match next {
-        Some(b) => F::NIL || F::BYTES.contains(b),
-        None => F::NIL,
+        Some(b) => F::NULLABLE || F::BYTES.contains(b),
+        None => F::NULLABLE,
     }
 }
 
@@ -50,8 +50,8 @@ impl<T: ByteSet> First for Required<T> {
     type Alt<X: First> = X::MapUnion<T>;
     type Opt = Optional<T>;
     type MapUnion<B: ByteSet> = Required<byte_set::Union<T, B>>;
-    const BYTES: byte_set::Type = T::BYTE_SET;
-    const NIL: bool = false;
+    const BYTES: byte_set::Set = T::BYTE_SET;
+    const NULLABLE: bool = false;
 }
 
 impl<T: ByteSet> First for Optional<T> {
@@ -59,24 +59,24 @@ impl<T: ByteSet> First for Optional<T> {
     type Alt<X: First> = <X::Opt as First>::MapUnion<T>;
     type Opt = Self;
     type MapUnion<B: ByteSet> = Optional<byte_set::Union<T, B>>;
-    const BYTES: byte_set::Type = T::BYTE_SET;
-    const NIL: bool = true;
+    const BYTES: byte_set::Set = T::BYTE_SET;
+    const NULLABLE: bool = true;
 }
 
 #[cfg(test)]
 mod tests {
-    use super::byte_set::{One, Type};
+    use super::byte_set::{One, Set};
     use super::*;
 
     #[test]
     fn first_ops() {
         type Ab = <Required<One<b'a'>> as First>::Alt<Required<One<b'b'>>>;
-        assert_eq!(Ab::BYTES, Type::range(b'a', b'b'));
-        const { assert!(!Ab::NIL) };
+        assert_eq!(Ab::BYTES, Set::range(b'a', b'b'));
+        const { assert!(!Ab::NULLABLE) };
         type Opt = <Ab as First>::Opt;
-        const { assert!(Opt::NIL) };
+        const { assert!(Opt::NULLABLE) };
         type Both = <Opt as First>::Alt<Required<One<b'z'>>>;
-        assert!(Both::NIL && Both::BYTES.contains(b'z') && Both::BYTES.contains(b'a'));
+        assert!(Both::NULLABLE && Both::BYTES.contains(b'z') && Both::BYTES.contains(b'a'));
     }
 
     // These only compile if `Seq` never looks past a required element:
