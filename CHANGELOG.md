@@ -6,8 +6,7 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
 
 Literals, FIRST sets and enum dispatch now match on bytes, under grammars
 that still see `&str`. On the JSON benchmark (`canada.json`), parsing is
-about 12× faster with the default tracing (6.6 → 80 MB/s) and about 3.5×
-faster without it (33 → 114 MB/s).
+over 15× faster with the default tracing and over 3× faster without it.
 
 ### Breaking Changes
 
@@ -126,8 +125,8 @@ faster without it (33 → 114 MB/s).
   `std::error::Error`, and `Expectation` is `Display` whatever the features.
 - EBNF: a character class's name escapes only `'`, not `"`; a hidden
   conversion source drops its footnote; an empty rule prints as `X = .`;
-  a footnoted factor in a sequence isn't parenthesized (`Digits ^1 ","
   an empty enum, which never matches, is footnoted `never matches`;
+  a footnoted factor in a sequence isn't parenthesized (`Digits ^1 ","
   Digits ^2`); an empty operand of a footnote or lookahead prints as
   `( )`.
 - `VecSep` parses straight into `items` and `seps`, rather than through an
