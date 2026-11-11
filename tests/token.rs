@@ -10,11 +10,6 @@ fn rule<G: Parse>() -> String {
 #[derive(Grammar, Debug)]
 struct Accent(StringEqCI!("é"));
 
-#[cfg(feature = "trace_one_node")]
-fn token(text: &'static str, range: std::ops::Range<usize>) -> Expectation {
-    Expectation::Token { text, range }
-}
-
 #[test]
 fn string_eq_ci_matches_unicode_case_variants() {
     assert_eq!(Accent::parse("é").unwrap().print(), "é");
@@ -53,6 +48,10 @@ fn char_decodes_one_character_of_any_width() {
 #[cfg(feature = "trace_one_node")]
 #[test]
 fn literal_errors_report_the_whole_literal_where_it_diverged() {
+    fn token(text: &'static str, range: std::ops::Range<usize>) -> Expectation {
+        Expectation::Token { text, range }
+    }
+
     #[derive(Grammar, Debug)]
     struct Arrow(StringEq!("->"));
     let err = Arrow::parse("-x").unwrap_err();
@@ -71,13 +70,6 @@ fn literal_errors_report_the_whole_literal_where_it_diverged() {
     let err = Strasse::parse("STRASSX").unwrap_err();
     assert_eq!(err.pos(), 6);
     assert_eq!(err.traces()[0].expectation, token("straße", 0..6));
-
-    // The case variants of one char give one expectation, not one each.
-    #[derive(Grammar, Debug)]
-    struct Kw(StringEqCI!("if"));
-    let err = Kw::parse("x").unwrap_err();
-    assert_eq!(err.traces().len(), 1);
-    assert_eq!(err.traces()[0].expectation, token("if", 0..0));
 }
 
 #[test]

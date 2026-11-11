@@ -65,7 +65,7 @@ fn char_class_records_class_name() {
 struct SmallNumber(#[tygr(from_str = StringOf1<Digit>)] u8);
 
 #[test]
-fn conversion_records_from_str_error() {
+fn conversion_records_requirement() {
     let err = SmallNumber::parse("999").unwrap_err();
     assert_error(
         err,
@@ -116,7 +116,7 @@ fn validated_records_requirement() {
 }
 
 #[test]
-fn display_shows_each_expectation_kind() {
+fn display_names_a_rule_starting_at_the_error_else_its_expectation() {
     let cases = [
         (
             Lit::parse("bar").unwrap_err(),

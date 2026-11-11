@@ -117,7 +117,7 @@ fn derives_work_without_a_prelude() {
 }
 
 #[test]
-fn derives_compile_and_parse_without_imports() {
+fn derives_work_without_imports() {
     use tygr::Parse as _;
     assert!(Kw::parse("if").is_ok());
     assert!(Op::parse("*").is_ok() && Op::parse("x").is_err());

@@ -1,4 +1,4 @@
-//! `#[tygr(...)]` options on types and fields, and the BNF they give.
+//! `#[tygr(...)]` options on types and fields, and the EBNF they give.
 
 use std::marker::PhantomData;
 use std::str::FromStr;
@@ -15,10 +15,10 @@ fn names<G: Parse>() -> Vec<String> {
     G::bnf_rules().into_iter().map(|rule| rule.name).collect()
 }
 
-char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
+char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 
 #[derive(Grammar, Debug)]
-struct Digits(StringOf1<IsDigit>);
+struct Digits(StringOf1<Digit>);
 
 #[derive(Grammar, Debug)]
 struct UsesPlain(Digits, Digits);
@@ -144,13 +144,13 @@ impl Validate for TwoAttributes {
 fn separate_attributes_combine() {
     assert_eq!(
         rule::<TwoAttributes>(),
-        "renamed = \"a\" ^1 .\n\n^1: be valid"
+        "renamed = \"a\" ^1 .\n^1: be valid"
     );
 }
 
 #[derive(Grammar, Debug)]
 #[tygr(validated)]
-struct NonZero(StringOf1<IsDigit>);
+struct NonZero(StringOf1<Digit>);
 
 impl Validate for NonZero {
     const REQUIREMENT: &'static str = "be non-zero";
@@ -173,7 +173,7 @@ fn validated_rejects_values_that_fail_validation() {
 fn validated_bnf_shows_the_side_condition() {
     assert_eq!(
         rule::<NonZero>(),
-        "NonZero = ( 'digit' { 'digit' } ) ^1 .\n\n^1: be non-zero"
+        "NonZero = ( 'digit' { 'digit' } ) ^1 .\n^1: be non-zero"
     );
 }
 
@@ -195,13 +195,13 @@ impl Validate for ValidatedEnum {
 fn validated_enum_bnf_shows_the_side_condition_around_the_whole_alternation() {
     assert_eq!(
         rule::<ValidatedEnum>(),
-        "ValidatedEnum = ( \"a\" | \"b\" ) ^1 .\n\n^1: be a recognized token"
+        "ValidatedEnum = ( \"a\" | \"b\" ) ^1 .\n^1: be a recognized token"
     );
 }
 
 #[derive(Grammar, Debug)]
 #[tygr(inline, validated)]
-struct InlineNonZero(StringOf1<IsDigit>);
+struct InlineNonZero(StringOf1<Digit>);
 
 impl Validate for InlineNonZero {
     const REQUIREMENT: &'static str = "be non-zero";
@@ -217,7 +217,7 @@ struct UsesInlineValidated(InlineNonZero, Digits);
 fn inline_validated_side_condition_propagates_into_the_splice() {
     assert_eq!(
         rule::<UsesInlineValidated>(),
-        "UsesInlineValidated = ( ( 'digit' { 'digit' } ) ^1 ) Digits .\n\n^1: be non-zero"
+        "UsesInlineValidated = ( ( 'digit' { 'digit' } ) ^1 ) Digits .\n^1: be non-zero"
     );
 }
 
@@ -228,18 +228,15 @@ struct UsesInlineValidatedTwice(InlineNonZero, InlineNonZero);
 fn repeated_inline_validated_side_condition_gets_one_deduplicated_footnote() {
     assert_eq!(
         rule::<UsesInlineValidatedTwice>(),
-        "UsesInlineValidatedTwice = ( ( 'digit' { 'digit' } ) ^1 ) ( ( 'digit' { 'digit' } ) ^1 ) .\n\n^1: be non-zero"
+        "UsesInlineValidatedTwice = ( ( 'digit' { 'digit' } ) ^1 ) ( ( 'digit' { 'digit' } ) ^1 ) .\n^1: be non-zero"
     );
 }
 
 // Field conversions: `#[tygr(<kind> = S)]`.
 
-#[derive(Debug, Grammar)]
-struct Digit(IsDigit);
-
 impl From<Digit> for u8 {
     fn from(d: Digit) -> u8 {
-        d.0.value() as u8 - b'0'
+        d.0 as u8 - b'0'
     }
 }
 
@@ -265,9 +262,9 @@ enum Converted {
     #[tygr(try_from_infallible = StringEq!("null"), print_to = print_null)]
     Null,
     Fields(
-        #[tygr(from_str = StringOf1<IsDigit>, print_to = print_display)] u32,
+        #[tygr(from_str = StringOf1<Digit>, print_to = print_display)] u32,
         StringEq!(","),
-        #[tygr(from_str_infallible = StringOf1<IsDigit>, print_to = print_display)] String,
+        #[tygr(from_str_infallible = StringOf1<Digit>, print_to = print_display)] String,
         StringEq!(";"),
         #[tygr(try_from_infallible = Digit, print_to = print_display)] u8,
         #[tygr(try_from = Digit, print_to = print_flag)] bool,
@@ -286,7 +283,7 @@ fn conversions_parse_and_print_and_only_fallible_ones_get_a_footnote() {
     assert_eq!(Converted::parse("42,07;51").unwrap().print(), "42,07;51");
     assert_eq!(
         rule::<Converted>(),
-        "Converted = \"null\" | ( ( 'digit' { 'digit' } ) ^1 ) \",\" 'digit' { 'digit' } \";\" Digit ( Digit ^2 ) .\n\n^1: be convertible to u32\n^2: be convertible to bool"
+        "Converted = \"null\" | ( ( 'digit' { 'digit' } ) ^1 ) \",\" 'digit' { 'digit' } \";\" 'digit' ( 'digit' ^2 ) .\n^1: be convertible to u32\n^2: be convertible to bool"
     );
     for bad in ["42,07;52", "99999999999,07;51", "nul"] {
         assert!(Converted::parse(bad).is_err() && Converted::check(bad).is_err());
@@ -295,7 +292,7 @@ fn conversions_parse_and_print_and_only_fallible_ones_get_a_footnote() {
 
 #[derive(Debug, Parse)]
 #[tygr(validated)]
-struct EvenNumber(#[tygr(from_str = StringOf1<IsDigit>)] u32);
+struct EvenNumber(#[tygr(from_str = StringOf1<Digit>)] u32);
 
 impl Validate for EvenNumber {
     const REQUIREMENT: &'static str = "be even";
@@ -308,7 +305,7 @@ impl Validate for EvenNumber {
 fn validated_fallible_conversion_bnf_shows_both_side_conditions() {
     assert_eq!(
         rule::<EvenNumber>(),
-        "EvenNumber = ( ( 'digit' { 'digit' } ) ^1 ) ^2 .\n\n^1: be convertible to u32\n^2: be even"
+        "EvenNumber = ( ( 'digit' { 'digit' } ) ^1 ) ^2 .\n^1: be convertible to u32\n^2: be even"
     );
     assert!(EvenNumber::parse("4").is_ok());
     assert!(EvenNumber::parse("3").is_err());
@@ -335,7 +332,7 @@ struct Converts(
 fn a_conversion_requires_its_field_type_as_written() {
     assert_eq!(
         rule::<Converts>(),
-        "Converts = ( Digits ^1 ) \",\" ( Digits ^2 ) .\n\n^1: be convertible to Small<u8>\n^2: be convertible to std::num::NonZeroU8"
+        "Converts = ( Digits ^1 ) \",\" ( Digits ^2 ) .\n^1: be convertible to Small<u8>\n^2: be convertible to std::num::NonZeroU8"
     );
     assert!(Converts::parse("7,300").is_err());
 }
@@ -355,7 +352,7 @@ impl Validate for NonZeroDigit {
 fn validated_infallible_conversion_bnf_shows_only_the_validation() {
     assert_eq!(
         rule::<NonZeroDigit>(),
-        "NonZeroDigit = Digit ^1 .\n\n^1: be non-zero"
+        "NonZeroDigit = 'digit' ^1 .\n^1: be non-zero"
     );
 }
 
@@ -381,7 +378,7 @@ impl FromStr for Counted {
 }
 
 #[derive(Debug, Parse)]
-struct UsesCounted(#[tygr(from_str_infallible = StringOf1<IsDigit>)] Counted);
+struct UsesCounted(#[tygr(from_str_infallible = StringOf1<Digit>)] Counted);
 
 #[test]
 fn infallible_conversion_is_skipped_when_checking() {
@@ -395,7 +392,7 @@ fn infallible_conversion_is_skipped_when_checking() {
 
 /// Parsed only: a `u32` doesn't print.
 #[derive(Parse)]
-struct ParsedOnly(#[tygr(from_str = StringOf1<IsDigit>)] u32);
+struct ParsedOnly(#[tygr(from_str = StringOf1<Digit>)] u32);
 
 /// Printed only, as when built by hand.
 #[derive(Print)]
@@ -410,11 +407,11 @@ fn parse_and_print_derive_separately() {
 
 #[test]
 fn values_build_by_hand_to_print() {
-    let digits = Vec1::try_from(vec![IsDigit('4'), IsDigit('2')]).unwrap();
-    assert_eq!((Hidden(digits.clone()), Some(IsDigit('7'))).print(), "427");
+    let digits = Vec1::try_from(vec![Digit('4'), Digit('2')]).unwrap();
+    assert_eq!((Hidden(digits.clone()), Some(Digit('7'))).print(), "427");
     assert_eq!(<Raw<StringEq!(",")>>::default().as_str(), ",");
     assert_eq!(digits.into_inner().len(), 2);
-    assert!(Vec1::<IsDigit>::try_from(vec![]).is_err());
+    assert!(Vec1::<Digit>::try_from(vec![]).is_err());
 }
 
 /// Prints `C`, for a unit variant.
@@ -454,11 +451,11 @@ fn a_unit_variant_converts_its_source_into_unit() {
     assert_eq!(Unit::parse("KW").unwrap(), Unit::Kw);
     assert_eq!(
         rule::<Unit>(),
-        "Unit = \"a\" ^1 | \"1\" | Keyword .\n\n^1: be convertible to ()"
+        "Unit = \"a\" ^1 | \"1\" | Keyword .\n^1: be convertible to ()"
     );
 }
 
-char_class!(IsSpace, "space", |ch| ch == ' ');
+char_class!(Space, "space", |ch| ch == ' ');
 
 fn print_comma<T>(_: &T, buf: &mut String) {
     buf.push(',');
@@ -471,7 +468,7 @@ fn print_nothing<T>(_: &T, _: &mut String) {}
 struct Pair(
     Digits,
     #[tygr(print_to = print_comma)] PhantomData<StringEq!(",")>,
-    #[tygr(print_to = print_nothing)] PhantomData<StringOf<IsSpace>>,
+    #[tygr(print_to = print_nothing)] PhantomData<StringOf<Space>>,
     Digits,
 );
 
@@ -490,7 +487,7 @@ fn an_empty_enum_never_parses() {
 }
 
 #[derive(Parse)]
-struct Num<T: FromStr + 'static>(#[tygr(from_str = StringOf1<IsDigit>)] T);
+struct Num<T: FromStr + 'static>(#[tygr(from_str = StringOf1<Digit>)] T);
 
 #[test]
 fn a_converted_field_can_be_generic() {

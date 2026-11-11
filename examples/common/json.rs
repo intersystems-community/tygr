@@ -27,7 +27,7 @@ pub(crate) struct Members(VecSep<Suffix<Member, Ws>, Suffix<StringEq!(","), Ws>>
 #[derive(Grammar, Debug)]
 pub(crate) struct Member {
     string: String,
-    col: Wrap<Ws, StringEq!(":"), Ws>,
+    colon: Wrap<Ws, StringEq!(":"), Ws>,
     value: Value,
 }
 
@@ -49,8 +49,8 @@ pub(crate) enum Character {
     Escape(Prefix<StringEq!("\\"), Escape>),
 }
 
-char_class!(pub(crate) NormalCharacter, "0x20-0x10FFFF except for \" and \\", |c| {
-    c >= '\u{0020}' && c != '"' && c != '\\'
+char_class!(pub(crate) NormalCharacter, "0x20-0x10FFFF except for \" and \\", |ch| {
+    ch >= '\u{0020}' && ch != '"' && ch != '\\'
 });
 
 #[derive(Grammar, Debug)]
@@ -73,8 +73,8 @@ pub(crate) enum Hex {
     LAToF(LAToF),
 }
 
-char_class!(pub(crate) UAToF, "A-F", |c| matches!(c, 'A'..='F'));
-char_class!(pub(crate) LAToF, "a-f", |c| matches!(c, 'a'..='f'));
+char_class!(pub(crate) UAToF, "A-F", |ch| matches!(ch, 'A'..='F'));
+char_class!(pub(crate) LAToF, "a-f", |ch| matches!(ch, 'a'..='f'));
 
 #[derive(Grammar, Debug)]
 pub(crate) struct Number {
@@ -101,7 +101,7 @@ pub(crate) enum Digit {
 #[derive(Grammar, Debug)]
 pub(crate) struct OneNine(OneNineChars);
 
-char_class!(pub(crate) OneNineChars, "1-9", |c| matches!(c, '1'..='9'));
+char_class!(pub(crate) OneNineChars, "1-9", |ch| matches!(ch, '1'..='9'));
 
 #[derive(Grammar, Debug)]
 pub(crate) struct Fraction(Prefix<StringEq!("."), Digits>);

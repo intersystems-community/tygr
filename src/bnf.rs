@@ -348,8 +348,7 @@ impl fmt::Display for Rule {
         }
         write!(f, " .")?;
         for (i, text) in self.expr.side_conditions().into_iter().enumerate() {
-            let sep = if i == 0 { "\n\n" } else { "\n" };
-            write!(f, "{sep}^{}: {text}", i + 1)?;
+            write!(f, "\n^{}: {text}", i + 1)?;
         }
         Ok(())
     }
