@@ -1,4 +1,4 @@
-//! Operators that change what's matched: sequence, alternation, optional,
+//! Combinators that change what's matched: sequence, alternation, optional,
 //! repetition and lookahead.
 
 use crate::IntoInner;
@@ -40,17 +40,17 @@ impl Print for () {
     fn print_to(&self, _buf: &mut String) {}
 }
 
-macro_rules! concat_first {
+macro_rules! seq_first {
     ($acc:ty;) => { $acc };
     ($acc:ty; $T:ident $(, $rest:ident)*) => {
-        concat_first!(<$acc as First>::Seq<$T>; $($rest),*)
+        seq_first!(<$acc as First>::Seq<$T>; $($rest),*)
     };
 }
 
 macro_rules! impl_tuple {
     ($($idx:tt $T:ident),+) => {
         impl<$($T: Parse),+> Parse for ($($T,)+) {
-            type First = concat_first!(Optional<byte_set::Empty>; $($T),+);
+            type First = seq_first!(Optional<byte_set::Empty>; $($T),+);
 
             #[inline]
             fn parse_at<M: Mode>(

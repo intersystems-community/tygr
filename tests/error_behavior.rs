@@ -338,6 +338,9 @@ fn enum_dispatch_records_the_variants_it_skips_when_matching_empty() {
 #[derive(Grammar, Debug)]
 struct Div(StringEq!("/"), NotFollowedBy<StringEq!("/")>);
 
+#[derive(Grammar, Debug)]
+struct NonOctal(NotFollowedBy<StringEq!("0")>, Digits);
+
 #[test]
 fn negative_lookahead_records_what_it_ruled_out() {
     let err = Div::parse("//").unwrap_err();
@@ -355,6 +358,11 @@ fn negative_lookahead_records_what_it_ruled_out() {
             },
         )],
         1,
+    );
+    // Leading, it isn't hidden behind the rule's name.
+    assert_eq!(
+        NonOctal::parse("07").unwrap_err().to_string(),
+        "parse error at byte 0, expected:\n\t- anything but \"0\" at 0..1"
     );
 }
 

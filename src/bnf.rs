@@ -53,7 +53,6 @@ impl Expr {
         Expr::Sequence(vec![])
     }
 
-    /// Is this an empty [`Sequence`](Expr::Sequence) (see [`Expr::empty`])?
     fn is_empty(&self) -> bool {
         matches!(self, Expr::Sequence(exprs) if exprs.is_empty())
     }

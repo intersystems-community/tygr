@@ -25,7 +25,7 @@ pub trait First {
     type Alt<X: First>: First;
     /// `Self`, or empty input.
     type Opt: First;
-    /// `Self` plus bytes `B`, same kind.
+    /// `Self` plus bytes `B`, same nullability.
     #[doc(hidden)]
     type MapUnion<B: ByteSet>: First;
     /// The starting bytes.

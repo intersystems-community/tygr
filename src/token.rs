@@ -190,8 +190,7 @@ impl<const B: u8> Unambiguous for ByteEq<B> {}
 #[diagnostic::do_not_recommend]
 impl<A: Unambiguous, B: Unambiguous> Unambiguous for (A, B) {}
 
-/// A unit variant's `try_from_infallible = StringEq!("…")`: the text is the
-/// type's.
+/// A unit variant's `try_from_infallible = StringEq!("…")`.
 impl<G: Unambiguous> From<Token<G>> for () {
     fn from(_: Token<G>) {}
 }
@@ -209,10 +208,11 @@ impl<G: Literal> Parse for Token<G> {
     type First = Required<G::Start>;
 
     #[inline(always)]
+    #[cfg_attr(not(feature = "trace_pos"), allow(unused_variables))]
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        #[allow(unused_variables)] state: State,
+        state: State,
     ) -> Option<(M::Output<Self>, usize)> {
         const {
             assert!(G::WHOLE_CHARS, "a literal must be whole chars");
@@ -397,8 +397,9 @@ pub trait CharClass: Grammar + ByteSet {
 }
 
 /// Define a [`CharClass`] from a `const` predicate, so its first bytes are
-/// known at compile time. The name (for errors and EBNF) defaults to the
-/// type name:
+/// known at compile time. The type is a tuple struct over a `pub char`,
+/// deriving `Debug`, `Copy`, `Eq` and `Hash`; the name (for errors and
+/// EBNF) defaults to the type name:
 ///
 /// ```
 /// # use tygr::*;
@@ -492,7 +493,7 @@ macro_rules! char_class {
 
         impl $crate::Print for $class {
             fn print_to(&self, buf: &mut ::std::string::String) {
-                $crate::__private::class_print_to(self, buf)
+                buf.push(self.0)
             }
         }
     };
@@ -518,12 +519,6 @@ pub fn class_parse_at<C: CharClass, M: Mode>(
             None
         }
     }
-}
-
-/// `Print::print_to` for a `char_class!` type.
-#[doc(hidden)]
-pub fn class_print_to<C: CharClass>(class: &C, buf: &mut String) {
-    buf.push(class.value());
 }
 
 /// `Parse::to_bnf` for a `char_class!` type.
