@@ -3,6 +3,7 @@
 /// Converts between byte offsets and `(line, character)` in one input,
 /// `character` in UTF-16 code units (as in the Language Server Protocol).
 /// Lines end at `\n`, `\r\n` or `\r`.
+#[derive(Debug, Clone)]
 pub struct OLC {
     lines: Vec<Line>,
 }
@@ -10,6 +11,7 @@ pub struct OLC {
 /// One line: its start and end offsets (before its line break), and each
 /// non-ASCII char's start in bytes and UTF-16 units into the line, with its
 /// length in bytes. Between non-ASCII chars, bytes and units agree.
+#[derive(Debug, Clone)]
 struct Line {
     start: usize,
     end: usize,

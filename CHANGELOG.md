@@ -121,8 +121,9 @@ faster without it (33 → 114 MB/s).
   `Wrap`, `Prefix`, `Suffix`, `Vec1`, `VecSep`, `Ranged`, literals and
   `char_class!` types are `Hash`, so a grammar holding them can derive it.
   Every combinator can be built by hand, e.g. to print.
-- `Error` implements `std::error::Error`, and `Expectation` is `Display`
-  whatever the features.
+- `OLC` is `Debug` and `Clone`, so a type holding one can derive them.
+- `Error`, `Trace` and `Expectation` are `Clone`; `Error` implements
+  `std::error::Error`, and `Expectation` is `Display` whatever the features.
 - EBNF: a character class's name escapes only `'`, not `"`; a hidden
   conversion source drops its footnote; an empty rule prints as `X = .`;
   a footnoted factor in a sequence isn't parenthesized (`Digits ^1 ","

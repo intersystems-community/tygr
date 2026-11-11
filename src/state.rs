@@ -245,7 +245,7 @@ impl History {
 }
 
 /// What was expected at [`Error::pos`].
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Expectation {
     /// A literal (`StringEq!` / `StringEqCI!`) matched `range`, then
@@ -320,7 +320,7 @@ impl fmt::Display for Expectation {
 }
 
 /// One thing that would have let the parse continue at [`Error::pos`].
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Trace {
     /// Enclosing rules, outermost first: the nearest one, or all of them
     /// with `trace_all_nodes`.
@@ -383,7 +383,7 @@ pub struct Frame {
 
 /// A parse failure. Its detail depends on the `trace_*` features; read it
 /// through [`Error::pos`] and [`Error::traces`].
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Error {
     #[cfg(feature = "trace_one_node")]
     traces: Vec<Trace>,
