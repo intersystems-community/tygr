@@ -277,6 +277,7 @@ impl<T: Print> Print for Ranged<T> {
 impl<T: Parse> Parse for Box<T> {
     type First = T::First;
 
+    #[inline]
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,

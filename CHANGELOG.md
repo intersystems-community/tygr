@@ -151,7 +151,10 @@ faster without it (33 → 114 MB/s).
   clamps out-of-range positions, as LSP does, and maps one inside a
   surrogate pair to the pair's start.
 - Declared the minimum supported Rust version, `rust-version = "1.88"`,
-  which CI builds on. Raising it is a minor change while tygr is 0.x.
+  which CI builds on. Raising it comes only with a 0.x → 0.y release.
+- A field whose type is no grammar fails to derive with `` `u16` doesn't
+  parse as a grammar `` and a note pointing to `#[tygr(from_str = S)]` or
+  `try_from`.
 
 ## [0.6.2] - 2026-09-04
 

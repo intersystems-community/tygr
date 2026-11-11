@@ -9,7 +9,7 @@ pub struct OLC {
 
 /// One line: its start and end offsets (before its line break), and each
 /// non-ASCII char's start in bytes and UTF-16 units into the line, with its
-/// length in bytes. Bytes and units agree between them.
+/// length in bytes. Between non-ASCII chars, bytes and units agree.
 struct Line {
     start: usize,
     end: usize,
@@ -51,7 +51,7 @@ impl OLC {
         let line = &self.lines[index];
         let byte = offset.min(line.end) - line.start;
         let k = line.wide.partition_point(|&(start, _, _)| start <= byte);
-        let character = match k.checked_sub(1).map(|k| line.wide[k]) {
+        let character = match line.wide[..k].last().copied() {
             None => byte,
             Some((start, unit, len)) if byte < start + len => unit,
             Some((start, unit, len)) => unit + units(len) + (byte - start - len),
@@ -68,7 +68,7 @@ impl OLC {
             return self.lines.last().map_or(0, |line| line.end);
         };
         let k = line.wide.partition_point(|&(_, unit, _)| unit <= character);
-        let byte = match k.checked_sub(1).map(|k| line.wide[k]) {
+        let byte = match line.wide[..k].last().copied() {
             None => character,
             Some((start, unit, len)) if character < unit + units(len) => start,
             Some((start, unit, len)) => (start + len).saturating_add(character - unit - units(len)),
@@ -148,71 +148,28 @@ mod tests {
     }
 
     #[test]
-    fn empty() {
-        check_all_offsets("");
+    fn ascii() {
+        for input in [
+            "",
+            "hello",
+            "hello\nworld",
+            "hello\n",
+            "\nhello",
+            "a\n\nb",
+            "\n\n\n",
+            "foo\nbar\nbaz\nqux",
+            "a\nb\nc\nd",
+        ] {
+            check_all_offsets(input);
+        }
     }
 
     #[test]
-    fn single_line() {
-        check_all_offsets("hello");
-    }
-
-    #[test]
-    fn two_lines() {
-        check_all_offsets("hello\nworld");
-    }
-
-    #[test]
-    fn trailing_newline() {
-        check_all_offsets("hello\n");
-    }
-
-    #[test]
-    fn leading_newline() {
-        check_all_offsets("\nhello");
-    }
-
-    #[test]
-    fn consecutive_newlines() {
-        check_all_offsets("a\n\nb");
-    }
-
-    #[test]
-    fn only_newlines() {
-        check_all_offsets("\n\n\n");
-    }
-
-    #[test]
-    fn multiple_lines() {
-        check_all_offsets("foo\nbar\nbaz\nqux");
-    }
-
-    #[test]
-    fn single_char_lines() {
-        check_all_offsets("a\nb\nc\nd");
-    }
-
-    #[test]
-    fn two_byte_utf8_char() {
-        // 'é' is 2 bytes in UTF-8, 1 unit in UTF-16.
-        check_all_offsets("café");
-    }
-
-    #[test]
-    fn three_byte_utf8_char() {
-        // '平' is 3 bytes in UTF-8, 1 unit in UTF-16.
-        check_all_offsets("平安");
-    }
-
-    #[test]
-    fn four_byte_utf8_char() {
-        // '😀' is 4 bytes in UTF-8, a surrogate pair (2 units) in UTF-16.
-        check_all_offsets("a😀b");
-    }
-
-    #[test]
-    fn mixed_non_ascii_across_lines() {
-        check_all_offsets("café\n平安\na😀b\nplain");
+    fn non_ascii() {
+        // 'é' is 2 bytes and 1 unit, '平' 3 bytes and 1 unit, '😀' 4 bytes and a surrogate pair.
+        for input in ["café", "平安", "a😀b", "café\n平安\na😀b\nplain"] {
+            check_all_offsets(input);
+        }
     }
 
     #[test]

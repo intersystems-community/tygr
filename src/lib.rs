@@ -5,15 +5,15 @@
 //!
 //! ## Design
 //!
-//! Derive [`Grammar`] on a `struct` or `enum` to get a parser, a printer, and
-//! a EBNF presentation for free, or derive only [`Parse`] (the parser and EBNF)
-//! or [`Print`]. Each supported Rust construct maps to an EBNF concept.
+//! Derive [`Grammar`] on a `struct` or `enum` for all three, or only
+//! [`Parse`] (the parser and EBNF) or [`Print`]. Each supported Rust
+//! construct maps to an EBNF concept.
 //!
 //! | Rust construct | EBNF ([Wirth 1977](https://doi.org/10.1145/359863.359883)) |
 //! |----------------|-------------------------------|
-//! | `struct`       | concatenation (`A B C`)      |
-//! | `enum`         | alternation (`A B \| C`) |
-//! | `(A, B, …)`    | inline concatenation         |
+//! | `struct`       | sequence (`A B C`)           |
+//! | `enum`         | alternation (`A B \| C D`) |
+//! | `(A, B, …)`    | inline sequence              |
 //! | `()`           | the empty sequence           |
 //! | [`StringEq!`] / [`StringEqCI!`] | a literal (`"if"` / `"if"i`) |
 //! | `char`         | any one char (`'any'`)       |
@@ -29,7 +29,7 @@
 //! | [`Raw<T>`] | parsed via `T`, kept as the raw matched text |
 //! | [`Ranged<T>`] | parsed via `T`, kept alongside its `start..end` byte range |
 //! | [`PhantomData<T>`](std::marker::PhantomData) | parsed via `T`, kept as nothing; doesn't print |
-//! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | concatenation shorthands, [`Deref`](std::ops::Deref)-ing to `T` |
+//! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | sequence shorthands, [`Deref`](std::ops::Deref)-ing to `T` |
 //! | [`VecSep<T, S>`] | one-or-more repetition with separators (`T { S T }`) |
 //!
 //! [`Parse::bnf_rules`] lists a grammar's rules, each once, to sort,
@@ -52,8 +52,8 @@
 //! - `validated` — after a successful parse, run [`Validate::validate`] on the
 //!   value; a rejection backtracks as if the grammar hadn't matched.
 //!
-//! `#[tygr(...)]` on a field parses another grammar `S` and converts it,
-//! e.g. digits into a `u32`, naming how:
+//! `#[tygr(...)]` on a field of type `T` parses another grammar `S` and
+//! converts it to `T`, e.g. digits into a `u32`, naming how:
 //! - `try_from = S`: `S: TryInto<T>`, on the parsed value.
 //! - `try_from_infallible = S`: the same with `Error = Infallible`, as for
 //!   every `From` conversion.
@@ -82,16 +82,15 @@
 //!
 //! ## Feature Flags
 //!
-//! The `tygr` crate enables the `trace_one_node` feature by default.
-//! Available features are:
+//! Each tracing feature records more about a failed parse, at some cost,
+//! and implies the one above it. `trace_one_node` is on by default.
 //!
-//! | Feature | Description |
-//! | ------- | ----------- |
-//! | `default` | Enables `trace_one_node`. |
-//! | `trace` | Enables all tracing features. |
-//! | `trace_pos` | Traces parser positions. |
-//! | `trace_one_node` | Traces only the nearest grammar node for each attempt. |
-//! | `trace_all_nodes` | Traces the complete grammar node chain for each attempt; much slower, as it copies the chain each time. |
+//! | Feature | Records |
+//! | ------- | ------- |
+//! | `trace_pos` | [`Error::pos`]: the deepest byte offset reached. |
+//! | `trace_one_node` | [`Error::traces`]: what was expected there, each in its nearest rule. |
+//! | `trace_all_nodes` | The whole rule path of each ([`Trace::context`]); much slower, as it copies the path each time. |
+//! | `trace` | All of the above. |
 //!
 //! ## Quick Example
 //!
@@ -170,8 +169,7 @@ pub mod __private {
     pub use crate::bnf::{inline_bnf, visit_inline};
     pub use crate::convert::{from_str, from_str_infallible, try_from, try_from_infallible};
     pub use crate::token::{
-        ByteEq, Literal, NonAsciiStart, Token, Unambiguous, class_fail_at, class_parse_at,
-        class_print_to, class_to_bnf,
+        ByteEq, NonAsciiStart, Token, class_fail_at, class_parse_at, class_print_to, class_to_bnf,
     };
     pub use either::Either;
 
@@ -180,7 +178,6 @@ pub mod __private {
 }
 
 // Lets derived code inside this crate use `::tygr::` paths.
-#[doc(hidden)]
 extern crate self as tygr;
 
 pub use tygr_derive::{Grammar, Parse, Print};
@@ -207,7 +204,6 @@ pub use tygr_derive::StringEq;
 ///
 /// ```
 /// # use tygr::*;
-/// # char_class!(Space, "space", |ch| matches!(ch, ' ' | '\t'));
 /// #[derive(Grammar)]
 /// pub enum Keyword {
 ///     Class(StringEqCI!("class")),  // matches "class", "CLASS", "Class", etc.

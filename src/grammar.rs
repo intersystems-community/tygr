@@ -15,9 +15,13 @@ use std::fmt::{self, Write};
 /// the crate-level docs).
 ///
 /// [`parse_at`](Self::parse_at) gets a char-boundary `pos` and must return a
-/// char-boundary end, passing other grammars only its `input`. Mid-char, no
-/// `char` is found, and a [`Raw`](crate::Raw) or conversion keeping the text
-/// panics.
+/// char-boundary end, passing other grammars the same `input`, never a slice.
+/// Mid-char, no `char` is found, and a [`Raw`](crate::Raw) or conversion
+/// keeping the text panics.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` doesn't parse as a grammar",
+    note = "derive `Parse` for it, or convert the field from a grammar `S` with `#[tygr(from_str = S)]` or `#[tygr(try_from = S)]`"
+)]
 pub trait Parse: Sized + 'static {
     /// The bytes (and whether empty input) this grammar can start with, used
     /// to skip alternatives that can't match. A manual impl delegates
@@ -100,7 +104,7 @@ pub trait Parse: Sized + 'static {
 
     /// Record what this grammar expected at `pos`, without parsing (e.g.
     /// when `First` already ruled it out). Returns whether it's required
-    /// (not nullable), so a sequence can stop reporting after it.
+    /// (not nullable), so a sequence can stop after it.
     fn fail_at(pos: usize, state: State) -> bool;
 
     /// This grammar as an EBNF expression, as other rules refer to it.
@@ -179,7 +183,10 @@ pub trait Mode: Copy + 'static + private::Sealed {
     fn build<T>(f: impl FnOnce(Self) -> T) -> Self::Output<T>;
 
     /// `output` with `f` applied to its value.
-    fn map<T, U>(output: Self::Output<T>, f: impl FnOnce(T) -> U) -> Self::Output<U>;
+    #[inline(always)]
+    fn map<T, U>(output: Self::Output<T>, f: impl FnOnce(T) -> U) -> Self::Output<U> {
+        Self::build(|mode| f(mode.get(output)))
+    }
 
     /// The mode when building, `None` when checking: for updating an output
     /// in place, such as pushing to a `Vec` in a loop.
@@ -209,11 +216,6 @@ impl Mode for Build {
     }
 
     #[inline(always)]
-    fn map<T, U>(output: T, f: impl FnOnce(T) -> U) -> U {
-        f(output)
-    }
-
-    #[inline(always)]
     fn building() -> Option<Self> {
         Some(Build)
     }
@@ -234,9 +236,6 @@ impl Mode for Check {
 
     #[inline(always)]
     fn build<T>(_f: impl FnOnce(Self) -> T) {}
-
-    #[inline(always)]
-    fn map<T, U>((): (), _f: impl FnOnce(T) -> U) {}
 
     #[inline(always)]
     fn building() -> Option<Self> {
