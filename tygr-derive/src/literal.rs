@@ -1,4 +1,4 @@
-//! `StringEq!` and `StringEqCI!`: a literal as nested byte grammars.
+//! `StringEq!` and `StringEqCI!`: a literal as nested byte atoms.
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -45,7 +45,6 @@ fn case_variants(ch: char) -> Vec<String> {
     let mut others: Vec<String> = vec![ch.to_lowercase().collect(), ch.to_uppercase().collect()];
     others.retain(|other| *other != me);
     others.sort_by_key(|other| std::cmp::Reverse(other.len()));
-    others.dedup();
     let mut variants = vec![me];
     variants.extend(others);
     variants

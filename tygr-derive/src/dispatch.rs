@@ -1,5 +1,5 @@
 //! An enum's `parse_at`: its variants in order, or, with enough of them, a
-//! jump table on the next byte.
+//! dispatch table on the next byte.
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -83,7 +83,7 @@ pub(crate) fn dispatch(
     };
     let fn_ty = quote! { fn(&str, usize, ::tygr::State<'_>) -> #output };
     let body = quote! {
-        // Slots 0-255: the next byte; 256: end of input. One per mode.
+        // One table per mode.
         let table: &'static [#fn_ty; 257] = &const {
             let cases: [#fn_ty; #n + 1] = [#(Self::#cases::<__Mode>,)* Self::__parse_miss::<__Mode>];
             let mut table: [#fn_ty; 257] = [Self::__parse_miss::<__Mode>; 257];

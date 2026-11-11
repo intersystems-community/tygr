@@ -28,7 +28,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
             parse(model, variant),
             fail_at(variant),
             sequence(variant),
-            quote! {},
+            None,
         ),
         Shape::Enum(variants) => {
             let firsts: Vec<_> = variants.iter().map(first).collect();
@@ -39,8 +39,9 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
             let fail_ats: Vec<_> = variants.iter().map(fail_at).collect();
             let sequences = variants.iter().map(sequence);
             let (parse_at, items) = dispatch(&arms, &firsts, &fail_ats);
-            let inherent =
-                quote! { impl #impl_generics #ident #ty_generics #where_clause { #items } };
+            let inherent = (!items.is_empty()).then(
+                || quote! { impl #impl_generics #ident #ty_generics #where_clause { #items } },
+            );
             (
                 firsts.iter().fold(
                     quote! { ::tygr::first::Required<::tygr::first::byte_set::Empty> },
@@ -202,7 +203,7 @@ fn fail_at(variant: &Variant) -> TokenStream {
     }
 }
 
-/// `variant`'s fields as a EBNF sequence; a fallible conversion is footnoted.
+/// `variant`'s fields as an EBNF sequence; a fallible conversion is footnoted.
 fn sequence(variant: &Variant) -> TokenStream {
     let bnfs = variant.fields.iter().map(|field| {
         let source = field.source();
