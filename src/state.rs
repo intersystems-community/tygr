@@ -7,8 +7,10 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Range;
 
-/// Parse state threaded through `parse_at`; a ZST when nothing is traced.
-#[doc(hidden)]
+/// Parse state threaded through [`Parse::parse_at`](crate::Parse::parse_at):
+/// what a failure will report, or nothing without a `trace_*` feature. A
+/// hand-written grammar enters its rule with [`node`](Self::node) and passes
+/// a [`reborrow`](Self::reborrow) to each grammar it delegates to.
 pub struct State<'a> {
     #[cfg(feature = "trace_pos")]
     history: &'a mut History,

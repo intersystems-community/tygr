@@ -112,7 +112,7 @@ pub trait Parse: Sized + 'static {
     fn visit_rules(rules: &mut Rules);
 }
 
-/// Print a grammar element back as text.
+/// Print a grammar back as text.
 ///
 /// Implemented for tygr's own grammars; for `struct`s and `enum`s,
 /// `#[derive(Print)]` or `#[derive(Grammar)]` generates it. A converted field

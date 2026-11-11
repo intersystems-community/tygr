@@ -18,7 +18,7 @@
 //! | [`StringEq!`] / [`StringEqCI!`] | a literal (`"if"` / `"if"i`) |
 //! | `char`         | any one char (`'any'`)       |
 //! | a [`char_class!`] type | one char of the class (`'digit'`) |
-//! | [`Either<A, B>`](either::Either) | inline alternation (`A \| B`) |
+//! | [`Either<A, B>`](either::Either), from the `either` crate | inline alternation (`A \| B`) |
 //! | [`Vec<T>`]     | repetition (`{ T }`)         |
 //! | [`Vec1<T>`]    | one-or-more repetition (`T { T }`)      |
 //! | [`Option<T>`]  | optional (`[ T ]`)           |
@@ -34,6 +34,11 @@
 //!
 //! [`Parse::bnf_rules`] lists a grammar's rules, each once, to sort,
 //! [rename](bnf::Rule::rename) and print.
+//!
+//! Parsing is ordered choice with backtracking, as in PEG: the first
+//! alternative that matches wins, so list a literal before its prefixes
+//! (`"<="` before `"<"`). A left-recursive grammar doesn't compile, as its
+//! [`Parse::First`] would be cyclic.
 //!
 //! Parsing recurses as the grammar nests, so input nested deeply enough
 //! overflows the stack, which aborts the process. For untrusted input,
