@@ -9,7 +9,7 @@ fn rule<G: Parse>() -> String {
     G::bnf_rules()[0].to_string()
 }
 
-char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
+char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 
 fn token(text: &'static str, range: Range<usize>) -> Expectation {
     Expectation::Token { text, range }
@@ -73,7 +73,7 @@ fn string_eq_partial_match_records_where_it_diverged() {
 }
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
-struct Digits(StringOf1<IsDigit>);
+struct Digits(StringOf1<Digit>);
 
 #[test]
 fn char_class_records_class_name() {
@@ -89,7 +89,7 @@ fn char_class_records_class_name() {
 }
 
 #[derive(Parse, Debug, PartialEq, Eq)]
-struct SmallNumber(#[tygr(from_str = StringOf1<IsDigit>)] u8);
+struct SmallNumber(#[tygr(from_str = StringOf1<Digit>)] u8);
 
 #[test]
 fn conversion_records_from_str_error() {
@@ -124,7 +124,7 @@ fn conversion_bnf_shows_the_side_condition() {
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
 #[tygr(validated)]
-struct NonZero(StringOf1<IsDigit>);
+struct NonZero(StringOf1<Digit>);
 
 impl Validate for NonZero {
     const REQUIREMENT: &'static str = "be non-zero";

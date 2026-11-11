@@ -2,10 +2,10 @@
 
 use tygr::*;
 
-char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
+char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 
 #[derive(Grammar, Debug, PartialEq, Eq)]
-struct Digits(StringOf1<IsDigit>);
+struct Digits(StringOf1<Digit>);
 
 #[test]
 fn parse_prefix_stops_at_the_match_without_consuming_the_rest() {

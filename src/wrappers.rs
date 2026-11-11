@@ -18,18 +18,18 @@ pub trait IntoInner<T> {
 ///
 /// ```
 /// # use tygr::*;
-/// # char_class!(IsSpace, "space", |ch| matches!(ch, ' ' | '\t'));
-/// type Ws = Hidden<StringOf<IsSpace>>;
+/// # char_class!(Space, "space", |ch| matches!(ch, ' ' | '\t'));
+/// type Ws = Hidden<StringOf<Space>>;
 /// ```
 ///
 /// Or use `#[tygr(hidden)]`:
 ///
 /// ```
 /// # use tygr::*;
-/// # char_class!(IsSpace, "space", |ch| matches!(ch, ' ' | '\t'));
+/// # char_class!(Space, "space", |ch| matches!(ch, ' ' | '\t'));
 /// #[derive(Grammar)]
 /// #[tygr(hidden)]
-/// struct Ws(StringOf<IsSpace>);
+/// struct Ws(StringOf<Space>);
 /// ```
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Grammar)]
 #[tygr(hidden)]

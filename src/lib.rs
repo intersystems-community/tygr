@@ -72,9 +72,9 @@
 //!
 //! ```
 //! # use tygr::*;
-//! # char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
+//! # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 //! #[derive(Grammar)]
-//! struct Port(#[tygr(from_str = StringOf1<IsDigit>, print_to = print_display)] u16);
+//! struct Port(#[tygr(from_str = StringOf1<Digit>, print_to = print_display)] u16);
 //! assert_eq!(Port::parse("8080").unwrap().0, 8080);
 //! assert!(Port::parse("99999").is_err());
 //! assert_eq!(Port(443).print(), "443");
@@ -122,16 +122,16 @@
 //!     Number(Int),
 //! }
 //!
-//! char_class!(pub IsDigit, "digit", |ch| ch.is_ascii_digit());
+//! char_class!(pub Digit, "digit", |ch| ch.is_ascii_digit());
 //!
 //! #[derive(Grammar)]
-//! pub struct Int(pub StringOf1<IsDigit>);
+//! pub struct Int(pub StringOf1<Digit>);
 //!
-//! char_class!(pub IsSpace, "space", |ch| ch.is_ascii_whitespace());
+//! char_class!(pub Space, "space", |ch| ch.is_ascii_whitespace());
 //!
 //! #[derive(Grammar)]
 //! #[tygr(hidden)]
-//! pub struct Ws(pub StringOf<IsSpace>);
+//! pub struct Ws(pub StringOf<Space>);
 //!
 //! let e = Expr::parse("1 + 2 * 3").unwrap();
 //! assert_eq!(e.print(), "1 + 2 * 3");
@@ -189,9 +189,9 @@ pub use tygr_derive::{Grammar, Parse, Print};
 ///
 /// ```
 /// # use tygr::*;
-/// # char_class!(pub IsDigit, "digit", |ch| ch.is_ascii_digit());
+/// # char_class!(pub Digit, "digit", |ch| ch.is_ascii_digit());
 /// # #[derive(Grammar)]
-/// # pub struct Num(StringOf1<IsDigit>);
+/// # pub struct Num(StringOf1<Digit>);
 /// # #[derive(Grammar)]
 /// # pub struct Expr(Num);
 /// #[derive(Grammar)]
@@ -207,7 +207,7 @@ pub use tygr_derive::StringEq;
 ///
 /// ```
 /// # use tygr::*;
-/// # char_class!(IsSpace, "space", |ch| matches!(ch, ' ' | '\t'));
+/// # char_class!(Space, "space", |ch| matches!(ch, ' ' | '\t'));
 /// #[derive(Grammar)]
 /// pub enum Keyword {
 ///     Class(StringEqCI!("class")),  // matches "class", "CLASS", "Class", etc.

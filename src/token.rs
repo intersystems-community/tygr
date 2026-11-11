@@ -378,12 +378,9 @@ fn decode_char(input: &str, pos: usize) -> Option<(char, usize)> {
 ///
 /// ```
 /// # use tygr::*;
-/// char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
+/// char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 ///
-/// #[derive(Grammar)]
-/// struct Digit(IsDigit);
-///
-/// assert_eq!(Digit::parse("7").unwrap().0.value(), '7');
+/// assert_eq!(Digit::parse("7").unwrap().value(), '7');
 /// assert!(Digit::parse("x").is_err());
 /// ```
 pub trait CharClass: Grammar + ByteSet {
@@ -407,7 +404,7 @@ pub trait CharClass: Grammar + ByteSet {
 /// ```
 /// # use tygr::*;
 /// char_class!(Digit, |ch| ch.is_ascii_digit()); // 'Digit'
-/// char_class!(pub IsHex, "hex", |ch| matches!(ch, '0'..='9' | 'a'..='f')); // 'hex'
+/// char_class!(pub Hex, "hex", |ch| matches!(ch, '0'..='9' | 'a'..='f')); // 'hex'
 ///
 /// #[derive(Grammar)]
 /// struct Num(StringOf1<Digit>);
@@ -547,8 +544,8 @@ pub fn class_fail_at<C: CharClass>(pos: usize, mut state: State) -> bool {
 ///
 /// ```
 /// # use tygr::*;
-/// # char_class!(IsSpace, "space", |ch| matches!(ch, ' ' | '\t'));
-/// type Ws = StringOf<IsSpace>;
+/// # char_class!(Space, "space", |ch| matches!(ch, ' ' | '\t'));
+/// type Ws = StringOf<Space>;
 /// ```
 pub type StringOf<C> = Raw<Vec<C>>;
 
@@ -556,9 +553,9 @@ pub type StringOf<C> = Raw<Vec<C>>;
 ///
 /// ```
 /// # use tygr::*;
-/// # char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
+/// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 /// #[derive(Grammar)]
-/// struct Number(StringOf1<IsDigit>);
+/// struct Number(StringOf1<Digit>);
 /// ```
 pub type StringOf1<C> = Raw<Vec1<C>>;
 
