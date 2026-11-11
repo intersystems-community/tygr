@@ -126,8 +126,8 @@ faster without it (33 → 114 MB/s).
   conversion source drops its footnote; an empty rule prints as `X = .`;
   a footnoted factor in a sequence isn't parenthesized (`Digits ^1 ","
   Digits ^2`).
-- `VecSep` reserves the usual amortized capacity on its first item, rather
-  than exactly one, so short lists no longer reallocate.
+- `VecSep` parses straight into `items` and `seps`, rather than through an
+  intermediate `T { S T }` value that was then converted.
 - The name argument of `char_class!` is optional and defaults to the type
   name.
 - Fixed derived code failing to compile unless tygr's traits were in

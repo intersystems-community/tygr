@@ -26,6 +26,6 @@ fn main() -> ExitCode {
         Some("parse") => common::parse::<Json>(),
         Some("print") => common::print::<Json>(),
         Some("test") => common::test::<Json>(),
-        _ => common::usage("json"),
+        _ => common::usage(),
     }
 }

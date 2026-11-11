@@ -46,8 +46,8 @@ pub(crate) fn test<R: Parse>() -> ExitCode {
 }
 
 /// Print a usage line naming the available verbs and exit with failure.
-pub(crate) fn usage(name: &str) -> ExitCode {
-    eprintln!("usage: {name} <bnf|parse|print|test>");
+pub(crate) fn usage() -> ExitCode {
+    eprintln!("usage: json <bnf|parse|print|test>");
     eprintln!("  bnf          print the grammar as EBNF");
     eprintln!("  parse        parse stdin, print the AST");
     eprintln!("  print        parse stdin, print it back");

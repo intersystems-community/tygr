@@ -491,7 +491,7 @@ fn an_empty_enum_never_parses() {
 }
 
 #[derive(Parse)]
-struct Num<T: FromStr + 'static>(#[tygr(from_str = StringOf1<Digit>)] T);
+struct Num<T: FromStr>(#[tygr(from_str = StringOf1<Digit>)] T);
 
 #[test]
 fn a_converted_field_can_be_generic() {
