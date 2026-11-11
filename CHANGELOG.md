@@ -153,6 +153,9 @@ faster without it (33 → 114 MB/s).
 - Declared the minimum supported Rust version, `rust-version = "1.88"`,
   which CI builds on. Raising it comes only with a 0.x → 0.y release.
 - A field whose type is no grammar fails to derive with `` `u16` doesn't
+- `Error`'s `Debug` output opens `parse error at byte N, expected:`, as
+  its `Display` does, and writes each context frame as `Rule@pos` rather
+  than `Rule@:pos`.
   parse as a grammar `` and a note pointing to `#[tygr(from_str = S)]` or
   `try_from`.
 

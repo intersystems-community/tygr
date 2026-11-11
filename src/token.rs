@@ -14,7 +14,7 @@ use crate::{Raw, Vec1};
 
 /// Matches one literal byte.
 #[doc(hidden)]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ByteEq<const B: u8>;
 
 /// A literal's bytes, built at compile time (stable Rust can't concatenate
@@ -57,7 +57,7 @@ impl LiteralBuf {
 
 /// A fixed literal as byte atoms. Only [`Token`] parses one, asserting when
 /// its `parse_at` is instantiated (so on build, not `cargo check`) that
-/// each alternative is whole chars, so the byte level keeps `Parse`'s
+/// each case variant is whole chars, so the byte level keeps `Parse`'s
 /// char-boundary rule.
 #[doc(hidden)]
 pub trait Literal: Copy + 'static {
@@ -65,10 +65,8 @@ pub trait Literal: Copy + 'static {
     const CASE_INSENSITIVE: bool;
     /// The literal's bytes.
     const BUF: LiteralBuf;
-    /// `BUF`, kept as a `'static` value to slice.
-    const BUF_REF: &'static LiteralBuf = &Self::BUF;
-    /// The literal's bytes.
-    const BYTES: &'static [u8] = Self::BUF_REF.as_slice();
+    /// `BUF` as a slice.
+    const BYTES: &'static [u8] = Self::BUF.as_slice();
     /// The most bytes any of its case variants matches.
     const LONGEST: usize;
     /// Is each `Either` side whole chars?
@@ -181,7 +179,7 @@ impl<A: Literal, B: Literal> Literal for Either<A, B> {
 /// converting it to `()`.
 #[doc(hidden)]
 #[diagnostic::on_unimplemented(
-    message = "`{Self}` is a case-insensitive literal, so has more than one text",
+    message = "a case-insensitive literal has more than one text",
     note = "a unit variant converts a literal into `()` only if it has one text: use `StringEq!`, or keep the literal as a field"
 )]
 pub trait Unambiguous: Literal {}
@@ -198,7 +196,8 @@ impl<G: Unambiguous> From<Token<G>> for () {
     fn from(_: Token<G>) {}
 }
 
-/// The most bytes a literal's case variant takes: three per byte of its text.
+/// The most bytes a literal's case variant takes: three per byte of its
+/// text, the most any char's case mapping grows (`'ΐ'`: 2 bytes to 6).
 const LONGEST_CAP: usize = 3 * LiteralBuf::CAP;
 
 /// A `StringEq!` / `StringEqCI!` literal; keeps the matched `G`.
@@ -221,6 +220,7 @@ impl<G: Literal> Parse for Token<G> {
                 G::LONGEST <= LONGEST_CAP,
                 "a literal's case variants take over 768 bytes"
             );
+            // WHOLE_CHARS checks each case variant; TEXT checks the whole text.
             let _ = Self::TEXT;
         };
         let result = G::match_at::<M>(input.as_bytes(), pos);
@@ -266,7 +266,7 @@ impl<G: Literal> Token<G> {
         Err(_) => panic!("a literal must be whole chars"),
     };
 
-    /// Push the alternative `matched`, written into `bytes`: whole chars, by
+    /// Push the case variant `matched`, written into `bytes`: whole chars, by
     /// `WHOLE_CHARS`.
     fn push_variant(matched: &G, bytes: &mut [u8], buf: &mut String) {
         let len = matched.write(bytes, 0);
@@ -318,13 +318,12 @@ impl<G: Literal> fmt::Debug for Token<G> {
 pub type NonAsciiStart = byte_set::Between<0xC2, 0xF4>;
 
 /// Bytes that can start a char.
-pub(crate) type CharStart = byte_set::Union<byte_set::Between<0x00, 0x7F>, NonAsciiStart>;
+type CharStart = byte_set::Union<byte_set::Between<0x00, 0x7F>, NonAsciiStart>;
 
 /// `char`'s name in errors and EBNF.
 const ANY_CHAR: &str = "any";
 
-/// Any one char. Fails only at end of input (or mid-char, where no grammar
-/// should be).
+/// Any one char. Fails only at end of input.
 impl Parse for char {
     type First = Required<CharStart>;
 

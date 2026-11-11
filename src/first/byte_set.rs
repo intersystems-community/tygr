@@ -47,7 +47,7 @@ impl Set {
 
     /// Is `b` in the set?
     pub const fn contains(&self, b: u8) -> bool {
-        self.0[(b >> 6) as usize] >> (b & 63) & 1 == 1
+        self.0[(b >> 6) as usize] & (1 << (b & 63)) != 0
     }
 }
 

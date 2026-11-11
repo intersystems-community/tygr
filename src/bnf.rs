@@ -10,14 +10,14 @@ use std::fmt;
 /// An EBNF expression, kept simplified.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
-    /// A token, formatted as `"text"` or `"text"i`.
+    /// A literal, formatted as `"text"` or `"text"i`.
     Token {
         /// The literal.
         text: String,
         /// Also matches other cases (`"text"i`).
         case_insensitive: bool,
     },
-    /// A reference to another named rule.
+    /// A reference to a named rule.
     RuleRef(String),
     /// A character class, formatted as `'name'`.
     CharClass(String),
@@ -190,9 +190,8 @@ impl Expr {
 
     fn prec(&self) -> Prec {
         match self {
-            _ if self.is_blank() => Prec::Atom,
             Expr::Alternation(_) | Expr::SideCondition(..) => Prec::Alternation,
-            Expr::Sequence(_) => Prec::Sequence,
+            Expr::Sequence(exprs) if !exprs.is_empty() => Prec::Sequence,
             _ => Prec::Atom,
         }
     }
@@ -290,7 +289,7 @@ pub struct Lazy(pub fn() -> Expr);
 
 impl PartialEq for Lazy {
     fn eq(&self, other: &Self) -> bool {
-        // Function addresses aren't unique, so fall back to the EBNF built.
+        // A function can have several addresses, so fall back to the EBNF built.
         std::ptr::fn_addr_eq(self.0, other.0) || (self.0)() == (other.0)()
     }
 }
@@ -408,7 +407,8 @@ fn expand<T: 'static>(def: impl FnOnce() -> Expr) -> (Expr, bool) {
     EXPANDING.with_borrow_mut(|stack| stack.push((TypeId::of::<T>(), false)));
     let _unmark = Unmark;
     let expr = def();
-    let recursive = EXPANDING.with_borrow(|stack| stack.last().is_some_and(|&(_, found)| found));
+    let recursive =
+        EXPANDING.with_borrow(|stack| stack.last().is_some_and(|&(_, recursive)| recursive));
     (expr, recursive)
 }
 
@@ -419,7 +419,7 @@ pub fn inline_bnf<T: 'static>(name: &str, def: impl FnOnce() -> Expr) -> Expr {
     let id = TypeId::of::<T>();
     let expanding = EXPANDING.with_borrow_mut(|stack| {
         let marked = stack.iter_mut().find(|(other, _)| *other == id);
-        marked.map(|(_, found)| *found = true).is_some()
+        marked.map(|(_, recursive)| *recursive = true).is_some()
     });
     if !expanding {
         let (expr, recursive) = expand::<T>(def);
@@ -439,13 +439,9 @@ pub fn visit_inline<T: 'static>(
     def: impl FnOnce() -> Expr,
     visit_parts: impl FnOnce(&mut Rules),
 ) {
-    match expand::<T>(def) {
-        (expr, true) => {
-            if rules.insert::<T>(name, || expr) {
-                visit_parts(rules);
-            }
-        }
-        (_, false) => visit_parts(rules),
+    let (expr, recursive) = expand::<T>(def);
+    if !recursive || rules.insert::<T>(name, || expr) {
+        visit_parts(rules);
     }
 }
 

@@ -149,7 +149,6 @@ pub(crate) fn run<R>(parse: impl FnOnce(State<'_>) -> Option<R>) -> Result<R, Er
 
 /// What was expected at the furthest position reached.
 #[cfg(feature = "trace_pos")]
-#[derive(Debug)]
 struct History {
     #[cfg(feature = "trace_one_node")]
     traces: Vec<Pending>,
@@ -158,7 +157,7 @@ struct History {
 
 /// A recorded trace, with its context kept cheap until the parse fails.
 #[cfg(feature = "trace_one_node")]
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 struct Pending {
     frames: Frames,
     expectation: Expectation,
@@ -234,19 +233,10 @@ impl History {
         let traces = self
             .traces
             .into_iter()
-            .map(
-                |Pending {
-                     frames,
-                     expectation,
-                 }| {
-                    let mut context: Vec<Frame> = frames.into_iter().collect();
-                    context.reverse();
-                    Trace {
-                        context,
-                        expectation,
-                    }
-                },
-            )
+            .map(|p| Trace {
+                context: p.frames.into_iter().rev().collect(),
+                expectation: p.expectation,
+            })
             .collect();
         Error {
             #[cfg(feature = "trace_one_node")]
@@ -256,7 +246,7 @@ impl History {
     }
 }
 
-/// One candidate for what would have matched at a [`Trace`]'s recorded position.
+/// What was expected at [`Error::pos`].
 #[derive(Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Expectation {
@@ -268,7 +258,7 @@ pub enum Expectation {
         /// What it matched; empty if it diverged at once.
         range: Range<usize>,
     },
-    /// No character satisfying this [`CharClass`](crate::CharClass) was found.
+    /// A char of the [`CharClass`](crate::CharClass) with this name.
     CharClass(&'static str),
     /// The text at `range` matched but was rejected: a
     /// `#[tygr(validated)]` check or a field conversion failed.
@@ -409,7 +399,7 @@ impl Error {
         }
     }
 
-    /// The deepest byte offset reached. `0` without `trace_pos`.
+    /// The furthest byte offset reached. `0` without `trace_pos`.
     pub fn pos(&self) -> usize {
         #[cfg(feature = "trace_pos")]
         {
@@ -432,18 +422,11 @@ impl fmt::Display for Error {
             let mut lines: Vec<String> = self
                 .traces
                 .iter()
-                .map(
-                    |Trace {
-                         context,
-                         expectation,
-                     }| {
-                        // A rule that starts here stands for what it expected.
-                        match context.last() {
-                            Some(frame) if frame.pos == self.pos => frame.node.to_string(),
-                            _ => format!("{expectation}"),
-                        }
-                    },
-                )
+                .map(|trace| match trace.context.last() {
+                    // A rule that starts here stands for what it expected.
+                    Some(frame) if frame.pos == self.pos => frame.node.to_string(),
+                    _ => trace.expectation.to_string(),
+                })
                 .collect();
             lines.sort();
             lines.dedup();
@@ -462,8 +445,7 @@ impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[cfg(feature = "trace_one_node")]
         {
-            writeln!(f, ":{}", self.pos)?;
-            writeln!(f, "Looking for")?;
+            writeln!(f, "parse error at byte {}, expected:", self.pos)?;
             for trace in &self.traces {
                 writeln!(
                     f,
@@ -471,7 +453,7 @@ impl fmt::Debug for Error {
                     trace
                         .context
                         .iter()
-                        .map(|Frame { node, pos }| { format!("{node}@:{pos}") })
+                        .map(|Frame { node, pos }| { format!("{node}@{pos}") })
                         .collect::<Vec<String>>()
                         .join("/"),
                     trace.expectation

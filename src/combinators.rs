@@ -350,7 +350,7 @@ impl<T: Print> Print for Vec<T> {
     }
 }
 
-/// Like `Vec`, but matches *one or more* items rather than zero or more.
+/// Like `Vec<T>`, but one or more items: `T { T }`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Vec1<T>(Vec<T>);
 
@@ -394,8 +394,8 @@ impl<T: Parse> Parse for Vec1<T> {
         (end != pos).then(|| (M::map(items, Self), end))
     }
 
-    fn fail_at(pos: usize, mut state: State) -> bool {
-        T::fail_at(pos, state.reborrow()) || <Vec<T>>::fail_at(pos, state)
+    fn fail_at(pos: usize, state: State) -> bool {
+        T::fail_at(pos, state)
     }
 
     fn to_bnf() -> Expr {
@@ -489,18 +489,19 @@ impl<T, S> VecSep<T, S> {
         self.items.into_iter().zip(self.seps)
     }
 
-    /// The first `T` item.
+    /// The first `T` item. Panics if `items` is empty.
     pub fn first(&self) -> &T {
         &self.items[0]
     }
 
-    /// The last `T` item.
+    /// The last `T` item. Panics if `items` is empty.
     pub fn last(&self) -> &T {
         self.items.last().unwrap()
     }
 }
 
-/// Negative lookahead: matches empty input only when `G` doesn't match next.
+/// Negative lookahead: consumes nothing; matches only when `G` doesn't
+/// match next.
 ///
 /// ```
 /// # use tygr::*;
@@ -544,7 +545,7 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
     }
 }
 
-/// Positive lookahead: matches empty input only when `G` matches next.
+/// Positive lookahead: consumes nothing; matches only when `G` matches next.
 ///
 /// ```
 /// # use tygr::*;
