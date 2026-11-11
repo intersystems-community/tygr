@@ -109,11 +109,12 @@ faster without it (33 → 114 MB/s).
   one text does (`StringEq!`, or `StringEqCI!` without cased chars), as
   does a grammar with `impl From<S> for ()`; `try_from` if the conversion
   can fail. Its `print_to` takes `&()`.
-- `Prefix` and `Suffix` fields are public, like `Wrap`'s, and so is
-  `Hidden`'s. `Vec1` gains `IntoInner` and `TryFrom<Vec<T>>`. `Raw<T>`
-  defaults to the text `T::default()` prints (empty for `StringOf`), and
-  `Hidden`, `Wrap`, `Prefix` and `Suffix` derive `Default`. Every
-  combinator can be built by hand, e.g. to print.
+- `Prefix` and `Suffix` fields are public, like `Wrap`'s, and so are
+  `Hidden`'s and `Ranged`'s. `Vec1` gains `IntoInner` and `TryFrom<Vec<T>>`.
+  `Raw<T>` defaults to the text `T::default()` prints (empty for
+  `StringOf`), and `Hidden`, `Wrap`, `Prefix` and `Suffix` derive `Default`.
+  `Wrap`, `Prefix`, `Suffix`, `Vec1`, `VecSep` and `Ranged` derive `Hash`,
+  as the rest did. Every combinator can be built by hand, e.g. to print.
 - `Error` implements `std::error::Error`, and `Expectation` is `Display`
   whatever the features.
 - BNF: a character class's name escapes only `'`, not `"`; a hidden

@@ -183,11 +183,12 @@ impl<T> From<String> for Raw<T> {
 }
 
 /// Parses as `T` and keeps its `start..end` byte range.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ranged<T> {
     /// Start byte offset.
     pub start: usize,
-    ranged: T,
+    /// The ranged value.
+    pub ranged: T,
     /// End byte offset (exclusive).
     pub end: usize,
 }

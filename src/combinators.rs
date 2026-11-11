@@ -98,7 +98,7 @@ impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J);
 impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K);
 
 /// Sequence of three grammars, [`Deref`]-ing to the middle one.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Grammar)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Grammar)]
 #[tygr(inline)]
 pub struct Wrap<L, T, R> {
     /// The leading element.
@@ -146,7 +146,7 @@ impl<L, T, R> IntoInner<T> for Wrap<L, T, R> {
 }
 
 /// Sequence of two grammars, [`Deref`]-ing to the second.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Grammar)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Grammar)]
 #[tygr(inline)]
 pub struct Prefix<P, T> {
     /// The leading element.
@@ -188,7 +188,7 @@ impl<P, T> IntoInner<T> for Prefix<P, T> {
 }
 
 /// Sequence of two grammars, [`Deref`]-ing to the first.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Grammar)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Grammar)]
 #[tygr(inline)]
 pub struct Suffix<T, S> {
     /// The suffixed value.
@@ -351,7 +351,7 @@ impl<T: Print> Print for Vec<T> {
 }
 
 /// Like `Vec`, but matches *one or more* items rather than zero or more.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Vec1<T>(Vec<T>);
 
 impl<T> Deref for Vec1<T> {
@@ -414,7 +414,7 @@ impl<T: Print> Print for Vec1<T> {
 }
 
 /// One or more items, with a separator between each pair: `T { S T }`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VecSep<T, S> {
     /// The `T` items, in order.
     pub items: Vec<T>,
