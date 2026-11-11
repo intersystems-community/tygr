@@ -24,16 +24,22 @@ struct Strasse(StringEqCI!("straße"));
 fn string_eq_ci_variant_can_change_length() {
     // 'ß' uppercases to "SS".
     assert_eq!(Strasse::parse("STRASSE").unwrap().print(), "STRASSE");
+    assert!(Strasse::parse("strasse").is_ok());
     assert!(Strasse::parse("Straße").is_ok());
 }
 
 #[derive(Grammar, Debug)]
-struct Long(StringEq!("abcdefghijklmnop"));
+struct Long(
+    StringEq!(
+        "abcdefghijklmnopabcdefghijklmnopabcdefghijklmnopabcdefghijklmnopabcdefghijklmnopabcdefghijklmnopabcdefghijklmnopabcdefghijklmnop"
+    ),
+);
 
 #[test]
 fn string_eq_longer_than_a_flat_tuple() {
-    assert!(Long::parse("abcdefghijklmnop").is_ok());
-    assert!(Long::parse("abcdefghijklmnoq").is_err());
+    let text = "abcdefghijklmnop".repeat(8);
+    assert!(Long::parse(&text).is_ok());
+    assert!(Long::parse(&text[..127]).is_err());
 }
 
 #[test]

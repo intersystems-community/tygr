@@ -18,7 +18,7 @@ pub(crate) fn expand(
             .to_compile_error()
             .into();
     }
-    let tuple = right_nested(value.chars().map(char_grammar), pair);
+    let tuple = balanced(&value.chars().map(char_grammar).collect::<Vec<_>>(), &pair);
     quote! { ::tygr::__private::Token<#tuple> }.into()
 }
 
@@ -29,35 +29,40 @@ pub(crate) fn char_eq(ch: char) -> TokenStream2 {
 
 /// An `Either` over `ch`'s case variants, or its own tuple if it has none.
 pub(crate) fn char_eq_ci(ch: char) -> TokenStream2 {
-    let variants = case_variants(ch)
-        .into_iter()
-        .map(|variant| byte_tuple(variant.as_bytes()));
-    right_nested(
-        variants,
-        |first, rest| quote! { ::tygr::__private::Either<#first, #rest> },
-    )
+    let variants: Vec<TokenStream2> = case_variants(ch)
+        .iter()
+        .map(|variant| byte_tuple(variant.as_bytes()))
+        .collect();
+    balanced(&variants, &|first, rest| {
+        quote! { ::tygr::__private::Either<#first, #rest> }
+    })
 }
 
-/// `ch`, then its Unicode case mappings longest first, so ordered choice
-/// never stops at a shorter prefix (no char prefixes its own mappings).
+/// `ch`, then its Unicode case mappings and theirs, longest first, so
+/// ordered choice never stops at a shorter prefix (no variant prefixes
+/// another).
 fn case_variants(ch: char) -> Vec<String> {
-    let me = ch.to_string();
-    let mut others: Vec<String> = vec![ch.to_lowercase().collect(), ch.to_uppercase().collect()];
-    others.retain(|other| *other != me);
-    others.sort_by_key(|other| std::cmp::Reverse(other.len()));
-    let mut variants = vec![me];
-    variants.extend(others);
+    let mut variants = vec![ch.to_string()];
+    let mut i = 0;
+    while let Some(variant) = variants.get(i).cloned() {
+        for mapped in [variant.to_lowercase(), variant.to_uppercase()] {
+            if !variants.contains(&mapped) {
+                variants.push(mapped);
+            }
+        }
+        i += 1;
+    }
+    variants[1..].sort_by_key(|other| std::cmp::Reverse(other.len()));
     variants
 }
 
 /// `ByteEq`s for non-empty `bytes`, nested as pairs.
 fn byte_tuple(bytes: &[u8]) -> TokenStream2 {
-    right_nested(
-        bytes
-            .iter()
-            .map(|byte| quote! { ::tygr::__private::ByteEq<#byte> }),
-        pair,
-    )
+    let atoms: Vec<TokenStream2> = bytes
+        .iter()
+        .map(|byte| quote! { ::tygr::__private::ByteEq<#byte> })
+        .collect();
+    balanced(&atoms, &pair)
 }
 
 /// `(first, rest)`.
@@ -65,12 +70,18 @@ fn pair(first: TokenStream2, rest: TokenStream2) -> TokenStream2 {
     quote! { (#first, #rest) }
 }
 
-/// `[a, b, c]` → `join(a, join(b, c))`.
-fn right_nested(
-    items: impl DoubleEndedIterator<Item = TokenStream2>,
-    join: impl Fn(TokenStream2, TokenStream2) -> TokenStream2,
+/// `[a, b, c, d]` → `join(join(a, b), join(c, d))`: log-deep, so a long
+/// literal's type stays within the compiler's recursion limit.
+fn balanced(
+    items: &[TokenStream2],
+    join: &dyn Fn(TokenStream2, TokenStream2) -> TokenStream2,
 ) -> TokenStream2 {
-    let mut items = items.rev();
-    let last = items.next().expect("non-empty");
-    items.fold(last, |rest, item| join(item, rest))
+    match items {
+        [] => unreachable!("non-empty"),
+        [item] => item.clone(),
+        _ => {
+            let (left, right) = items.split_at(items.len() / 2);
+            join(balanced(left, join), balanced(right, join))
+        }
+    }
 }

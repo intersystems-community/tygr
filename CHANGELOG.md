@@ -48,8 +48,9 @@ faster without it (33 → 114 MB/s).
   field with `#[tygr(print_to = f)]`.
 - Renamed `Range<T>` to `Ranged<T>`, freeing the name for
   `std::ops::Range`. It gains `range() -> Range<usize>`.
-- `StringEqCI!` matches each char's Unicode case mappings rather than only
-  ASCII letters: `"é"` matches `"É"`, and `"ß"` matches `"SS"`.
+- `StringEqCI!` matches each char's Unicode case mappings, and theirs,
+  rather than only ASCII letters: `"é"` matches `"É"`, and `"ß"` matches
+  `"SS"` and `"ss"`.
 - A literal that fails partway is still reported where it diverged, but
   as the whole literal with the range it matched, as a rejected
   validation is: `"->"` against `"-x"` reads `"->" at 0..1` at byte 1,

@@ -206,7 +206,9 @@ pub use tygr_derive::{Grammar, Parse, Print};
 pub use tygr_derive::StringEq;
 
 /// A case-insensitive [`StringEq!`]: each char also matches its Unicode
-/// lower/upper case mappings (`'é'` matches `"É"`, `'ß'` matches `"SS"`).
+/// lower/upper case mappings and theirs (`'é'` matches `"É"`, `'ß'` matches
+/// `"SS"` and `"ss"`). The value keeps the spelling it matched, so it prints
+/// back as is and `"IF"` and `"if"` parse to unequal values.
 ///
 /// ```
 /// # use tygr::*;
