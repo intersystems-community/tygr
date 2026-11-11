@@ -304,9 +304,10 @@ impl fmt::Display for Expectation {
                 "{} at {range:?} must {requirement}",
                 node.unwrap_or("Text")
             ),
-            Expectation::NotFollowedBy { excluded, range } => {
-                write!(f, "anything but {excluded} at {range:?}")
-            }
+            Expectation::NotFollowedBy { excluded, range } => match (excluded.0)() {
+                Expr::Hidden => write!(f, "anything but the text at {range:?}"),
+                excluded => write!(f, "anything but {excluded} at {range:?}"),
+            },
             Expectation::End => write!(f, "end of input"),
         }
     }
@@ -449,19 +450,16 @@ impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[cfg(feature = "trace_one_node")]
         {
-            write!(f, "parse error at byte {}, expected:", self.pos)?;
+            write!(f, "parse error at byte {}", self.pos)?;
+            if !self.traces.is_empty() {
+                write!(f, ", expected:")?;
+            }
             for trace in &self.traces {
-                write!(
-                    f,
-                    "\n\t- {}!{}",
-                    trace
-                        .context
-                        .iter()
-                        .map(|Frame { node, pos }| format!("{node}@{pos}"))
-                        .collect::<Vec<String>>()
-                        .join("/"),
-                    trace.expectation
-                )?;
+                write!(f, "\n\t- ")?;
+                for Frame { node, pos } in &trace.context {
+                    write!(f, "{node}@{pos}/")?;
+                }
+                write!(f, "{}", trace.expectation)?;
             }
             Ok(())
         }
