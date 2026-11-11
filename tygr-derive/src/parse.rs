@@ -3,7 +3,8 @@
 use crate::dispatch::dispatch;
 use crate::model::{Conversion, Field, Model, Shape, Variant};
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
+use syn::spanned::Spanned;
 
 /// The `Parse` impl.
 pub(crate) fn expand(model: &Model) -> TokenStream {
@@ -131,7 +132,7 @@ fn with_node(model: &Model, body: TokenStream) -> TokenStream {
 fn first(variant: &Variant) -> TokenStream {
     variant.fields.iter().map(Field::source).fold(
         quote! { ::tygr::first::Optional<::tygr::first::byte_set::Empty> },
-        |first, source| quote! { <#first as ::tygr::first::First>::Seq<#source> },
+        |first, source| quote_spanned! { source.span() => <#first as ::tygr::first::First>::Seq<#source> },
     )
 }
 
