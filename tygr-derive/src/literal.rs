@@ -44,7 +44,7 @@ fn case_variants(ch: char) -> Vec<String> {
     let me = ch.to_string();
     let mut others: Vec<String> = vec![ch.to_lowercase().collect(), ch.to_uppercase().collect()];
     others.retain(|other| *other != me);
-    others.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+    others.sort_by_key(|other| std::cmp::Reverse(other.len()));
     others.dedup();
     let mut variants = vec![me];
     variants.extend(others);

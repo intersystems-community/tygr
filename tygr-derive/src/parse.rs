@@ -39,25 +39,17 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
             let fail_ats: Vec<_> = variants.iter().map(fail_at).collect();
             let sequences = variants.iter().map(sequence);
             let (parse_at, items) = dispatch(&arms, &firsts, &fail_ats);
-            let inherent = quote! {
-                impl #impl_generics #ident #ty_generics #where_clause {
-                    #items
-
-                    // Every variant reports (`&`, not `&&`); the enum is required only
-                    // if all variants are.
-                    #[inline]
-                    fn __fail_at_variants(#[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> bool {
-                        #((#fail_ats) &)* true
-                    }
-                }
-            };
+            let inherent =
+                quote! { impl #impl_generics #ident #ty_generics #where_clause { #items } };
             (
                 firsts.iter().fold(
                     quote! { ::tygr::first::Required<::tygr::first::byte_set::Empty> },
                     |first, variant| quote! { <#first as ::tygr::first::First>::Alt<#variant> },
                 ),
                 parse_at,
-                quote! { Self::__fail_at_variants(pos, state) },
+                // Every variant reports (`&`, not `&&`); the enum is required only
+                // if all variants are.
+                quote! { #((#fail_ats) &)* true },
                 quote! { ::tygr::bnf::Expr::alternation(::std::vec![#(#sequences),*]) },
                 inherent,
             )
@@ -103,11 +95,11 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
             type First = #first;
 
             #[inline(always)]
-            fn parse_at<__Mode: ::tygr::Mode>(input: &str, pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> ::core::option::Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> {
+            fn parse_at<__Mode: ::tygr::Mode>(input: &str, pos: usize, mut state: ::tygr::State) -> ::core::option::Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> {
                 #parse_at
             }
 
-            fn fail_at(#[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> bool {
+            fn fail_at(pos: usize, mut state: ::tygr::State) -> bool {
                 #fail_at
             }
 
@@ -115,7 +107,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
                 #to_bnf
             }
 
-            fn visit_rules(#[allow(unused_variables)] rules: &mut ::tygr::bnf::Rules) {
+            fn visit_rules(rules: &mut ::tygr::bnf::Rules) {
                 #visit_rules
             }
         }
@@ -145,7 +137,6 @@ fn first(variant: &Variant) -> TokenStream {
 /// Parse each field, then build the value; or, if `validated`, build it
 /// whatever the mode and check it.
 fn parse(model: &Model, variant: &Variant) -> TokenStream {
-    // Validating needs the value, so then the fields always build.
     let mode = if model.validated {
         quote! { ::tygr::Build }
     } else {
@@ -167,14 +158,9 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
         };
     }
     let bindings: Vec<_> = variant.fields.iter().filter_map(Field::binding).collect();
-    let mode = if bindings.is_empty() {
-        quote! { _ }
-    } else {
-        quote! { mode }
-    };
     quote! {
         #(#steps)*
-        ::core::option::Option::Some((<__Mode as ::tygr::Mode>::build(|#mode| {
+        ::core::option::Option::Some((<__Mode as ::tygr::Mode>::build(|mode| {
             #(let #bindings = <__Mode as ::tygr::Mode>::get(mode, #bindings);)*
             #constructor
         }), pos))
@@ -231,6 +217,8 @@ fn sequence(variant: &Variant) -> TokenStream {
 
 /// Reads every field, as a derived `Print` would: a grammar's fields are
 /// its syntax, so the dead-code lint shouldn't flag them as never read.
+/// Nothing calls it: the `allow(dead_code)` is what makes rustc walk its
+/// body, since allowed items seed the dead-code analysis.
 pub(crate) fn read_fields(model: &Model) -> TokenStream {
     let ident = &model.ident;
     let (impl_generics, ty_generics, where_clause) = model.generics.split_for_impl();

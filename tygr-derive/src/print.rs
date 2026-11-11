@@ -42,7 +42,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     let value = model.matched(quote! { self });
     quote! {
         impl #impl_generics ::tygr::Print for #ident #ty_generics #where_clause {
-            fn print_to(&self, #[allow(unused_variables)] buf: &mut ::std::string::String) {
+            fn print_to(&self, buf: &mut ::std::string::String) {
                 match #value {
                     #(#constructors => { #prints })*
                 }

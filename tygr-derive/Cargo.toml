@@ -11,6 +11,6 @@ repository = "https://github.com/intersystems-community/tygr"
 proc-macro = true
 
 [dependencies]
-syn = { version = "2", features = ["full"] }
+syn = "2"
 quote = "1"
 proc-macro2 = "1"

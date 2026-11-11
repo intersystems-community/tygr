@@ -36,8 +36,7 @@ pub(crate) struct Variant {
 #[allow(clippy::large_enum_variant)] // Built once per field, at compile time.
 pub(crate) enum Field {
     /// A field, parsed as its type or converted, bound as `binding`, and
-    /// printed with `print_to` if given, else its `Print` (a converted field
-    /// needs `print_to`).
+    /// printed with `print_to` or, unless converted, its `Print`.
     Kept {
         binding: Ident,
         ty: Type,
@@ -59,7 +58,7 @@ pub(crate) struct Conversion {
     pub(crate) source: Type,
 }
 
-/// The std trait a field converts with.
+/// The std trait a field converts with, and whether it can fail.
 #[derive(Clone, Copy)]
 pub(crate) enum Kind {
     TryFrom,
@@ -105,7 +104,6 @@ impl Model {
                 if meta.path.is_ident("name") {
                     model.name = meta.value()?.parse::<LitStr>()?.value();
                 } else if meta.path.is_ident("hidden") {
-                    // Hidden nodes aren't in EBNF, so they must be inline too.
                     model.hidden = true;
                     model.inline = true;
                 } else if meta.path.is_ident("inline") {
@@ -172,7 +170,7 @@ fn mentions(tokens: TokenStream, ident: &Ident) -> bool {
 
 impl Variant {
     /// `path`'s fields, bound as `_f0`, `_f1`, … so no field name clashes
-    /// with the generated code. Only a unit variant takes `attrs`.
+    /// with the generated code. Only a unit variant takes `#[tygr(...)]`.
     fn new(path: TokenStream, fields: &Fields, attrs: &[Attribute]) -> syn::Result<Self> {
         if let Fields::Unit = fields {
             let FieldAttrs {
@@ -357,7 +355,7 @@ impl Kind {
     }
 }
 
-/// A field's `#[tygr(...)]` options (a unit variant's, for its source).
+/// The `#[tygr(...)]` options of a field or unit variant.
 #[derive(Default)]
 struct FieldAttrs {
     conversion: Option<Conversion>,

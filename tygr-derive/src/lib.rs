@@ -26,7 +26,7 @@ pub fn derive_grammar(input: TokenStream) -> TokenStream {
     })
 }
 
-/// Derive `Parse` alone, as `Grammar` does.
+/// Derive `Parse` alone, as `Grammar` derives it.
 #[proc_macro_derive(Parse, attributes(tygr))]
 pub fn derive_parse(input: TokenStream) -> TokenStream {
     derive(input, |model| {
@@ -35,7 +35,7 @@ pub fn derive_parse(input: TokenStream) -> TokenStream {
     })
 }
 
-/// Derive `Print` alone, as `Grammar` does.
+/// Derive `Print` alone, as `Grammar` derives it.
 #[proc_macro_derive(Print, attributes(tygr))]
 pub fn derive_print(input: TokenStream) -> TokenStream {
     derive(input, print::expand)
@@ -51,7 +51,7 @@ fn derive(input: TokenStream, expand: impl FnOnce(&Model) -> TokenStream2) -> To
 }
 
 // `Token<G>`, `G` holding each char's UTF-8 bytes as `ByteEq`s. Not doc
-// comments: these would show on `tygr`'s re-exports.
+// comments: `tygr`'s re-exports have their own, and rustdoc would show both.
 #[proc_macro]
 #[allow(non_snake_case)]
 pub fn StringEq(input: TokenStream) -> TokenStream {

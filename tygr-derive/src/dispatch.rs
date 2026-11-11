@@ -9,7 +9,7 @@ use syn::Ident;
 const THRESHOLD: usize = 4;
 
 /// The `parse_at` body trying `arms` (one per variant) in order, and the
-/// inherent fns it needs. With enough variants, a table on the next byte
+/// inherent items it needs. With enough variants, a table on the next byte
 /// skips to the first variant that can start there; when tracing, the
 /// variants it skipped are reported with `fail_ats`, unless one matched
 /// input.
@@ -32,17 +32,12 @@ pub(crate) fn dispatch(
         .iter()
         .skip(1)
         .map(|next| quote! { Self::#next::<__Mode>(input, pos, state) })
-        .chain([quote! {{
-            if ::tygr::__private::TRACING {
-                Self::__fail_at_skipped(input, pos, state);
-            }
-            ::core::option::Option::None
-        }}]);
-    let (indices, skips) = (0..n, 0..n);
+        .chain([quote! { Self::__parse_miss::<__Mode>(input, pos, state) }]);
+    let indices: Vec<usize> = (0..n).collect();
     let items = quote! {
         #(
             #[inline]
-            fn #cases<__Mode: ::tygr::Mode>(input: &str, pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) -> #output {
+            fn #cases<__Mode: ::tygr::Mode>(input: &str, pos: usize, mut state: ::tygr::State) -> #output {
                 if let ::core::option::Option::Some(result) = (|| { #arms })() {
                     // Matching empty, it rules out none of the variants skipped.
                     if ::tygr::__private::TRACING && ::tygr::first::contains::<#firsts>(::core::option::Option::None) && result.1 == pos {
@@ -54,48 +49,47 @@ pub(crate) fn dispatch(
             }
         )*
 
-        // Report the variants the table skipped for the next byte: those
-        // before the first that can start with it (all, if none can).
+        // The first variant that can start with each next byte (slot 256: end
+        // of input), or `n` if none can.
+        const __FIRST_CASE: [usize; 257] = {
+            let mut first_case = [#n; 257];
+            let mut slot = 0;
+            while slot < 257 {
+                let next = if slot < 256 { ::core::option::Option::Some(slot as u8) } else { ::core::option::Option::None };
+                first_case[slot] = #( if ::tygr::first::contains::<#firsts>(next) {
+                    #indices
+                } else )* { #n };
+                slot += 1;
+            }
+            first_case
+        };
+
+        // Report the variants the table skipped: those before the first that
+        // can start with the next byte.
         #[cold]
-        fn __fail_at_skipped(input: &str, #[allow(unused_variables)] pos: usize, #[allow(unused_variables, unused_mut)] mut state: ::tygr::State) {
-            let skipped: &'static [usize; 257] = &const {
-                let mut skipped = [#n; 257];
-                let mut slot = 0;
-                while slot < 257 {
-                    let next = if slot < 256 { ::core::option::Option::Some(slot as u8) } else { ::core::option::Option::None };
-                    skipped[slot] = #( if ::tygr::first::contains::<#firsts>(next) {
-                        #skips
-                    } else )* { #n };
-                    slot += 1;
-                }
-                skipped
-            };
-            let k = skipped[input.as_bytes().get(pos).map_or(256, |&byte| byte as usize)];
+        fn __fail_at_skipped(input: &str, pos: usize, mut state: ::tygr::State) {
+            let k = Self::__FIRST_CASE[input.as_bytes().get(pos).map_or(256, |&byte| byte as usize)];
             #( if #indices < k { let _ = #fail_ats; } )*
         }
 
-        // No variant can start here: report them all.
+        // Nothing matched: report the variants the table skipped.
         #[inline]
-        fn __parse_miss<__Mode: ::tygr::Mode>(_input: &str, pos: usize, state: ::tygr::State) -> #output {
+        fn __parse_miss<__Mode: ::tygr::Mode>(input: &str, pos: usize, state: ::tygr::State) -> #output {
             if ::tygr::__private::TRACING {
-                Self::__fail_at_variants(pos, state);
+                Self::__fail_at_skipped(input, pos, state);
             }
             ::core::option::Option::None
         }
     };
     let fn_ty = quote! { fn(&str, usize, ::tygr::State<'_>) -> #output };
-    let indices = 0..n;
     let body = quote! {
         // Slots 0-255: the next byte; 256: end of input. One per mode.
         let table: &'static [#fn_ty; 257] = &const {
-            let cases: [#fn_ty; #n] = [#(Self::#cases::<__Mode>),*];
+            let cases: [#fn_ty; #n + 1] = [#(Self::#cases::<__Mode>,)* Self::__parse_miss::<__Mode>];
             let mut table: [#fn_ty; 257] = [Self::__parse_miss::<__Mode>; 257];
             let mut slot = 0;
             while slot < 257 {
-                let next = if slot < 256 { ::core::option::Option::Some(slot as u8) } else { ::core::option::Option::None };
-                table[slot] = #( if ::tygr::first::contains::<#firsts>(next) {
-                    cases[#indices]
-                } else )* { Self::__parse_miss::<__Mode> };
+                table[slot] = cases[Self::__FIRST_CASE[slot]];
                 slot += 1;
             }
             table
