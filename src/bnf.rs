@@ -82,7 +82,8 @@ impl Expr {
     }
 
     /// A flattened alternation without its hidden alternatives (hidden if
-    /// all are); an empty alternative makes the rest optional.
+    /// all are); an empty alternative makes the rest optional, and none at
+    /// all (an empty enum) is footnoted `never matches`.
     pub fn alternation(exprs: Vec<Expr>) -> Expr {
         let (mut hidden, mut empty) = (false, false);
         let mut alternatives = Vec::new();
@@ -95,8 +96,9 @@ impl Expr {
             }
         }
         let alternation = match alternatives.len() {
-            0 if hidden && !empty => Expr::Hidden,
-            0 => Expr::empty(),
+            0 if empty => Expr::empty(),
+            0 if hidden => Expr::Hidden,
+            0 => Expr::side_condition(Expr::empty(), "never matches"),
             1 => alternatives.pop().unwrap(),
             _ => Expr::Alternation(alternatives),
         };
@@ -220,6 +222,9 @@ impl Expr {
             ),
             Expr::RuleRef(name) => write!(f, "{name}"),
             Expr::CharClass(name) => write!(f, "'{}'", escape(name, '\'')),
+            Expr::Sequence(exprs) if exprs.is_empty() && min_prec > Prec::Sequence => {
+                write!(f, "( )")
+            }
             Expr::Sequence(exprs) => Self::format_list(exprs, " ", Prec::Sequence, f, notes),
             Expr::Alternation(exprs) => {
                 Self::format_list(exprs, " | ", Prec::Alternation, f, notes)
@@ -240,9 +245,7 @@ impl Expr {
             }
             Expr::SideCondition(inner, text) => {
                 inner.format_internal(f, Prec::SideCondition, notes)?;
-                if !inner.is_blank() {
-                    write!(f, " ")?;
-                }
+                write!(f, " ")?;
                 let index = notes.iter().position(|note| note == text).unwrap() + 1;
                 write!(f, "^{index}")
             }
@@ -393,9 +396,9 @@ thread_local! {
     static EXPANDING: RefCell<Vec<(TypeId, bool)>> = const { RefCell::new(Vec::new()) };
 }
 
-/// `def()`, expanded with `T` marked, and whether it referred to `T`.
-fn expand<T: 'static>(def: impl FnOnce() -> Expr) -> (Expr, bool) {
-    /// Unmarks `T`, even if `def` panics.
+/// `f()`, run with the grammar `id` marked, and whether it referred to it.
+fn expand<R>(id: TypeId, f: impl FnOnce() -> R) -> (R, bool) {
+    /// Unmarks it, even if `f` panics.
     struct Unmark;
     impl Drop for Unmark {
         fn drop(&mut self) {
@@ -404,12 +407,12 @@ fn expand<T: 'static>(def: impl FnOnce() -> Expr) -> (Expr, bool) {
             });
         }
     }
-    EXPANDING.with_borrow_mut(|stack| stack.push((TypeId::of::<T>(), false)));
+    EXPANDING.with_borrow_mut(|stack| stack.push((id, false)));
     let _unmark = Unmark;
-    let expr = def();
+    let value = f();
     let recursive =
         EXPANDING.with_borrow(|stack| stack.last().is_some_and(|&(_, recursive)| recursive));
-    (expr, recursive)
+    (value, recursive)
 }
 
 /// An inline grammar `T`'s EBNF: `def()` spliced in, or, if it refers to
@@ -422,7 +425,7 @@ pub fn inline_bnf<T: 'static>(name: &str, def: impl FnOnce() -> Expr) -> Expr {
         marked.map(|(_, recursive)| *recursive = true).is_some()
     });
     if !expanding {
-        let (expr, recursive) = expand::<T>(def);
+        let (expr, recursive) = expand(id, def);
         if !recursive {
             return expr;
         }
@@ -439,9 +442,18 @@ pub fn visit_inline<T: 'static>(
     def: impl FnOnce() -> Expr,
     visit_parts: impl FnOnce(&mut Rules),
 ) {
-    let (expr, recursive) = expand::<T>(def);
-    if !recursive || rules.insert::<T>(name, || expr) {
+    let id = TypeId::of::<T>();
+    // Reached through its own definition: the visit expanding it covers its parts.
+    if EXPANDING.with_borrow(|stack| stack.iter().any(|&(other, _)| other == id)) {
+        return;
+    }
+    let (expr, recursive) = expand(id, def);
+    if !recursive {
         visit_parts(rules);
+    } else if rules.insert::<T>(name, || expr) {
+        // Marked again while its parts are visited, so another inline grammar
+        // in the cycle refers to this rule instead of taking the cycle as its own.
+        expand(id, || visit_parts(rules));
     }
 }
 

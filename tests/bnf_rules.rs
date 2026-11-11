@@ -96,4 +96,73 @@ fn recursive_inline_grammars_get_a_rule_of_their_own() {
         printed(Group::bnf_rules()),
         [r#"Group = Nest ";" ."#, r#"Nest = "(" [ Nest ] ")" ."#]
     );
+    // Through another inline type, which must not claim the cycle as its own.
+    #[derive(Parse)]
+    #[tygr(inline)]
+    struct NestW(Wrap<StringEq!("("), Option<Box<NestW>>, StringEq!(")")>);
+    assert_eq!(
+        printed(NestW::bnf_rules()),
+        [r#"NestW = "(" [ NestW ] ")" ."#]
+    );
+}
+
+#[test]
+fn mutually_recursive_inline_grammars_share_one_rule() {
+    #[derive(Parse)]
+    #[tygr(inline)]
+    struct A(B);
+    #[derive(Parse)]
+    #[tygr(inline)]
+    struct B(StringEq!("("), Option<Box<A>>, StringEq!(")"));
+    #[derive(Parse)]
+    struct Group(A, StringEq!(";"));
+    assert_eq!(
+        printed(Group::bnf_rules()),
+        [r#"Group = A ";" ."#, r#"A = "(" [ A ] ")" ."#]
+    );
+}
+
+#[test]
+fn empty_validated_operand_stays_visible_under_its_footnote() {
+    #[derive(Parse)]
+    #[tygr(inline, validated)]
+    struct Marker;
+    impl Validate for Marker {
+        const REQUIREMENT: &'static str = "be allowed here";
+        fn validate(&self) -> bool {
+            true
+        }
+    }
+    #[derive(Parse)]
+    struct UsesEmptyValidated(StringOf1<Digit>, Marker, StringEq!(","));
+    assert_eq!(
+        printed(UsesEmptyValidated::bnf_rules()),
+        ["UsesEmptyValidated = 'digit' { 'digit' } ( ) ^1 \",\" .\n^1: be allowed here"]
+    );
+}
+
+#[test]
+fn an_empty_enum_bnf_is_footnoted_never() {
+    #[derive(Parse)]
+    enum Never {}
+    assert_eq!(
+        printed(Never::bnf_rules()),
+        ["Never = ( ) ^1 .\n^1: never matches"]
+    );
+}
+
+#[test]
+fn looser_operands_are_parenthesized() {
+    #[derive(Parse)]
+    #[tygr(inline)]
+    enum AB {
+        A(StringEq!("a")),
+        B(StringEq!("b")),
+    }
+    #[derive(Parse)]
+    struct Wrapped(AB, NotFollowedBy<(StringEq!("x"), StringEq!("y"))>);
+    assert_eq!(
+        printed(Wrapped::bnf_rules()),
+        [r#"Wrapped = ( "a" | "b" ) !( "x" "y" ) ."#]
+    );
 }

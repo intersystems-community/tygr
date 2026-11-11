@@ -125,7 +125,9 @@ faster without it (33 → 114 MB/s).
 - EBNF: a character class's name escapes only `'`, not `"`; a hidden
   conversion source drops its footnote; an empty rule prints as `X = .`;
   a footnoted factor in a sequence isn't parenthesized (`Digits ^1 ","
-  Digits ^2`).
+  an empty enum, which never matches, is footnoted `never matches`;
+  Digits ^2`); an empty operand of a footnote or lookahead prints as
+  `( )`.
 - `VecSep` parses straight into `items` and `seps`, rather than through an
   intermediate `T { S T }` value that was then converted.
 - The name argument of `char_class!` is optional and defaults to the type
