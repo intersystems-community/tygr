@@ -300,7 +300,7 @@ pub enum Expectation {
     /// [`NotFollowedBy`](crate::NotFollowedBy) rules out and which matched
     /// the text at `range`.
     NotFollowedBy {
-        /// The excluded grammar, as BNF.
+        /// The excluded grammar, as EBNF.
         excluded: Lazy,
         /// What it matched.
         range: Range<usize>,

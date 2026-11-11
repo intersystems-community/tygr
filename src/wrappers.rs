@@ -1,4 +1,4 @@
-//! Operators that keep the match but change the value or the BNF.
+//! Operators that keep the match but change the value or the EBNF.
 
 use crate::State;
 use crate::bnf::{Expr, Rules};
@@ -14,7 +14,7 @@ pub trait IntoInner<T> {
     fn into_inner(self) -> T;
 }
 
-/// Parses and prints as `T`, but is left out of BNF (e.g. whitespace).
+/// Parses and prints as `T`, but is left out of EBNF (e.g. whitespace).
 ///
 /// ```
 /// # use tygr::*;

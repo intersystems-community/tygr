@@ -8,7 +8,7 @@ use crate::state::run;
 use crate::{Error, State};
 use std::fmt::{self, Write};
 
-/// Parse and describe (as BNF) a grammar element.
+/// Parse and describe (as EBNF) a grammar.
 ///
 /// Implement this by hand only for leaf/wrapper types; for `struct`s and
 /// `enum`s, `#[derive(Parse)]` or `#[derive(Grammar)]` generates it (see
@@ -263,7 +263,7 @@ mod private {
 ///
 /// Rejecting a value backtracks as if the grammar hadn't matched.
 pub trait Validate {
-    /// What a value must satisfy, shown in errors and BNF as "must …".
+    /// What a value must satisfy, shown in errors and EBNF as "must …".
     const REQUIREMENT: &'static str;
 
     /// Check the just-parsed value; return `false` to reject it.

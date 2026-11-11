@@ -8,9 +8,9 @@ use syn::{Attribute, Data, DeriveInput, Fields, Generics, Ident, LitStr, Path, T
 pub(crate) struct Model {
     pub(crate) ident: Ident,
     pub(crate) generics: Generics,
-    /// The BNF rule name.
+    /// The EBNF rule name.
     pub(crate) name: String,
-    /// Left out of BNF (and so inline too).
+    /// Left out of EBNF (and so inline too).
     pub(crate) hidden: bool,
     /// Spliced where it's referenced, rather than a rule reference.
     pub(crate) inline: bool,
@@ -105,7 +105,7 @@ impl Model {
                 if meta.path.is_ident("name") {
                     model.name = meta.value()?.parse::<LitStr>()?.value();
                 } else if meta.path.is_ident("hidden") {
-                    // Hidden nodes aren't in BNF, so they must be inline too.
+                    // Hidden nodes aren't in EBNF, so they must be inline too.
                     model.hidden = true;
                     model.inline = true;
                 } else if meta.path.is_ident("inline") {
@@ -297,7 +297,7 @@ impl Field {
         }
     }
 
-    /// What its text must do if its conversion can fail, in errors and BNF:
+    /// What its text must do if its conversion can fail, in errors and EBNF:
     /// be convertible to its type.
     pub(crate) fn requirement(&self) -> Option<String> {
         let (kind, ty) = match self {

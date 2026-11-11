@@ -216,7 +216,7 @@ fn fail_at(variant: &Variant) -> TokenStream {
     }
 }
 
-/// `variant`'s fields as a BNF sequence; a fallible conversion is footnoted.
+/// `variant`'s fields as a EBNF sequence; a fallible conversion is footnoted.
 fn sequence(variant: &Variant) -> TokenStream {
     let bnfs = variant.fields.iter().map(|field| {
         let source = field.source();

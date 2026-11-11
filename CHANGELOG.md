@@ -12,7 +12,7 @@ faster without it (33 → 114 MB/s).
 ### Breaking Changes
 
 - The derive attribute is `#[tygr(...)]`, not `#[grammar(...)]`.
-- `Grammar` is split into `Parse` (parsing and BNF) and `Print`.
+- `Grammar` is split into `Parse` (parsing and EBNF) and `Print`.
   `Grammar` is now `Parse + Print`, implemented for every type with both.
   `#[derive(Grammar)]` derives both; `#[derive(Parse)]` and
   `#[derive(Print)]` derive one, e.g. a grammar that is only parsed
@@ -66,7 +66,7 @@ faster without it (33 → 114 MB/s).
     convertible to u8`. A character class shows as in EBNF, `'digit'`,
     not `Char of digit`.
   - It's `#[non_exhaustive]`, and gains `End` and
-    `NotFollowedBy { excluded, range }`: the excluded grammar's BNF, a
+    `NotFollowedBy { excluded, range }`: the excluded grammar's EBNF, a
     `bnf::Lazy`, and what it matched.
 - `Error`'s fields are private: read them with `pos()` and `traces()`. Its
   `Display` no longer ends with a newline.
@@ -78,7 +78,7 @@ faster without it (33 → 114 MB/s).
   without cased chars now prints without the `i` (`"123"`). `Expr::CharOf`
   is now `Expr::CharClass`, as in `Expectation`.
 - `bnf::Expr` gains `Hidden`. A hidden alternative or lookahead is
-  dropped from BNF, rather than making the rest optional (`[ A ]`).
+  dropped from EBNF, rather than making the rest optional (`[ A ]`).
 - Reworked `tygr::first` around bytes, for hand-written `Parse::First`:
   - Name a constant set with `Required<S>` (not nullable) or `Optional<S>`
     (nullable), where `S` is built from `byte_set::{Emp, All, One,
@@ -117,7 +117,7 @@ faster without it (33 → 114 MB/s).
   as the rest did. Every combinator can be built by hand, e.g. to print.
 - `Error` implements `std::error::Error`, and `Expectation` is `Display`
   whatever the features.
-- BNF: a character class's name escapes only `'`, not `"`; a hidden
+- EBNF: a character class's name escapes only `'`, not `"`; a hidden
   conversion source drops its footnote; an empty rule prints as `X = .`.
 - `VecSep` reserves the usual amortized capacity on its first item, rather
   than exactly one, so short lists no longer reallocate.
@@ -145,7 +145,7 @@ faster without it (33 → 114 MB/s).
   that could start with the next byte.
 - Derived impls bound only the type parameters their fields parse or
   print, so a converted field can be generic. Deriving works for an empty
-  enum, and a recursive `#[tygr(inline)]` type gets a BNF rule of its own
+  enum, and a recursive `#[tygr(inline)]` type gets a EBNF rule of its own
   rather than recursing forever.
 - `OLC` breaks lines at `\r\n` and `\r` too, and `line_character_to_offset`
   clamps out-of-range positions, as LSP does, and maps one inside a

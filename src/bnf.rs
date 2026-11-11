@@ -283,14 +283,14 @@ impl fmt::Display for Expr {
     }
 }
 
-/// A grammar's BNF, built on demand by its [`to_bnf`](crate::Parse::to_bnf),
-/// so recording one costs a function pointer. Equal when the BNF is.
+/// A grammar's EBNF, built on demand by its [`to_bnf`](crate::Parse::to_bnf),
+/// so recording one costs a function pointer. Equal when the EBNF is.
 #[derive(Clone, Copy)]
 pub struct Lazy(pub fn() -> Expr);
 
 impl PartialEq for Lazy {
     fn eq(&self, other: &Self) -> bool {
-        // Function addresses aren't unique, so fall back to the BNF built.
+        // Function addresses aren't unique, so fall back to the EBNF built.
         std::ptr::fn_addr_eq(self.0, other.0) || (self.0)() == (other.0)()
     }
 }
@@ -412,7 +412,7 @@ fn expand<T: 'static>(def: impl FnOnce() -> Expr) -> (Expr, bool) {
     (expr, recursive)
 }
 
-/// An inline grammar `T`'s BNF: `def()` spliced in, or, if it refers to
+/// An inline grammar `T`'s EBNF: `def()` spliced in, or, if it refers to
 /// itself, a reference to its own rule.
 #[doc(hidden)]
 pub fn inline_bnf<T: 'static>(name: &str, def: impl FnOnce() -> Expr) -> Expr {

@@ -326,7 +326,7 @@ pub type NonAsciiStart = byte_set::Between<0xC2, 0xF4>;
 /// Bytes that can start a char.
 pub(crate) type CharStart = byte_set::Union<byte_set::Between<0x00, 0x7F>, NonAsciiStart>;
 
-/// `char`'s name in errors and BNF.
+/// `char`'s name in errors and EBNF.
 const ANY_CHAR: &str = "any";
 
 /// Any one char. Fails only at end of input (or mid-char, where no grammar
@@ -404,7 +404,7 @@ pub trait CharClass: Grammar + ByteSet {
     /// Does `ch` belong to this class?
     fn matches(ch: char) -> bool;
 
-    /// Its name in errors and BNF.
+    /// Its name in errors and EBNF.
     fn name() -> &'static str;
 
     /// Wrap `ch`, unchecked.
@@ -415,7 +415,7 @@ pub trait CharClass: Grammar + ByteSet {
 }
 
 /// Define a [`CharClass`] from a `const` predicate, so its first bytes are
-/// known at compile time. The name (for errors and BNF) defaults to the
+/// known at compile time. The name (for errors and EBNF) defaults to the
 /// type name:
 ///
 /// ```

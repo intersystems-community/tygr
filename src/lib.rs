@@ -6,7 +6,7 @@
 //! ## Design
 //!
 //! Derive [`Grammar`] on a `struct` or `enum` to get a parser, a printer, and
-//! a BNF presentation for free, or derive only [`Parse`] (the parser and BNF)
+//! a EBNF presentation for free, or derive only [`Parse`] (the parser and EBNF)
 //! or [`Print`]. Each supported Rust construct maps to an EBNF concept.
 //!
 //! | Rust construct | EBNF ([Wirth 1977](https://doi.org/10.1145/359863.359883)) |
@@ -25,7 +25,7 @@
 //! | [`Box<T>`]     | recursive indirection        |
 //! | [`NotFollowedBy<G>`] | negative lookahead (`!G`), consumes nothing |
 //! | [`FollowedBy<G>`] | positive lookahead (`!!G`), consumes nothing |
-//! | [`Hidden<T>`]  | parsed/printed, omitted from BNF |
+//! | [`Hidden<T>`]  | parsed/printed, omitted from EBNF |
 //! | [`Raw<T>`] | parsed via `T`, kept as the raw matched text |
 //! | [`Ranged<T>`] | parsed via `T`, kept alongside its `start..end` byte range |
 //! | [`PhantomData<T>`](std::marker::PhantomData) | parsed via `T`, kept as nothing; doesn't print |
@@ -40,7 +40,7 @@
 //! limit its size first or parse it on a thread with a bigger stack.
 //!
 //! `#[tygr(...)]` on a derived type:
-//! - `name = "..."` — override the BNF rule name (defaults to the type name).
+//! - `name = "..."` — override the EBNF rule name (defaults to the type name).
 //! - `hidden` — same effect as wrapping in [`Hidden<T>`], but on a whole struct/enum.
 //! - `inline` — splice this type's own definition wherever it's
 //!   referenced, instead of a rule reference.
@@ -55,7 +55,7 @@
 //! - `from_str = S`: `T: FromStr`, on the matched text.
 //! - `from_str_infallible = S`: the same with `Err = Infallible`.
 //!
-//! A failed conversion backtracks, recorded and footnoted in BNF like a
+//! A failed conversion backtracks, recorded and footnoted in EBNF like a
 //! failed [`Validate`] check; an infallible one is skipped when checking.
 //! Converting loses the text, so to print, the field needs `print_to = f`,
 //! an `fn(&T, &mut String)` such as [`print_display`] (or
