@@ -76,12 +76,12 @@ fn inline_or_hidden_roots_have_no_rule_of_their_own() {
     struct Inline(Number);
     #[derive(Parse)]
     #[tygr(hidden)]
-    struct Spaces(Number);
+    struct HiddenNumber(Number);
     assert_eq!(
         printed(Inline::bnf_rules()),
         ["Number = 'digit' { 'digit' } ."]
     );
-    assert!(Spaces::bnf_rules().is_empty());
+    assert!(HiddenNumber::bnf_rules().is_empty());
 }
 
 #[test]

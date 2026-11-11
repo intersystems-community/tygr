@@ -96,8 +96,7 @@ mod bare {
     #[derive(::tygr::Grammar)]
     #[tygr(validated)]
     pub(super) struct NonZero(
-        #[tygr(from_str = ::tygr::StringOf1<Digit>, print_to = ::tygr::print_display)]
-        pub(super)  u32,
+        #[tygr(from_str = ::tygr::StringOf1<Digit>, print_to = ::tygr::print_display)] u32,
     );
 
     impl ::tygr::Validate for NonZero {

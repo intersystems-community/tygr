@@ -1,12 +1,11 @@
-//! Shared CLI dispatch for the runnable grammar examples.
-//!
-//! `#[path]`-included by each example. Not a standalone target.
+//! The CLI verbs of `examples/json.rs`.
+//! Included as `mod common;`; not a standalone target.
 
 use std::fmt::Debug;
 use std::io::{self, Read};
 use std::process::ExitCode;
 
-use tygr::{Grammar, Parse};
+use tygr::{Error, Grammar, Parse};
 
 /// Read all of stdin into a `String`.
 fn read_stdin() -> String {
@@ -17,11 +16,11 @@ fn read_stdin() -> String {
     input
 }
 
-/// Parse stdin with `R`, then print `show` of the value, or the error.
-fn parse_then<R: Parse>(show: impl FnOnce(R) -> String) -> ExitCode {
-    match R::parse(read_stdin().trim_end()) {
-        Ok(value) => {
-            println!("{}", show(value));
+/// Print `shown`, or the error, and exit accordingly.
+fn report(shown: Result<String, Error>) -> ExitCode {
+    match shown {
+        Ok(text) => {
+            println!("{text}");
             ExitCode::SUCCESS
         }
         Err(err) => {
@@ -33,27 +32,17 @@ fn parse_then<R: Parse>(show: impl FnOnce(R) -> String) -> ExitCode {
 
 /// `parse`: parse stdin with `R` and print the `Debug` tree.
 pub(crate) fn parse<R: Parse + Debug>() -> ExitCode {
-    parse_then(|value: R| format!("{value:#?}"))
+    report(R::parse(read_stdin().trim_end()).map(|value| format!("{value:#?}")))
 }
 
 /// `print`: parse stdin with `R` and print it back.
 pub(crate) fn print<R: Grammar>() -> ExitCode {
-    parse_then(|value: R| value.print())
+    report(R::parse(read_stdin().trim_end()).map(|value| value.print()))
 }
 
-/// `test`: check that stdin is well-formed under `R`; print `ok` / `error`.
+/// `test`: check that stdin is well-formed under `R`; print `ok`, or the error.
 pub(crate) fn test<R: Parse>() -> ExitCode {
-    let input = read_stdin();
-    match R::check(input.trim_end()) {
-        Ok(()) => {
-            println!("ok");
-            ExitCode::SUCCESS
-        }
-        Err(err) => {
-            eprintln!("{err}");
-            ExitCode::FAILURE
-        }
-    }
+    report(R::check(read_stdin().trim_end()).map(|()| "ok".to_string()))
 }
 
 /// Print a usage line naming the available verbs and exit with failure.

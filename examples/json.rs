@@ -7,14 +7,13 @@
 
 use std::process::ExitCode;
 
-use tygr::*;
+use tygr::Parse;
 
-#[path = "common/mod.rs"]
 mod common;
 #[path = "common/json.rs"]
 mod json;
 
-use json::*;
+use json::Json;
 
 fn main() -> ExitCode {
     match std::env::args().nth(1).as_deref() {

@@ -4,7 +4,7 @@ use tygr::*;
 
 char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 struct Digits(StringOf1<Digit>);
 
 #[test]

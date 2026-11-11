@@ -17,10 +17,10 @@ fn names<G: Parse>() -> Vec<String> {
 
 char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 struct Digits(StringOf1<IsDigit>);
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 struct UsesPlain(Digits, Digits);
 
 #[test]
@@ -29,7 +29,7 @@ fn no_attribute_uses_type_name_and_references_by_rule() {
     assert_eq!(names::<UsesPlain>(), ["UsesPlain", "Digits"]);
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 #[tygr(name = "custom_name")]
 struct Named(StringEq!("x"));
 
@@ -38,11 +38,11 @@ fn name_overrides_the_bnf_rule_name() {
     assert_eq!(rule::<Named>(), "custom_name = \"x\" .");
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 #[tygr(hidden)]
 struct Semi(StringEq!(";"));
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 struct UsesHidden(Digits, Semi);
 
 #[test]
@@ -52,10 +52,10 @@ fn hidden_field_vanishes_from_the_outer_rule_but_still_parses_and_prints() {
     assert_eq!(v.print(), "1;");
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 struct UsesOptionalHidden(Option<Semi>, Digits);
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 struct UsesRepeatedHidden(Vec<Semi>, Digits);
 
 #[test]
@@ -70,14 +70,14 @@ fn optional_or_repeated_hidden_field_vanishes_instead_of_showing_empty_brackets(
     );
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 #[tygr(inline)]
 enum MaybeSemi {
     Semi(Semi),
     Digits(Digits),
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 struct UsesHiddenAlternative(MaybeSemi, Named, NotFollowedBy<Semi>);
 
 #[test]
@@ -104,7 +104,7 @@ fn hidden_conversion_or_empty_rule_prints_cleanly() {
     assert_eq!(rule::<Nothing>(), "Nothing = .");
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 enum MaybeDigits {
     Digits(Digits),
     Nothing,
@@ -115,11 +115,11 @@ fn empty_alternative_makes_the_rest_optional() {
     assert_eq!(rule::<MaybeDigits>(), "MaybeDigits = [ Digits ] .");
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 #[tygr(inline)]
 struct Inlined(StringEq!("a"), StringEq!("b"));
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 struct UsesInlined(Inlined, Digits);
 
 #[test]
@@ -128,7 +128,7 @@ fn inline_splices_fields_instead_of_referencing_by_rule() {
     assert_eq!(names::<UsesInlined>(), ["UsesInlined", "Digits"]);
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 #[tygr(name = "renamed")]
 #[tygr(validated)]
 struct TwoAttributes(StringEq!("a"));
@@ -148,7 +148,7 @@ fn separate_attributes_combine() {
     );
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 #[tygr(validated)]
 struct NonZero(StringOf1<IsDigit>);
 
@@ -177,7 +177,7 @@ fn validated_bnf_shows_the_side_condition() {
     );
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 #[tygr(validated)]
 enum ValidatedEnum {
     A(StringEq!("a")),
@@ -199,7 +199,7 @@ fn validated_enum_bnf_shows_the_side_condition_around_the_whole_alternation() {
     );
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 #[tygr(inline, validated)]
 struct InlineNonZero(StringOf1<IsDigit>);
 
@@ -210,7 +210,7 @@ impl Validate for InlineNonZero {
     }
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 struct UsesInlineValidated(InlineNonZero, Digits);
 
 #[test]
@@ -221,7 +221,7 @@ fn inline_validated_side_condition_propagates_into_the_splice() {
     );
 }
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
+#[derive(Grammar, Debug)]
 struct UsesInlineValidatedTwice(InlineNonZero, InlineNonZero);
 
 #[test]
@@ -234,7 +234,7 @@ fn repeated_inline_validated_side_condition_gets_one_deduplicated_footnote() {
 
 // Field conversions: `#[tygr(<kind> = S)]`.
 
-#[derive(Debug, PartialEq, Grammar)]
+#[derive(Debug, Grammar)]
 struct Digit(IsDigit);
 
 impl From<Digit> for u8 {
@@ -275,7 +275,7 @@ enum Converted {
 }
 
 #[test]
-fn field_conversions() {
+fn conversions_parse_and_print_and_only_fallible_ones_get_a_footnote() {
     let Converted::Fields(n, _, text, _, digit, flag) = Converted::parse("42,07;51").unwrap()
     else {
         panic!()
@@ -412,6 +412,7 @@ fn parse_and_print_derive_separately() {
 fn values_build_by_hand_to_print() {
     let digits = Vec1::try_from(vec![IsDigit('4'), IsDigit('2')]).unwrap();
     assert_eq!((Hidden(digits.clone()), Some(IsDigit('7'))).print(), "427");
+    assert_eq!(<Raw<StringEq!(",")>>::default().as_str(), ",");
     assert_eq!(digits.into_inner().len(), 2);
     assert!(Vec1::<IsDigit>::try_from(vec![]).is_err());
 }
@@ -421,8 +422,8 @@ fn print_char<const C: char>(_: &(), buf: &mut String) {
     buf.push(C);
 }
 
-/// A unit variant's source of the user's own: it converts into `()` by hand.
-#[derive(Debug, PartialEq, Grammar)]
+/// A unit variant's source, converted into `()` by hand.
+#[derive(Debug, Grammar)]
 struct Keyword(StringEqCI!("kw"));
 
 impl From<Keyword> for () {
@@ -477,7 +478,6 @@ struct Pair(
 #[test]
 fn phantom_data_prints_only_with_print_to() {
     assert_eq!(Pair::parse("1,  2").unwrap().print(), "1,2");
-    assert_eq!(<Raw<StringEq!(",")>>::default().as_str(), ",");
 }
 
 #[derive(Grammar)]

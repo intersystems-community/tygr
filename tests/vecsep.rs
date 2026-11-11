@@ -10,7 +10,6 @@ fn rule<G: Parse>() -> String {
 char_class!(Digit, |ch| ch.is_ascii_digit());
 
 #[derive(Grammar, Debug)]
-#[tygr(name = "List")]
 struct List(VecSep<StringOf1<Digit>, StringEq!(",")>);
 
 #[test]

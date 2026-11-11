@@ -7,8 +7,6 @@ fn rule<G: Parse>() -> String {
     G::bnf_rules()[0].to_string()
 }
 
-// "é" is 0xC3 0xA9 in UTF-8; "è" is 0xC3 0xA8.
-
 #[derive(Grammar, Debug)]
 struct Accent(StringEqCI!("é"));
 
@@ -61,7 +59,8 @@ fn literal_errors_report_the_whole_literal_where_it_diverged() {
     assert_eq!(err.pos(), 1);
     assert_eq!(err.traces()[0].expectation, token("->", 0..1));
 
-    // A mismatch inside a multi-byte char backs out to the char's start.
+    // A mismatch inside a multi-byte char backs out to the char's start
+    // ("é" is 0xC3 0xA9, "è" is 0xC3 0xA8).
     #[derive(Grammar, Debug)]
     struct E(StringEq!("aé"));
     let err = E::parse("aè").unwrap_err();
@@ -84,10 +83,8 @@ fn literal_errors_report_the_whole_literal_where_it_diverged() {
 #[test]
 fn ci_marker_only_where_case_matters() {
     #[derive(Grammar)]
-    #[tygr(name = "Num")]
     struct Num(StringEqCI!("123"));
     #[derive(Grammar)]
-    #[tygr(name = "Kw")]
     struct Kw(StringEqCI!("if"));
     assert_eq!(rule::<Num>(), "Num = \"123\" .");
     assert_eq!(rule::<Kw>(), "Kw = \"if\"i .");
@@ -105,7 +102,6 @@ fn char_class_computes_first_bytes() {
     assert!(!tygr::first::contains::<<Lower as Parse>::First>(None));
 
     #[derive(Grammar, Debug)]
-    #[tygr(name = "Word")]
     struct Word(StringOf1<Lower>);
     assert_eq!(Word::parse("abc").unwrap().print(), "abc");
     assert!(Word::parse("aBc").is_err());

@@ -5,10 +5,10 @@ use either::Either;
 use tygr::*;
 
 #[derive(Grammar, Debug)]
-pub(crate) struct Json(Wrap<Ws, Element, Ws>);
+pub(crate) struct Json(Wrap<Ws, Value, Ws>);
 
 #[derive(Grammar, Debug)]
-pub(crate) enum Element {
+pub(crate) enum Value {
     Object(Object),
     Array(Array),
     String(String),
@@ -26,16 +26,16 @@ pub(crate) struct Members(VecSep<Suffix<Member, Ws>, Suffix<StringEq!(","), Ws>>
 
 #[derive(Grammar, Debug)]
 pub(crate) struct Member {
-    pub string: String,
+    string: String,
     col: Wrap<Ws, StringEq!(":"), Ws>,
-    pub value: Element,
+    value: Value,
 }
 
 #[derive(Grammar, Debug)]
 pub(crate) struct Array(Wrap<(StringEq!("["), Ws), Option<Elements>, StringEq!("]")>);
 
 #[derive(Grammar, Debug)]
-pub(crate) struct Elements(VecSep<Suffix<Element, Ws>, Suffix<StringEq!(","), Ws>>);
+pub(crate) struct Elements(VecSep<Suffix<Value, Ws>, Suffix<StringEq!(","), Ws>>);
 
 #[derive(Grammar, Debug)]
 pub(crate) struct String(Wrap<StringEq!("\""), Characters, StringEq!("\"")>);
@@ -50,7 +50,7 @@ pub(crate) enum Character {
 }
 
 char_class!(pub(crate) NormalCharacter, "0x20-0x10FFFF except for \" and \\", |c| {
-    matches!(c as u32, 0x20..=0x10FFFF) && c != '"' && c != '\\'
+    c >= '\u{0020}' && c != '"' && c != '\\'
 });
 
 #[derive(Grammar, Debug)]
@@ -63,13 +63,7 @@ pub(crate) enum Escape {
     N(StringEq!("n")),
     R(StringEq!("r")),
     T(StringEq!("t")),
-    U {
-        u: StringEq!("u"),
-        hex1: Hex,
-        hex2: Hex,
-        hex3: Hex,
-        hex4: Hex,
-    },
+    U(StringEq!("u"), Hex, Hex, Hex, Hex),
 }
 
 #[derive(Grammar, Debug)]
