@@ -10,10 +10,7 @@ use syn::spanned::Spanned;
 /// converted field has no `print_to`.
 pub(crate) fn expand(model: &Model) -> TokenStream {
     let ident = &model.ident;
-    let generics = model.bounded(
-        quote! { ::tygr::Print },
-        model.fields().filter_map(Field::printed),
-    );
+    let generics = model.bounded(quote! { ::tygr::Print });
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let mut unprintable = model.fields().filter_map(Field::unprintable).map(|source| {
         syn::Error::new_spanned(

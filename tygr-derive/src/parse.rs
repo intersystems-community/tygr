@@ -16,8 +16,8 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
         shape,
         ..
     } = model;
-    // Only the parameters it parses need `Parse`, but all need `'static`.
-    let mut generics = model.bounded(quote! { ::tygr::Parse }, model.fields().map(Field::source));
+    // Every parameter needs `'static`, for `TypeId`.
+    let mut generics = model.bounded(quote! { ::tygr::Parse });
     for param in generics.type_params_mut() {
         param.bounds.push(syn::parse_quote!('static));
     }

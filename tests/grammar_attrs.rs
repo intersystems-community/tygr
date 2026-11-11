@@ -509,6 +509,7 @@ fn an_empty_enum_never_parses() {
 }
 
 #[derive(Grammar)]
+#[tygr(unbounded(T))]
 struct Num<T: FromStr + std::fmt::Display>(
     #[tygr(from_str = StringOf1<Digit>, print_to = print_display)] T,
 );
@@ -527,12 +528,13 @@ impl Dialect for En {
     type Kw = StringEq!("if");
 }
 
-/// `D` is only a path prefix, so no `D: Parse` or `D: Print` bound.
+/// `D` carries the grammar `D::Kw`, so it stays unbounded.
 #[derive(Grammar)]
+#[tygr(unbounded(D))]
 struct Stmt<D: Dialect>(D::Kw, Digits);
 
 #[test]
-fn a_type_parameter_used_only_as_a_path_prefix_is_not_bounded() {
+fn an_unbounded_parameter_keeps_only_its_own_bounds() {
     assert_eq!(Stmt::<En>::parse("if1").unwrap().print(), "if1");
     assert!(Stmt::<En>::parse("if").is_err());
 }

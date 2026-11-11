@@ -9,6 +9,13 @@ fn unknown_option() {}
 
 /// ```compile_fail
 /// #[derive(tygr::Parse)]
+/// #[tygr(unbounded(X))]
+/// struct S<T>(T);
+/// ```
+fn unbounded_non_parameter() {}
+
+/// ```compile_fail
+/// #[derive(tygr::Parse)]
 /// struct S(#[tygr(try_from = (), from_str = ())] ());
 /// ```
 fn two_conversions() {}

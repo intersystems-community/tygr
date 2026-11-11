@@ -54,6 +54,9 @@
 //!   referenced, instead of a rule reference (a recursive one keeps its rule).
 //! - `validated` — after a successful parse, run [`Validate::validate`] on the
 //!   value; a rejection backtracks as if the grammar hadn't matched.
+//! - `unbounded(T, …)` — the derive bounds every type parameter with
+//!   [`Parse`] (and [`Print`]); these keep only the bounds you wrote, as a
+//!   conversion target or a `D` whose `D::Kw` is the grammar must.
 //!
 //! `#[tygr(...)]` on a field of type `T` parses another grammar `S` and
 //! converts it to `T`, e.g. digits into a `u32`, naming how:
