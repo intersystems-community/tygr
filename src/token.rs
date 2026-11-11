@@ -5,7 +5,6 @@ use either::Either::{self, Left, Right};
 use std::fmt;
 use std::ops::Range;
 
-#[cfg(feature = "trace_one_node")]
 use crate::Expectation;
 use crate::bnf::{Expr, Rules};
 use crate::first::{ByteSet, Required, byte_set};
@@ -276,14 +275,9 @@ impl<G: Literal> Token<G> {
 
     /// Record the literal as expected where it diverged, having matched
     /// `range`, like a rejected validation.
-    fn expected(
-        #[allow(unused_variables)] range: Range<usize>,
-        #[allow(unused_variables, unused_mut)] mut state: State,
-    ) {
-        #[cfg(feature = "trace_pos")]
+    fn expected(range: Range<usize>, mut state: State) {
         state.expect(
             range.end,
-            #[cfg(feature = "trace_one_node")]
             Expectation::Token {
                 text: Self::TEXT,
                 range,
@@ -349,16 +343,8 @@ impl Parse for char {
         }
     }
 
-    fn fail_at(
-        #[allow(unused_variables)] pos: usize,
-        #[allow(unused_variables, unused_mut)] mut state: State,
-    ) -> bool {
-        #[cfg(feature = "trace_pos")]
-        state.expect(
-            pos,
-            #[cfg(feature = "trace_one_node")]
-            Expectation::CharClass(ANY_CHAR),
-        );
+    fn fail_at(pos: usize, mut state: State) -> bool {
+        state.expect(pos, Expectation::CharClass(ANY_CHAR));
         true
     }
 
@@ -552,16 +538,8 @@ pub fn class_to_bnf<C: CharClass>() -> Expr {
 
 /// `Parse::fail_at` for a `char_class!` type.
 #[doc(hidden)]
-pub fn class_fail_at<C: CharClass>(
-    #[allow(unused_variables)] pos: usize,
-    #[allow(unused_variables, unused_mut)] mut state: State,
-) -> bool {
-    #[cfg(feature = "trace_pos")]
-    state.expect(
-        pos,
-        #[cfg(feature = "trace_one_node")]
-        Expectation::CharClass(C::name()),
-    );
+pub fn class_fail_at<C: CharClass>(pos: usize, mut state: State) -> bool {
+    state.expect(pos, Expectation::CharClass(C::name()));
     true
 }
 

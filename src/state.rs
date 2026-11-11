@@ -61,28 +61,17 @@ impl<'a> State<'a> {
     /// expected.
     pub(crate) fn at_end(&mut self, input: &str, pos: usize) -> bool {
         let end = pos == input.len();
-        #[cfg(feature = "trace_pos")]
         if !end {
-            self.expect(
-                pos,
-                #[cfg(feature = "trace_one_node")]
-                Expectation::End,
-            );
+            self.expect(pos, Expectation::End);
         }
         end
     }
 
     /// Record that a negative lookahead ruled out `excluded`, which matched
     /// the text at `range`.
-    pub(crate) fn not_followed_by(
-        &mut self,
-        #[allow(unused_variables)] excluded: fn() -> Expr,
-        #[allow(unused_variables)] range: Range<usize>,
-    ) {
-        #[cfg(feature = "trace_pos")]
+    pub(crate) fn not_followed_by(&mut self, excluded: fn() -> Expr, range: Range<usize>) {
         self.expect(
             range.start,
-            #[cfg(feature = "trace_one_node")]
             Expectation::NotFollowedBy {
                 excluded: Lazy(excluded),
                 range,
@@ -90,18 +79,15 @@ impl<'a> State<'a> {
         );
     }
 
-    /// Record what was expected at `other_pos`.
-    #[cfg(feature = "trace_pos")]
+    /// Record what was expected at `pos`; nothing, without `trace_pos`.
+    #[cfg_attr(not(feature = "trace_one_node"), allow(unused_variables))]
     #[inline]
-    pub(crate) fn expect(
-        &mut self,
-        other_pos: usize,
-        #[cfg(feature = "trace_one_node")] expectation: Expectation,
-    ) {
+    pub(crate) fn expect(&mut self, pos: usize, expectation: Expectation) {
+        #[cfg(feature = "trace_pos")]
         self.history.expect(
             #[cfg(feature = "trace_one_node")]
             self.context,
-            other_pos,
+            pos,
             #[cfg(feature = "trace_one_node")]
             expectation,
         );
@@ -112,14 +98,12 @@ impl<'a> State<'a> {
     #[inline]
     pub fn reject(
         &mut self,
-        #[allow(unused_variables)] node: Option<&'static str>,
-        #[allow(unused_variables)] range: Range<usize>,
-        #[allow(unused_variables)] requirement: &'static str,
+        node: Option<&'static str>,
+        range: Range<usize>,
+        requirement: &'static str,
     ) {
-        #[cfg(feature = "trace_pos")]
         self.expect(
             range.end,
-            #[cfg(feature = "trace_one_node")]
             Expectation::Rejected {
                 node,
                 range,
