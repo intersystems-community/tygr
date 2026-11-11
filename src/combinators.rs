@@ -574,7 +574,7 @@ impl<G: Parse> Parse for FollowedBy<G> {
         G::fail_at(pos, state)
     }
 
-    // `!!G`: Wirth's EBNF has no positive lookahead.
+    // `!!G`: `Expr` has only negative lookahead.
     fn to_bnf() -> Expr {
         Expr::not_followed_by(Expr::not_followed_by(G::to_bnf()))
     }

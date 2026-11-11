@@ -110,15 +110,16 @@ faster without it (33 → 114 MB/s).
   on the matched text) or `from_str_infallible`. A failed conversion
   backtracks and is recorded as `Rejected`; an infallible one is skipped
   when checking. Printing a converted field needs `print_to = f`, such as
-  the new `print_display`. A unit variant takes the same attributes,
-  converting its source (e.g. `StringEq!("null")`) into `()`; its
-  `print_to` takes `&()`.
+  the new `print_display`. A unit variant takes `try_from` or
+  `try_from_infallible`, converting its source (e.g. `StringEq!("null")`)
+  into `()`; its `print_to` takes `&()`.
 - `Prefix` and `Suffix` fields are public, like `Wrap`'s, and so are
   `Hidden`'s and `Ranged`'s. `Vec1` gains `IntoInner` and `TryFrom<Vec<T>>`.
   `Raw<T>` defaults to the text `T::default()` prints (empty for
   `StringOf`), and `Hidden`, `Wrap`, `Prefix` and `Suffix` derive `Default`.
-  `Wrap`, `Prefix`, `Suffix`, `Vec1`, `VecSep` and `Ranged` derive `Hash`,
-  as the rest did. Every combinator can be built by hand, e.g. to print.
+  `Wrap`, `Prefix`, `Suffix`, `Vec1`, `VecSep`, `Ranged`, literals and
+  `char_class!` types are `Hash`, so a grammar holding them can derive it.
+  Every combinator can be built by hand, e.g. to print.
 - `Error` implements `std::error::Error`, and `Expectation` is `Display`
   whatever the features.
 - EBNF: a character class's name escapes only `'`, not `"`; a hidden

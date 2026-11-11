@@ -27,6 +27,10 @@ fn a_trailing_separator_is_left_unconsumed() {
     let (list, end) = List::parse_prefix("1,2,").unwrap();
     assert_eq!((list.0.items.len(), end), (2, 3));
     assert!(List::parse("1,2,").is_err());
+}
+
+#[test]
+fn at_least_one_item_is_required() {
     assert!(List::parse("").is_err());
 }
 

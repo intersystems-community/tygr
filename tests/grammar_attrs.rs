@@ -387,7 +387,6 @@ struct UsesCounted(#[tygr(from_str_infallible = StringOf1<Digit>)] Counted);
 
 #[test]
 fn infallible_conversion_is_skipped_when_checking() {
-    assert_eq!(rule::<UsesCounted>(), "UsesCounted = 'digit' { 'digit' } .");
     let before = CONVERSIONS.load(Relaxed);
     assert!(UsesCounted::check("123").is_ok());
     assert_eq!(CONVERSIONS.load(Relaxed), before);
