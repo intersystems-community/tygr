@@ -323,7 +323,7 @@ type CharStart = byte_set::Union<byte_set::Between<0x00, 0x7F>, NonAsciiStart>;
 /// `char`'s name in errors and EBNF.
 const ANY_CHAR: &str = "any";
 
-/// Any one char. Fails only at end of input.
+/// Any one char. Fails at end of input.
 impl Parse for char {
     type First = Required<CharStart>;
 

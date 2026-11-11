@@ -47,7 +47,8 @@
 //!
 //! `#[tygr(...)]` on a derived type:
 //! - `name = "..."` — override the EBNF rule name (defaults to the type's
-//!   name, which a generic type's instantiations share).
+//!   name, which a generic type's instantiations share, so mark such a type
+//!   `inline`).
 //! - `hidden` — same effect as wrapping in [`Hidden<T>`], but on a whole struct/enum.
 //! - `inline` — splice this type's own definition wherever it's
 //!   referenced, instead of a rule reference.
@@ -186,6 +187,8 @@ pub use tygr_derive::{Grammar, Parse, Print};
 
 /// A literal-string grammar: `StringEq!("->")` matches exactly `->`, and is
 /// `Default`, to build one by hand (e.g. to print).
+/// In a generic type, std's derives (`Debug`, `Clone`, …) reject a type macro
+/// as a field: alias it first, `type Arrow = StringEq!("->");`.
 ///
 /// ```
 /// # use tygr::*;
