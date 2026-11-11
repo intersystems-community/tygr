@@ -38,8 +38,9 @@
 //!
 //! Parsing is ordered choice with backtracking, as in PEG: the first
 //! alternative that matches wins, so list a literal before its prefixes
-//! (`"<="` before `"<"`). A left-recursive grammar doesn't compile, as its
-//! [`Parse::First`] would be cyclic.
+//! (`"<="` before `"<"`); likewise `[ T ]` and `{ T }` never give back what
+//! they matched, so `[ "a" ] "ab"` fails on `ab`. A left-recursive grammar
+//! doesn't compile, as its [`Parse::First`] would be cyclic.
 //!
 //! Parsing recurses as the grammar nests, so input nested deeply enough
 //! overflows the stack, which aborts the process. For untrusted input,
@@ -51,7 +52,7 @@
 //!   `inline`).
 //! - `hidden` — same effect as wrapping in [`Hidden<T>`], but on a whole struct/enum.
 //! - `inline` — splice this type's own definition wherever it's
-//!   referenced, instead of a rule reference.
+//!   referenced, instead of a rule reference (a recursive one keeps its rule).
 //! - `validated` — after a successful parse, run [`Validate::validate`] on the
 //!   value; a rejection backtracks as if the grammar hadn't matched.
 //!
@@ -155,9 +156,9 @@ mod convert;
 pub mod first;
 mod grammar;
 mod olc;
-mod state;
 #[cfg(doctest)]
 mod rejected;
+mod state;
 mod token;
 mod wrappers;
 

@@ -1,6 +1,5 @@
 //! The traits that describe a grammar: [`Parse`] (in a [`Mode`]), [`Print`],
-//! both as [`Grammar`], and [`Validate`]. Parsing is ordered choice with
-//! backtracking; no left recursion.
+//! both as [`Grammar`], and [`Validate`].
 
 use crate::bnf::{self, Expr, Rule, Rules};
 use crate::first::First;
@@ -24,7 +23,8 @@ use std::fmt::{self, Write};
 )]
 pub trait Parse: Sized + 'static {
     /// The bytes (and whether empty input) this grammar can start with, used
-    /// to skip alternatives that can't match. A manual impl delegates
+    /// to skip alternatives that can't match: leaving one out skips a match,
+    /// extra ones only cost attempts. A manual impl delegates
     /// (`T::First`), combines ([`Seq`](crate::first::First::Seq) /
     /// [`Alt`](crate::first::First::Alt) / [`Opt`](crate::first::First::Opt)),
     /// or names a set ([`Required`](crate::first::Required) /
@@ -160,7 +160,9 @@ impl<T: Parse + Print> Grammar for T {}
 ///
 /// ```
 /// # use tygr::*;
-/// // A `T` in parentheses: `map` builds the value only when building.
+/// # use tygr::bnf::{Expr, Rules};
+/// // A `T` in parentheses, as a hand-written grammar: `map` builds the value
+/// // only when building.
 /// struct Paren<T>(T);
 ///
 /// impl<T: Parse> Parse for Paren<T> {
@@ -199,11 +201,11 @@ impl<T: Parse + Print> Grammar for T {}
 ///         }
 ///     }
 /// }
-/// ```
-pub trait Mode: Copy + 'static + private::Sealed {
 ///
 /// assert_eq!(Paren::<char>::parse("(x)").unwrap().0, 'x');
 /// assert_eq!(Paren::<char>::bnf_rules()[0].to_string(), r#"Paren = "(" 'any' ")" ."#);
+/// ```
+pub trait Mode: Copy + 'static + private::Sealed {
     /// What parsing a `T` gives: the `T`, or `()`.
     type Output<T>;
 

@@ -350,7 +350,9 @@ impl<T: Print> Print for Vec<T> {
     }
 }
 
-/// Like `Vec<T>`, but one or more items: `T { T }`.
+/// Like `Vec<T>`, but one or more items: `T { T }`. Both stop at an item
+/// that matches empty, so with a nullable `T` the first item must consume
+/// input.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Vec1<T>(Vec<T>);
 
@@ -383,7 +385,6 @@ impl<T> TryFrom<Vec<T>> for Vec1<T> {
 impl<T: Parse> Parse for Vec1<T> {
     type First = T::First;
 
-    // `Vec` stops at an item that matches empty, so an empty match is no items.
     #[inline]
     fn parse_at<M: Mode>(
         input: &str,
