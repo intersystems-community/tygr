@@ -130,9 +130,6 @@ faster without it (33 → 114 MB/s).
   the same few things at one position exponentially often:
   `S = "a" S "b" | "a" S "c" | ()` on 22 `a`s reported 12 million traces,
   now three.
-| "a" S "c" | ()` on 22 `a`s recorded
-  12 million traces, and now records three. `Error::traces()` has no
-  duplicates.
 - The crate is `#![forbid(unsafe_code)]`. A hand-written grammar that ends
   mid-char now finds no char there, rather than panicking as 0.6.2's
   `CharOf` did; a `Raw` or `from_str` conversion keeping such text still
