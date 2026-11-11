@@ -95,8 +95,8 @@ faster without it (33 → 114 MB/s).
 ### Non-breaking Changes
 
 - Removed `examples/json_optimized.rs`. `examples/json.rs` is the one JSON
-  example, and `cargo bench --bench json` benchmarks the same grammar. It
-  gains a `print` command that prints its input back.
+  example and gains a `print` command that prints its input back;
+  `cargo bench --bench json` benchmarks the same grammar.
 - `char` is a grammar for any one char.
 - Field conversions: `#[tygr(<kind> = S)]` on a field parses grammar `S`
   and converts it with `try_from` (`S: TryInto<T>`), `try_from_infallible`
@@ -104,11 +104,9 @@ faster without it (33 → 114 MB/s).
   on the matched text) or `from_str_infallible`. A failed conversion
   backtracks and is recorded as `Rejected`; an infallible one is skipped
   when checking. Printing a converted field needs `print_to = f`, such as
-  the new `print_display`. A unit variant is a field of type `()`:
-  `try_from_infallible = S` converts `S` into `()`, which a literal with
-  one text does (`StringEq!`, or `StringEqCI!` without cased chars), as
-  does a grammar with `impl From<S> for ()`; `try_from` if the conversion
-  can fail. Its `print_to` takes `&()`.
+  the new `print_display`. A unit variant takes the same attributes,
+  converting its source (e.g. `StringEq!("null")`) into `()`; its
+  `print_to` takes `&()`.
 - `Prefix` and `Suffix` fields are public, like `Wrap`'s, and so are
   `Hidden`'s and `Ranged`'s. `Vec1` gains `IntoInner` and `TryFrom<Vec<T>>`.
   `Raw<T>` defaults to the text `T::default()` prints (empty for
@@ -141,8 +139,8 @@ faster without it (33 → 114 MB/s).
   and a failed negative lookahead, as `NotFollowedBy`; both recorded
   nothing.
 - An enum of four or more variants reports every variant that could have
-  matched, as a smaller one does, rather than only those from the first
-  that could start with the next byte.
+  matched, as a smaller one does; the variants its dispatch table skipped
+  went unreported.
 - Derived impls bound only the type parameters their fields parse or
   print, so a converted field can be generic. Deriving works for an empty
   enum, and a recursive `#[tygr(inline)]` type gets a EBNF rule of its own
@@ -153,11 +151,11 @@ faster without it (33 → 114 MB/s).
 - Declared the minimum supported Rust version, `rust-version = "1.88"`,
   which CI builds on. Raising it comes only with a 0.x → 0.y release.
 - A field whose type is no grammar fails to derive with `` `u16` doesn't
+  parse as a grammar `` and a note pointing to `#[tygr(from_str = S)]` or
+  `try_from`.
 - `Error`'s `Debug` output opens `parse error at byte N, expected:`, as
   its `Display` does, and writes each context frame as `Rule@pos` rather
   than `Rule@:pos`.
-  parse as a grammar `` and a note pointing to `#[tygr(from_str = S)]` or
-  `try_from`.
 
 ## [0.6.2] - 2026-09-04
 

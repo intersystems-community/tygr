@@ -1,14 +1,12 @@
-# 🐯 tygr: TYpes Into Grammar Routines
+# 🐯 tygr: TYpe into Grammar Routines
 
 Define your grammar once as Rust types and get **parser**, **printer**, and **presentation in EBNF** for free.
 
 ## Get Started
 
-Start with the crate documentation on [docs.rs](https://docs.rs/tygr), which
-contains a complete arithmetic grammar with parsing, printing, and EBNF generation.
-
-See the crate documentation for the complete API, grammar concepts, and feature
-flags.
+Start with the crate documentation on [docs.rs](https://docs.rs/tygr): the API,
+grammar concepts, and feature flags, plus a complete arithmetic grammar with
+parsing, printing, and EBNF generation.
 
 For a runnable example, see [`json`](examples/json.rs), a full JSON grammar
 following json.org. It's a small CLI:
@@ -48,8 +46,8 @@ combinators keep all of that, but you write the parsing expressions _and_ the ty
 want the result in — two descriptions of the same structure to keep in sync. With tygr
 the type _is_ the grammar, so there is nothing to keep in sync.
 
-**PEG and parser combinators.** tygr reads a grammar as a recursive-descent parser with
-backtracking, the reading refined by Parsing Expression Grammars
+**PEG and parser combinators.** tygr reads a grammar as a backtracking recursive-descent
+parser, in the manner of Parsing Expression Grammars
 ([PEG](https://en.wikipedia.org/wiki/Parsing_expression_grammar)) and parser combinators
 ([Parsec](https://hackage.haskell.org/package/parsec)).
 

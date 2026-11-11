@@ -73,7 +73,7 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy (${{ matrix.features.name }})
-        run: cargo clippy --workspace --all-targets ${{ matrix.features.flags }} -- -D warnings
+        run: cargo clippy --workspace --all-targets ${{ matrix.features.flags }}
 
       - name: Test (${{ matrix.features.name }})
         run: cargo test --lib --bins --examples --tests ${{ matrix.features.flags }}

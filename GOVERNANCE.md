@@ -17,7 +17,7 @@ contributors.
 
 ## Contributions
 
-All changes reach `main` through a pull request — direct pushes are disabled.
+All changes reach `master` through a pull request — direct pushes are disabled.
 
 - Every PR requires review approval from a code owner before merging.
 - Pull requests from external contributors are approved by a development
@@ -30,4 +30,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and
 
 ## Releases
 
-Releases are cut from `main` and follow [Semantic Versioning 2.0](https://semver.org).
+Releases are cut from `master` and follow [Semantic Versioning 2.0](https://semver.org).
