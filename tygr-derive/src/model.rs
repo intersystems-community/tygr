@@ -162,10 +162,15 @@ impl Model {
     }
 }
 
-/// Does `tokens` use `ident`?
+/// Does `tokens` use `ident`, other than as a path prefix (`T::Assoc` uses
+/// the associated type, not `T`)?
 fn mentions(tokens: TokenStream, ident: &Ident) -> bool {
-    tokens.into_iter().any(|token| match token {
-        TokenTree::Ident(other) => other == *ident,
+    let tokens: Vec<TokenTree> = tokens.into_iter().collect();
+    tokens.iter().enumerate().any(|(i, token)| match token {
+        TokenTree::Ident(other) => {
+            other == ident
+                && !matches!(tokens.get(i + 1), Some(TokenTree::Punct(p)) if p.as_char() == ':')
+        }
         TokenTree::Group(group) => mentions(group.stream(), ident),
         _ => false,
     })
@@ -180,22 +185,13 @@ impl Variant {
             let FieldAttrs {
                 conversion,
                 print_to,
-            } = FieldAttrs::new(attrs)?;
+            } = FieldAttrs::new(attrs, true)?;
             let dropped = match (conversion, print_to) {
-                (Some(Conversion { kind, source }), print_to) => {
-                    if let Kind::FromStr | Kind::FromStrInfallible = kind {
-                        return Err(syn::Error::new_spanned(
-                            source,
-                            "a unit variant converts its source into `()`, with `try_from` or \
-                             `try_from_infallible`",
-                        ));
-                    }
-                    Some(Field::Dropped {
-                        kind,
-                        source,
-                        print_to,
-                    })
-                }
+                (Some(Conversion { kind, source }), print_to) => Some(Field::Dropped {
+                    kind,
+                    source,
+                    print_to,
+                }),
                 (None, Some(print_to)) => {
                     return Err(syn::Error::new_spanned(
                         print_to,
@@ -232,7 +228,7 @@ impl Variant {
                 let FieldAttrs {
                     conversion,
                     print_to,
-                } = FieldAttrs::new(&field.attrs)?;
+                } = FieldAttrs::new(&field.attrs, false)?;
                 Ok(Field::Kept {
                     binding,
                     ty: field.ty.clone(),
@@ -369,7 +365,8 @@ struct FieldAttrs {
 }
 
 impl FieldAttrs {
-    fn new(attrs: &[Attribute]) -> syn::Result<Self> {
+    /// `unit`: of a unit variant, which converts only with `try_from`.
+    fn new(attrs: &[Attribute], unit: bool) -> syn::Result<Self> {
         let mut field = FieldAttrs::default();
         for attr in tygr_attrs(attrs) {
             attr.parse_nested_meta(|meta| {
@@ -384,6 +381,12 @@ impl FieldAttrs {
                 {
                     if field.conversion.is_some() {
                         return Err(meta.error("a field converts only one way"));
+                    }
+                    if unit && matches!(kind, Kind::FromStr | Kind::FromStrInfallible) {
+                        return Err(meta.error(
+                            "a unit variant converts its source into `()`, with `try_from` or \
+                             `try_from_infallible`",
+                        ));
                     }
                     let source = meta.value()?.parse()?;
                     field.conversion = Some(Conversion { kind, source });

@@ -496,5 +496,23 @@ struct Num<T: FromStr>(#[tygr(from_str = StringOf1<Digit>)] T);
 #[test]
 fn a_converted_field_can_be_generic() {
     assert_eq!(Num::<u32>::parse("42").unwrap().0, 42);
-    assert_eq!(Num::<i8>::parse("42").unwrap().0, 42);
+    assert_eq!(Num::<i8>::parse("42").unwrap().print(), "42");
+}
+
+trait Dialect {
+    type Kw: Parse + Print;
+}
+struct En;
+impl Dialect for En {
+    type Kw = StringEq!("if");
+}
+
+/// `D` is only a path prefix, so no `D: Parse` or `D: Print` bound.
+#[derive(Grammar)]
+struct Stmt<D: Dialect>(D::Kw, Digits);
+
+#[test]
+fn a_type_parameter_used_only_as_a_path_prefix_is_not_bounded() {
+    assert_eq!(Stmt::<En>::parse("if1").unwrap().print(), "if1");
+    assert!(Stmt::<En>::parse("if").is_err());
 }
