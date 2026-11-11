@@ -1,6 +1,6 @@
 # 🐯 tygr: TYpe into Grammar Routines
 
-Define your grammar once as Rust types and get **parser**, **printer**, and **presentation in EBNF** for free.
+Define your grammar once as Rust types and get a **parser**, **printer**, and **presentation in EBNF** for free.
 
 ## Get Started
 
@@ -8,8 +8,8 @@ Start with the crate documentation on [docs.rs](https://docs.rs/tygr): the API,
 grammar concepts, and feature flags, plus a complete arithmetic grammar with
 parsing, printing, and EBNF generation.
 
-For a runnable example, see [`json`](examples/json.rs), a full JSON grammar
-following json.org. It's a small CLI:
+For a runnable example, see [`json`](examples/json.rs), a small CLI around a
+[full JSON grammar](examples/common/json.rs) following json.org:
 
 ```sh
 cargo run --example json -- bnf              # print the grammar as EBNF

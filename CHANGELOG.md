@@ -4,7 +4,7 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
 
 ## [Unreleased]
 
-Literals, first sets and enum dispatch now match on bytes, under grammars
+Literals, FIRST sets and enum dispatch now match on bytes, under grammars
 that still see `&str`. On the JSON benchmark (`canada.json`), parsing is
 about 12× faster with the default tracing (6.6 → 80 MB/s) and about 3.5×
 faster without it (33 → 114 MB/s).
@@ -88,9 +88,15 @@ faster without it (33 → 114 MB/s).
   - Query a set with `first::contains::<F>(next: Option<u8>)`.
   - Removed `Never`, `AnyChar`, `WithChar`, `WithCharCI`, `Nullable`,
     `CONTAINS_BYTE` and `CONTAINS_NIL`.
+- `State::expect` and `probe` are crate-private. `State` is documented for
+  hand-written grammars, which record a failed check with the new
+  `State::reject` and otherwise delegate to their parts' `fail_at`.
 - The types that `StringEq!`/`StringEqCI!` expand to (`StringEq`,
   `StringEqCI`, `CharThen`, `CharCIThen`) are gone. The macros now expand
   to internal types; use the macros rather than naming their output.
+- `OLC` breaks lines at `\r\n` and `\r` too, and `line_character_to_offset`
+  clamps out-of-range positions, as LSP does, and maps one inside a
+  surrogate pair to the pair's start.
 
 ### Non-breaking Changes
 
@@ -143,11 +149,8 @@ faster without it (33 → 114 MB/s).
   went unreported.
 - Derived impls bound only the type parameters their fields parse or
   print, so a converted field can be generic. Deriving works for an empty
-  enum, and a recursive `#[tygr(inline)]` type gets a EBNF rule of its own
+  enum, and a recursive `#[tygr(inline)]` type gets an EBNF rule of its own
   rather than recursing forever.
-- `OLC` breaks lines at `\r\n` and `\r` too, and `line_character_to_offset`
-  clamps out-of-range positions, as LSP does, and maps one inside a
-  surrogate pair to the pair's start.
 - Declared the minimum supported Rust version, `rust-version = "1.88"`,
   which CI builds on. Raising it comes only with a 0.x → 0.y release.
 - A field whose type is no grammar fails to derive with `` `u16` doesn't
