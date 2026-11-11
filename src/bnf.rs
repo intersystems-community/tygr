@@ -20,7 +20,7 @@ pub enum Expr {
     /// A reference to another named rule.
     RuleRef(String),
     /// A character class, formatted as `'name'`.
-    CharOf(String),
+    CharClass(String),
     /// Concatenation: `A B C`.
     Sequence(Vec<Expr>),
     /// Alternation: `A | B | C`.
@@ -167,7 +167,7 @@ impl Expr {
             Expr::Repetition(inner) | Expr::Optional(inner) | Expr::NotFollowedBy(inner) => {
                 inner.collect_side_conditions(notes);
             }
-            Expr::Token { .. } | Expr::RuleRef(_) | Expr::CharOf(_) | Expr::Hidden => {}
+            Expr::Token { .. } | Expr::RuleRef(_) | Expr::CharClass(_) | Expr::Hidden => {}
         }
     }
 
@@ -184,7 +184,7 @@ impl Expr {
             | Expr::Optional(inner)
             | Expr::NotFollowedBy(inner)
             | Expr::SideCondition(inner, _) => inner.rename(f),
-            Expr::Token { .. } | Expr::CharOf(_) | Expr::Hidden => {}
+            Expr::Token { .. } | Expr::CharClass(_) | Expr::Hidden => {}
         }
     }
 
@@ -219,7 +219,7 @@ impl Expr {
                 if *case_insensitive { "i" } else { "" }
             ),
             Expr::RuleRef(name) => write!(f, "{name}"),
-            Expr::CharOf(name) => write!(f, "'{}'", escape(name, '\'')),
+            Expr::CharClass(name) => write!(f, "'{}'", escape(name, '\'')),
             Expr::Sequence(exprs) => Self::format_list(exprs, " ", Prec::Sequence, f, notes),
             Expr::Alternation(exprs) => {
                 Self::format_list(exprs, " | ", Prec::Alternation, f, notes)

@@ -63,7 +63,8 @@ faster without it (33 → 114 MB/s).
     for a field of type `T` rather than the conversion error's message.
   - `Display` changed to match: `"->"` (or `"->" at 0..1` once partly
     matched), `NonZero at 0..3 must be non-zero`, `Text at 0..3 must be
-    convertible to u8`.
+    convertible to u8`. A character class shows as in EBNF, `'digit'`,
+    not `Char of digit`.
   - It's `#[non_exhaustive]`, and gains `End` and
     `NotFollowedBy { excluded, range }`: the excluded grammar's BNF, a
     `bnf::Lazy`, and what it matched.
@@ -74,7 +75,8 @@ faster without it (33 → 114 MB/s).
   expected.
 - `bnf::Expr::StringEq` and `StringEqCI` merged into
   `Expr::Token { text, case_insensitive }`. A case-insensitive literal
-  without cased chars now prints without the `i` (`"123"`).
+  without cased chars now prints without the `i` (`"123"`). `Expr::CharOf`
+  is now `Expr::CharClass`, as in `Expectation`.
 - `bnf::Expr` gains `Hidden`. A hidden alternative or lookahead is
   dropped from BNF, rather than making the rest optional (`[ A ]`).
 - Reworked `tygr::first` around bytes, for hand-written `Parse::First`:

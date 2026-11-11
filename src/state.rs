@@ -319,7 +319,7 @@ impl fmt::Display for Expectation {
                 }
                 Ok(())
             }
-            Expectation::CharClass(c) => write!(f, "Char of {c}"),
+            Expectation::CharClass(c) => write!(f, "'{}'", escape(c, '\'')),
             Expectation::Rejected {
                 node,
                 range,

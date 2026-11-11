@@ -161,7 +161,7 @@ fn display_includes_position_context_and_expectation() {
     let err = NonZero::parse("007").unwrap_err();
     assert_eq!(
         err.to_string(),
-        "parse error at byte 3, expected:\n\t- Char of digit\n\t- NonZero at 0..3 must be non-zero"
+        "parse error at byte 3, expected:\n\t- 'digit'\n\t- NonZero at 0..3 must be non-zero"
     );
 }
 
@@ -186,11 +186,11 @@ fn display_shows_each_expectation_kind() {
         ),
         (
             SmallNumber::parse("999").unwrap_err(),
-            "parse error at byte 3, expected:\n\t- Char of digit\n\t- Text at 0..3 must be convertible to u8",
+            "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to u8",
         ),
         (
             NonZero::parse("007").unwrap_err(),
-            "parse error at byte 3, expected:\n\t- Char of digit\n\t- NonZero at 0..3 must be non-zero",
+            "parse error at byte 3, expected:\n\t- 'digit'\n\t- NonZero at 0..3 must be non-zero",
         ),
     ];
 

@@ -363,7 +363,7 @@ impl Parse for char {
     }
 
     fn to_bnf() -> Expr {
-        Expr::CharOf(ANY_CHAR.to_string())
+        Expr::CharClass(ANY_CHAR.to_string())
     }
 
     fn visit_rules(_rules: &mut Rules) {}
@@ -547,7 +547,7 @@ pub fn class_print_to<C: CharClass>(class: &C, buf: &mut String) {
 /// `Parse::to_bnf` for a `char_class!` type.
 #[doc(hidden)]
 pub fn class_to_bnf<C: CharClass>() -> Expr {
-    Expr::CharOf(C::name().to_string())
+    Expr::CharClass(C::name().to_string())
 }
 
 /// `Parse::fail_at` for a `char_class!` type.
