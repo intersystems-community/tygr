@@ -156,6 +156,8 @@ pub mod first;
 mod grammar;
 mod olc;
 mod state;
+#[cfg(doctest)]
+mod rejected;
 mod token;
 mod wrappers;
 

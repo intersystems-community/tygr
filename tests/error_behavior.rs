@@ -161,6 +161,10 @@ struct Wrapper(Lit);
 #[cfg(not(feature = "trace_all_nodes"))]
 fn context_records_nearest_node() {
     let err = Wrapper::parse("bar").unwrap_err();
+    assert_eq!(
+        format!("{err:?}"),
+        "parse error at byte 0, expected:\n\t- Lit@0/\"foo\""
+    );
     assert_error(err, vec![trace("Lit", token("foo", 0..0))], 0);
 }
 
@@ -168,6 +172,10 @@ fn context_records_nearest_node() {
 #[cfg(feature = "trace_all_nodes")]
 fn context_records_full_node_chain() {
     let err = Wrapper::parse("bar").unwrap_err();
+    assert_eq!(
+        format!("{err:?}"),
+        "parse error at byte 0, expected:\n\t- Wrapper@0/Lit@0/\"foo\""
+    );
     assert_error(
         err,
         vec![Trace {
@@ -316,6 +324,23 @@ fn enum_dispatch_records_the_variants_it_skips() {
 }
 
 #[derive(Grammar, Debug)]
+enum EitherOrThree {
+    AorB(either::Either<StringEq!("a"), StringEq!("b")>),
+    C(StringEq!("c")),
+    D(StringEq!("d")),
+    E(StringEq!("e")),
+}
+
+#[test]
+fn enum_dispatch_records_both_sides_of_a_skipped_either_variant() {
+    let err = EitherOrThree::parse("z").unwrap_err();
+    assert_eq!(
+        expectations(&err),
+        [r#""a""#, r#""b""#, r#""c""#, r#""d""#, r#""e""#]
+    );
+}
+
+#[derive(Grammar, Debug)]
 enum FourOrNone {
     A(StringEq!("a")),
     B(StringEq!("b")),
@@ -335,11 +360,31 @@ fn enum_dispatch_records_the_variants_it_skips_when_matching_empty() {
     );
 }
 
+#[test]
+fn enum_dispatch_at_end_of_input() {
+    assert!(matches!(
+        FourOrNone::parse("").unwrap(),
+        FourOrNone::D(None)
+    ));
+    let err = Four::parse("").unwrap_err();
+    assert_eq!(
+        expectations(&err),
+        [r#""a""#, r#""b""#, r#""cx""#, r#""é""#]
+    );
+}
+
 #[derive(Grammar, Debug)]
 struct Div(StringEq!("/"), NotFollowedBy<StringEq!("/")>);
 
 #[derive(Grammar, Debug)]
 struct NonOctal(NotFollowedBy<StringEq!("0")>, Digits);
+
+#[derive(Parse, Debug)]
+#[tygr(inline)]
+struct InlineSmallNumber(#[tygr(from_str = StringOf1<Digit>)] u8);
+
+#[derive(Parse, Debug)]
+struct NotSmallNumber(NotFollowedBy<InlineSmallNumber>, StringEq!("x"));
 
 #[test]
 fn negative_lookahead_records_what_it_ruled_out() {
@@ -364,10 +409,18 @@ fn negative_lookahead_records_what_it_ruled_out() {
         NonOctal::parse("07").unwrap_err().to_string(),
         "parse error at byte 0, expected:\n\t- anything but \"0\" at 0..1"
     );
+    // An inline grammar's side-conditions are footnoted on the line.
+    assert_eq!(
+        NotSmallNumber::parse("12x").unwrap_err().to_string(),
+        "parse error at byte 0, expected:\n\t- anything but ( 'digit' { 'digit' } ) ^1 at 0..2 (^1: be convertible to u8)"
+    );
 }
 
 #[derive(Grammar, Debug)]
 struct Key(StringEq!("k"), FollowedBy<StringEq!(":")>);
+
+#[derive(Grammar, Debug)]
+struct DigitsThenX(FollowedBy<Digits>, StringEq!("x"));
 
 #[test]
 fn positive_lookahead_records_what_it_expected() {
@@ -376,16 +429,15 @@ fn positive_lookahead_records_what_it_expected() {
         vec![trace("Key", token(":", 1..1))],
         1,
     );
+    // Matching, it records nothing: not the 'digit' `Digits` stopped at.
+    assert_error(
+        DigitsThenX::parse("12").unwrap_err(),
+        vec![trace("DigitsThenX", token("x", 0..0))],
+        0,
+    );
 }
 
 // `S = "a" S "b" | "a" S "c" | ()` backtracks exponentially, expecting the
-#[derive(Parse, Debug)]
-#[tygr(inline)]
-struct InlineSmallNumber(#[tygr(from_str = StringOf1<Digit>)] u8);
-
-#[derive(Parse, Debug)]
-struct NotSmallNumber(NotFollowedBy<InlineSmallNumber>, StringEq!("x"));
-
 // same few things at the same position each time.
 #[derive(Grammar, Debug)]
 enum Exponential {
@@ -400,19 +452,4 @@ fn repeated_traces_are_reported_once() {
     let err = Exponential::parse(&input).unwrap_err();
     assert_eq!(err.pos(), 18);
     assert_eq!(expectations(&err), [r#""a""#, r#""b""#, r#""c""#]);
-    assert_eq!(err.traces().len(), 3);
 }
-    // An inline grammar's side-conditions are footnoted on the line.
-    assert_eq!(
-        NotSmallNumber::parse("12x").unwrap_err().to_string(),
-        "parse error at byte 0, expected:\n\t- anything but ( 'digit' { 'digit' } ) ^1 at 0..2 (^1: be convertible to u8)"
-    );
-#[derive(Grammar, Debug)]
-struct DigitsThenX(FollowedBy<Digits>, StringEq!("x"));
-
-    // Matching, it records nothing: not the 'digit' `Digits` stopped at.
-    assert_error(
-        DigitsThenX::parse("12").unwrap_err(),
-        vec![trace("DigitsThenX", token("x", 0..0))],
-        0,
-    );

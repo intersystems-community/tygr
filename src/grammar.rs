@@ -163,18 +163,47 @@ impl<T: Parse + Print> Grammar for T {}
 /// // A `T` in parentheses: `map` builds the value only when building.
 /// struct Paren<T>(T);
 ///
-/// fn parse_paren<T: Parse, M: Mode>(
-///     input: &str,
-///     pos: usize,
-///     mut state: State,
-/// ) -> Option<(M::Output<Paren<T>>, usize)> {
-///     let ((), pos) = <StringEq!("(")>::parse_at::<Check>(input, pos, state.reborrow())?;
-///     let (inner, pos) = T::parse_at::<M>(input, pos, state.reborrow())?;
-///     let ((), pos) = <StringEq!(")")>::parse_at::<Check>(input, pos, state)?;
-///     Some((M::map(inner, Paren), pos))
+/// impl<T: Parse> Parse for Paren<T> {
+///     type First = <StringEq!("(") as Parse>::First;
+///
+///     fn parse_at<M: Mode>(
+///         input: &str,
+///         pos: usize,
+///         mut state: State,
+///     ) -> Option<(M::Output<Self>, usize)> {
+///         let mut state = state.node("Paren", pos);
+///         let ((), pos) = <StringEq!("(")>::parse_at::<Check>(input, pos, state.reborrow())?;
+///         let (inner, pos) = T::parse_at::<M>(input, pos, state.reborrow())?;
+///         let ((), pos) = <StringEq!(")")>::parse_at::<Check>(input, pos, state)?;
+///         Some((M::map(inner, Paren), pos))
+///     }
+///
+///     fn fail_at(pos: usize, mut state: State) -> bool {
+///         <StringEq!("(")>::fail_at(pos, state.node("Paren", pos))
+///     }
+///
+///     fn to_bnf() -> Expr {
+///         Expr::RuleRef("Paren".to_string())
+///     }
+///
+///     fn visit_rules(rules: &mut Rules) {
+///         let def = || {
+///             Expr::sequence(vec![
+///                 <StringEq!("(")>::to_bnf(),
+///                 T::to_bnf(),
+///                 <StringEq!(")")>::to_bnf(),
+///             ])
+///         };
+///         if rules.insert::<Self>("Paren", def) {
+///             T::visit_rules(rules);
+///         }
+///     }
 /// }
 /// ```
 pub trait Mode: Copy + 'static + private::Sealed {
+///
+/// assert_eq!(Paren::<char>::parse("(x)").unwrap().0, 'x');
+/// assert_eq!(Paren::<char>::bnf_rules()[0].to_string(), r#"Paren = "(" 'any' ")" ."#);
     /// What parsing a `T` gives: the `T`, or `()`.
     type Output<T>;
 

@@ -183,6 +183,15 @@ impl<T> From<String> for Raw<T> {
 }
 
 /// Parses as `T` and keeps its `start..end` byte range.
+///
+/// ```
+/// # use tygr::*;
+/// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
+/// #[derive(Grammar)]
+/// struct Assign(StringEq!("x="), Ranged<StringOf1<Digit>>);
+/// let v = Assign::parse("x=42").unwrap();
+/// assert_eq!((v.1.range(), v.1.as_str()), (2..4, "42"));
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ranged<T> {
     /// Start byte offset.

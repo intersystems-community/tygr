@@ -9,8 +9,9 @@ use std::ops::Range;
 
 /// Parse state threaded through [`Parse::parse_at`](crate::Parse::parse_at):
 /// what a failure will report, or nothing without a `trace_*` feature. A
-/// hand-written grammar enters its rule with [`node`](Self::node) and passes
-/// a [`reborrow`](Self::reborrow) to each grammar it delegates to.
+/// hand-written grammar enters its rule with [`node`](Self::node), in
+/// [`fail_at`](crate::Parse::fail_at) too, and passes a
+/// [`reborrow`](Self::reborrow) to each grammar it delegates to.
 pub struct State<'a> {
     #[cfg(feature = "trace_pos")]
     history: &'a mut History,

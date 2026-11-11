@@ -418,6 +418,24 @@ fn values_build_by_hand_to_print() {
     assert!(Vec1::<Digit>::try_from(vec![]).is_err());
 }
 
+/// Every combinator is `Hash`, so a grammar holding them all can derive it.
+#[derive(Grammar, PartialEq, Eq, Hash)]
+struct Hashable(
+    Wrap<StringEq!("("), Vec1<Digit>, StringEq!(")")>,
+    Prefix<StringEq!("#"), Ranged<Digit>>,
+    Suffix<VecSep<Digit, StringEq!(",")>, StringEq!(";")>,
+    NotFollowedBy<StringEq!("!")>,
+    FollowedBy<Digit>,
+    Raw<Digit>,
+    Hidden<StringOf<Digit>>,
+);
+
+#[test]
+fn a_grammar_of_combinators_derives_hash() {
+    let parse = || Hashable::parse("(1)#23,4;56").unwrap();
+    assert_eq!(std::collections::HashSet::from([parse(), parse()]).len(), 1);
+}
+
 /// Prints `C`, for a unit variant.
 fn print_char<const C: char>(_: &(), buf: &mut String) {
     buf.push(C);
@@ -490,8 +508,10 @@ fn an_empty_enum_never_parses() {
     assert!(<Option<Never>>::parse("").unwrap().is_none());
 }
 
-#[derive(Parse)]
-struct Num<T: FromStr>(#[tygr(from_str = StringOf1<Digit>)] T);
+#[derive(Grammar)]
+struct Num<T: FromStr + std::fmt::Display>(
+    #[tygr(from_str = StringOf1<Digit>, print_to = print_display)] T,
+);
 
 #[test]
 fn a_converted_field_can_be_generic() {

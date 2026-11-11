@@ -568,6 +568,12 @@ mod tests {
     }
 
     #[test]
+    fn no_char_is_found_mid_char() {
+        // 'é' is 0xC3 0xA9: byte 1 is inside it.
+        assert!(crate::state::run(|state| char::parse_at::<crate::Check>("é", 1, state)).is_err());
+    }
+
+    #[test]
     fn literal_macros_expand_to_byte_atoms() {
         fn same<T>(_: T, _: T) {}
         same(

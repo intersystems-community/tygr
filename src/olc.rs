@@ -103,7 +103,7 @@ mod tests {
         let (mut line, mut character) = (0, 0);
         let mut chars = input.char_indices().peekable();
         while let Some((i, ch)) = chars.next() {
-            if i >= offset {
+            if i + ch.len_utf8() > offset {
                 break;
             }
             match ch {
@@ -129,12 +129,12 @@ mod tests {
     fn check_all_offsets(input: &str) {
         let olc = OLC::new(input);
         for offset in 0..=input.len() {
-            if !input.is_char_boundary(offset) {
-                continue;
-            }
             let expected = reference_offset_to_line_character(input, offset);
             let actual = olc.offset_to_line_character(offset);
             assert_eq!(actual, expected, "offset {offset} in {input:?}");
+            if !input.is_char_boundary(offset) {
+                continue;
+            }
             let inside_crlf =
                 offset > 0 && input[..offset].ends_with('\r') && input[offset..].starts_with('\n');
             if !inside_crlf {
@@ -188,6 +188,7 @@ mod tests {
         assert_eq!(olc.line_character_to_offset((1, usize::MAX)), 6);
         assert_eq!(olc.line_character_to_offset((9, 0)), 6);
         assert_eq!(olc.offset_to_line_character(99), (1, 2));
+        assert_eq!(OLC::new("😀").line_character_to_offset((0, usize::MAX)), 4);
     }
 
     #[test]
