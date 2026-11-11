@@ -1,7 +1,8 @@
 //! A derive's input, read into what the generated code needs.
 
-use proc_macro2::{TokenStream, TokenTree};
+use proc_macro2::{Span, TokenStream, TokenTree};
 use quote::{format_ident, quote};
+use syn::spanned::Spanned;
 use syn::{Attribute, Data, DeriveInput, Fields, Generics, Ident, LitStr, Path, Type};
 
 /// A derived `struct` or `enum` and its `#[tygr(...)]` options.
@@ -30,6 +31,8 @@ pub(crate) struct Variant {
     /// Builds it from its fields' bindings; also its pattern.
     pub(crate) constructor: TokenStream,
     pub(crate) fields: Vec<Field>,
+    /// Of the field list.
+    pub(crate) span: Span,
 }
 
 /// One part of a sequence.
@@ -172,6 +175,7 @@ impl Variant {
     /// `path`'s fields, bound as `_f0`, `_f1`, … so no field name clashes
     /// with the generated code. Only a unit variant takes `#[tygr(...)]`.
     fn new(path: TokenStream, fields: &Fields, attrs: &[Attribute]) -> syn::Result<Self> {
+        let span = fields.span();
         if let Fields::Unit = fields {
             let FieldAttrs {
                 conversion,
@@ -204,6 +208,7 @@ impl Variant {
             return Ok(Variant {
                 constructor: path,
                 fields: dropped.into_iter().collect(),
+                span,
             });
         }
         if let Some(attr) = tygr_attrs(attrs).next() {
@@ -239,6 +244,7 @@ impl Variant {
         Ok(Variant {
             constructor,
             fields,
+            span,
         })
     }
 }
