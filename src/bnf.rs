@@ -44,6 +44,7 @@ pub enum Expr {
 enum Prec {
     Alternation,
     Sequence,
+    SideCondition,
     Atom,
 }
 
@@ -189,8 +190,9 @@ impl Expr {
 
     fn prec(&self) -> Prec {
         match self {
-            Expr::Alternation(_) | Expr::SideCondition(..) => Prec::Alternation,
+            Expr::Alternation(_) => Prec::Alternation,
             Expr::Sequence(exprs) if !exprs.is_empty() => Prec::Sequence,
+            Expr::SideCondition(..) => Prec::SideCondition,
             _ => Prec::Atom,
         }
     }
@@ -237,7 +239,7 @@ impl Expr {
                 inner.format_internal(f, Prec::Atom, notes)
             }
             Expr::SideCondition(inner, text) => {
-                inner.format_internal(f, Prec::Atom, notes)?;
+                inner.format_internal(f, Prec::SideCondition, notes)?;
                 if !inner.is_blank() {
                     write!(f, " ")?;
                 }

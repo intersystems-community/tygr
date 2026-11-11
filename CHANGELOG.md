@@ -122,7 +122,9 @@ faster without it (33 → 114 MB/s).
 - `Error` implements `std::error::Error`, and `Expectation` is `Display`
   whatever the features.
 - EBNF: a character class's name escapes only `'`, not `"`; a hidden
-  conversion source drops its footnote; an empty rule prints as `X = .`.
+  conversion source drops its footnote; an empty rule prints as `X = .`;
+  a footnoted factor in a sequence isn't parenthesized (`Digits ^1 ","
+  Digits ^2`).
 - `VecSep` reserves the usual amortized capacity on its first item, rather
   than exactly one, so short lists no longer reallocate.
 - The name argument of `char_class!` is optional and defaults to the type

@@ -222,7 +222,7 @@ struct UsesInlineValidated(InlineNonZero, Digits);
 fn inline_validated_side_condition_propagates_into_the_splice() {
     assert_eq!(
         rule::<UsesInlineValidated>(),
-        "UsesInlineValidated = ( ( 'digit' { 'digit' } ) ^1 ) Digits .\n^1: be non-zero"
+        "UsesInlineValidated = ( 'digit' { 'digit' } ) ^1 Digits .\n^1: be non-zero"
     );
 }
 
@@ -233,7 +233,7 @@ struct UsesInlineValidatedTwice(InlineNonZero, InlineNonZero);
 fn repeated_inline_validated_side_condition_gets_one_deduplicated_footnote() {
     assert_eq!(
         rule::<UsesInlineValidatedTwice>(),
-        "UsesInlineValidatedTwice = ( ( 'digit' { 'digit' } ) ^1 ) ( ( 'digit' { 'digit' } ) ^1 ) .\n^1: be non-zero"
+        "UsesInlineValidatedTwice = ( 'digit' { 'digit' } ) ^1 ( 'digit' { 'digit' } ) ^1 .\n^1: be non-zero"
     );
 }
 
@@ -288,7 +288,7 @@ fn conversions_parse_and_print_and_only_fallible_ones_get_a_footnote() {
     assert_eq!(Converted::parse("42,07;51").unwrap().print(), "42,07;51");
     assert_eq!(
         rule::<Converted>(),
-        "Converted = \"null\" | ( ( 'digit' { 'digit' } ) ^1 ) \",\" 'digit' { 'digit' } \";\" 'digit' ( 'digit' ^2 ) .\n^1: be convertible to u32\n^2: be convertible to bool"
+        "Converted = \"null\" | ( 'digit' { 'digit' } ) ^1 \",\" 'digit' { 'digit' } \";\" 'digit' 'digit' ^2 .\n^1: be convertible to u32\n^2: be convertible to bool"
     );
     for bad in ["42,07;52", "99999999999,07;51", "nul"] {
         assert!(Converted::parse(bad).is_err() && Converted::check(bad).is_err());
@@ -310,7 +310,7 @@ impl Validate for EvenNumber {
 fn validated_fallible_conversion_bnf_shows_both_side_conditions() {
     assert_eq!(
         rule::<EvenNumber>(),
-        "EvenNumber = ( ( 'digit' { 'digit' } ) ^1 ) ^2 .\n^1: be convertible to u32\n^2: be even"
+        "EvenNumber = ( 'digit' { 'digit' } ) ^1 ^2 .\n^1: be convertible to u32\n^2: be even"
     );
     assert!(EvenNumber::parse("4").is_ok());
     assert!(EvenNumber::parse("3").is_err());
@@ -337,7 +337,7 @@ struct Converts(
 fn a_conversion_requires_its_field_type_as_written() {
     assert_eq!(
         rule::<Converts>(),
-        "Converts = ( Digits ^1 ) \",\" ( Digits ^2 ) .\n^1: be convertible to Small<u8>\n^2: be convertible to std::num::NonZeroU8"
+        "Converts = Digits ^1 \",\" Digits ^2 .\n^1: be convertible to Small<u8>\n^2: be convertible to std::num::NonZeroU8"
     );
     assert!(Converts::parse("7,300").is_err());
 }
