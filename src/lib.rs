@@ -18,6 +18,7 @@
 //! | [`StringEq!`] / [`StringEqCI!`] | a literal (`"if"` / `"if"i`) |
 //! | `char`         | any one char (`'any'`)       |
 //! | a [`char_class!`] type | one char of the class (`'digit'`) |
+//! | [`StringOf<C>`] / [`StringOf1<C>`] | chars of class `C`, kept as text (`{ 'digit' }` / `'digit' { 'digit' }`) |
 //! | [`Either<A, B>`](either::Either), from the `either` crate | inline alternation (`A \| B`) |
 //! | [`Vec<T>`]     | repetition (`{ T }`)         |
 //! | [`Vec1<T>`]    | one-or-more repetition (`T { T }`)      |
@@ -45,7 +46,8 @@
 //! limit its size first or parse it on a thread with a bigger stack.
 //!
 //! `#[tygr(...)]` on a derived type:
-//! - `name = "..."` — override the EBNF rule name (defaults to the type name).
+//! - `name = "..."` — override the EBNF rule name (defaults to the type's
+//!   name, which a generic type's instantiations share).
 //! - `hidden` — same effect as wrapping in [`Hidden<T>`], but on a whole struct/enum.
 //! - `inline` — splice this type's own definition wherever it's
 //!   referenced, instead of a rule reference.
@@ -87,7 +89,7 @@
 //!
 //! | Feature | Records |
 //! | ------- | ------- |
-//! | `trace_pos` | [`Error::pos`]: the deepest byte offset reached. |
+//! | `trace_pos` | [`Error::pos`]: the furthest byte offset reached. |
 //! | `trace_one_node` | [`Error::traces`]: what was expected there, each in its nearest rule. |
 //! | `trace_all_nodes` | The whole rule path of each ([`Trace::context`]); much slower, as it copies the path each time. |
 //! | `trace` | All of the above. |
@@ -161,7 +163,7 @@ pub use grammar::*;
 pub use olc::*;
 pub use state::*;
 pub use token::{CharClass, StringOf, StringOf1};
-pub use wrappers::{Hidden, IntoInner, Ranged, Raw};
+pub use wrappers::*;
 
 // Paths the macros expand to, whatever the user has in scope.
 #[doc(hidden)]
@@ -182,7 +184,8 @@ extern crate self as tygr;
 
 pub use tygr_derive::{Grammar, Parse, Print};
 
-/// A literal-string grammar: `StringEq!("->")` matches exactly `->`.
+/// A literal-string grammar: `StringEq!("->")` matches exactly `->`, and is
+/// `Default`, to build one by hand (e.g. to print).
 ///
 /// ```
 /// # use tygr::*;

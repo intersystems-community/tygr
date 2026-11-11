@@ -1,7 +1,7 @@
-//! Byte offsets ⇄ `(line, character)` positions, `character` in UTF-16
-//! code units (as in the Language Server Protocol).
+//! Byte offsets ⇄ `(line, character)` positions.
 
-/// Converts between byte offsets and `(line, character)` in one input.
+/// Converts between byte offsets and `(line, character)` in one input,
+/// `character` in UTF-16 code units (as in the Language Server Protocol).
 /// Lines end at `\n`, `\r\n` or `\r`.
 pub struct OLC {
     lines: Vec<Line>,
@@ -45,7 +45,8 @@ impl OLC {
     }
 
     /// Byte offset → zero-indexed `(line, character)`. An offset inside a
-    /// char or a line break counts as that char's start or the line's end.
+    /// char or a line break counts as that char's start or the line's end,
+    /// and any offset past the input as its end.
     pub fn offset_to_line_character(&self, offset: usize) -> (usize, usize) {
         let index = self.lines.partition_point(|line| line.start <= offset) - 1;
         let line = &self.lines[index];
@@ -96,7 +97,7 @@ fn units(len: usize) -> usize {
 mod tests {
     use super::*;
 
-    fn reference_offset_to_line_char(input: &str, offset: usize) -> (usize, usize) {
+    fn reference_offset_to_line_character(input: &str, offset: usize) -> (usize, usize) {
         let (mut line, mut character) = (0, 0);
         let mut chars = input.char_indices().peekable();
         while let Some((i, ch)) = chars.next() {
@@ -129,12 +130,9 @@ mod tests {
             if !input.is_char_boundary(offset) {
                 continue;
             }
-            let expected = reference_offset_to_line_char(input, offset);
+            let expected = reference_offset_to_line_character(input, offset);
             let actual = olc.offset_to_line_character(offset);
-            assert_eq!(
-                actual, expected,
-                "mismatch at offset {offset} in {input:?}: got {actual:?}, expected {expected:?}"
-            );
+            assert_eq!(actual, expected, "offset {offset} in {input:?}");
             let inside_crlf =
                 offset > 0 && input[..offset].ends_with('\r') && input[offset..].starts_with('\n');
             if !inside_crlf {

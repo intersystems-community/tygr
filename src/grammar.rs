@@ -26,8 +26,8 @@ pub trait Parse: Sized + 'static {
     /// The bytes (and whether empty input) this grammar can start with, used
     /// to skip alternatives that can't match. A manual impl delegates
     /// (`T::First`), combines ([`Seq`](crate::first::First::Seq) /
-    /// [`Alt`](crate::first::First::Alt)), or names a set
-    /// ([`Required`](crate::first::Required) /
+    /// [`Alt`](crate::first::First::Alt) / [`Opt`](crate::first::First::Opt)),
+    /// or names a set ([`Required`](crate::first::Required) /
     /// [`Optional`](crate::first::Optional)).
     ///
     /// ```
@@ -262,7 +262,7 @@ mod private {
 ///
 /// Rejecting a value backtracks as if the grammar hadn't matched.
 pub trait Validate {
-    /// What a value must satisfy, shown in errors and EBNF as "must …".
+    /// What a value must satisfy: "must …" in errors, a footnote in EBNF.
     const REQUIREMENT: &'static str;
 
     /// Check the just-parsed value; return `false` to reject it.
