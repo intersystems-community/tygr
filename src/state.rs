@@ -1,6 +1,7 @@
 //! The state threaded through parsing, and the [`Error`] it traces.
 
 use crate::bnf::{Expr, Lazy, escape};
+use std::borrow::Cow;
 #[cfg(feature = "trace_pos")]
 use std::cmp::Ordering;
 use std::fmt;
@@ -62,7 +63,7 @@ impl<'a> State<'a> {
     pub(crate) fn at_end(&mut self, input: &str, pos: usize) -> bool {
         let end = pos == input.len();
         if !end {
-            self.expect(pos, Expectation::End);
+            self.expect(pos, Recorded::End);
         }
         end
     }
@@ -72,7 +73,7 @@ impl<'a> State<'a> {
     pub(crate) fn not_followed_by(&mut self, excluded: fn() -> Expr, range: Range<usize>) {
         self.expect(
             range.start,
-            Expectation::NotFollowedBy {
+            Recorded::NotFollowedBy {
                 excluded: Lazy(excluded),
                 range,
             },
@@ -82,7 +83,7 @@ impl<'a> State<'a> {
     /// Record what was expected at `pos`; nothing, without `trace_pos`.
     #[cfg_attr(not(feature = "trace_one_node"), allow(unused_variables))]
     #[inline]
-    pub(crate) fn expect(&mut self, pos: usize, expectation: Expectation) {
+    pub(crate) fn expect(&mut self, pos: usize, expectation: Recorded) {
         #[cfg(feature = "trace_pos")]
         self.history.expect(
             #[cfg(feature = "trace_one_node")]
@@ -94,22 +95,42 @@ impl<'a> State<'a> {
     }
 
     /// Record that the text at `range` was rejected, as it must
-    /// `requirement`: by validated rule `node`, or by a field conversion.
+    /// `requirement`: by validated rule `node`, or by a field conversion. A
+    /// `String` requirement, built from what was parsed, is kept for the
+    /// error; a `&'static str` costs nothing to record.
     #[inline]
     pub fn reject(
         &mut self,
         node: Option<&'static str>,
         range: Range<usize>,
-        requirement: &'static str,
+        requirement: impl Into<Cow<'static, str>>,
     ) {
+        let requirement = match requirement.into() {
+            Cow::Borrowed(text) => Requirement::Static(text),
+            Cow::Owned(text) => Requirement::Owned(self.own(text)),
+        };
         self.expect(
             range.end,
-            Expectation::Rejected {
+            Recorded::Rejected {
                 node,
                 range,
                 requirement,
             },
         );
+    }
+
+    /// Keep `text` for the error, returning its index.
+    #[cfg_attr(not(feature = "trace_one_node"), allow(unused_variables))]
+    fn own(&mut self, text: String) -> usize {
+        #[cfg(feature = "trace_one_node")]
+        {
+            self.history.owned.push(text);
+            self.history.owned.len() - 1
+        }
+        #[cfg(not(feature = "trace_one_node"))]
+        {
+            0
+        }
     }
 
     /// Run `f` without recording anything.
@@ -150,15 +171,82 @@ pub(crate) fn run<R>(parse: impl FnOnce(State<'_>) -> Option<R>) -> Result<R, Er
 struct History {
     #[cfg(feature = "trace_one_node")]
     traces: Vec<Pending>,
+    /// Requirements built while parsing, which `Pending`s refer to by index.
+    #[cfg(feature = "trace_one_node")]
+    owned: Vec<String>,
     pos: usize,
 }
 
 /// A recorded trace, with its context kept cheap until the parse fails.
 #[cfg(feature = "trace_one_node")]
-#[derive(PartialEq)]
 struct Pending {
     frames: Frames,
-    expectation: Expectation,
+    expectation: Recorded,
+}
+
+/// An [`Expectation`] as recorded: a rejection's requirement is a
+/// `&'static str` or an index into [`History::owned`], so a record has
+/// nothing to drop and `Vec::clear` stays O(1) on the hottest path.
+#[derive(PartialEq)]
+pub(crate) enum Recorded {
+    Token {
+        text: &'static str,
+        range: Range<usize>,
+    },
+    CharClass(&'static str),
+    Rejected {
+        node: Option<&'static str>,
+        range: Range<usize>,
+        requirement: Requirement,
+    },
+    NotFollowedBy {
+        excluded: Lazy,
+        range: Range<usize>,
+    },
+    End,
+}
+
+#[derive(PartialEq)]
+pub(crate) enum Requirement {
+    Static(&'static str),
+    Owned(usize),
+}
+
+#[cfg(feature = "trace_one_node")]
+impl Requirement {
+    fn text<'a>(&'a self, owned: &'a [String]) -> &'a str {
+        match self {
+            Requirement::Static(text) => text,
+            Requirement::Owned(i) => &owned[*i],
+        }
+    }
+}
+
+#[cfg(feature = "trace_one_node")]
+impl Recorded {
+    /// The expectation to report, taking an owned requirement out of `owned`.
+    fn into_expectation(self, owned: &mut [String]) -> Expectation {
+        match self {
+            Recorded::Token { text, range } => Expectation::Token { text, range },
+            Recorded::CharClass(name) => Expectation::CharClass(name),
+            Recorded::Rejected {
+                node,
+                range,
+                requirement,
+            } => Expectation::Rejected {
+                node,
+                range,
+                requirement: match requirement {
+                    Requirement::Static(text) => Cow::Borrowed(text),
+                    Requirement::Owned(i) => Cow::Owned(std::mem::take(&mut owned[i])),
+                },
+            },
+            Recorded::NotFollowedBy { excluded, range } => {
+                Expectation::NotFollowedBy { excluded, range }
+            }
+            Recorded::End => Expectation::End,
+        }
+    }
 }
 
 /// The nearest rule, or (with `trace_all_nodes`) all of them, innermost first.
@@ -174,6 +262,8 @@ impl History {
         History {
             #[cfg(feature = "trace_one_node")]
             traces: Vec::new(),
+            #[cfg(feature = "trace_one_node")]
+            owned: Vec::new(),
             pos,
         }
     }
@@ -183,7 +273,7 @@ impl History {
         &mut self,
         #[cfg(feature = "trace_one_node")] context: Context<'_>,
         other_pos: usize,
-        #[cfg(feature = "trace_one_node")] expectation: Expectation,
+        #[cfg(feature = "trace_one_node")] expectation: Recorded,
     ) {
         #[cfg(feature = "trace_one_node")]
         let trace = || Pending {
@@ -216,7 +306,10 @@ impl History {
     fn dedup(&mut self) {
         let mut kept = 0;
         for i in 0..self.traces.len() {
-            if !self.traces[..kept].contains(&self.traces[i]) {
+            if !self.traces[..kept]
+                .iter()
+                .any(|k| self.same(k, &self.traces[i]))
+            {
                 self.traces.swap(kept, i);
                 kept += 1;
             }
@@ -224,17 +317,43 @@ impl History {
         self.traces.truncate(kept);
     }
 
+    /// Would `a` and `b` report the same trace? Owned requirements compare
+    /// by text.
+    #[cfg(feature = "trace_one_node")]
+    fn same(&self, a: &Pending, b: &Pending) -> bool {
+        a.frames == b.frames
+            && match (&a.expectation, &b.expectation) {
+                (
+                    Recorded::Rejected {
+                        node,
+                        range,
+                        requirement,
+                    },
+                    Recorded::Rejected {
+                        node: n,
+                        range: r,
+                        requirement: q,
+                    },
+                ) => {
+                    node == n && range == r && requirement.text(&self.owned) == q.text(&self.owned)
+                }
+                (a, b) => a == b,
+            }
+    }
+
     #[cfg_attr(not(feature = "trace_one_node"), allow(unused_mut))]
     fn into_error(mut self) -> Error {
         #[cfg(feature = "trace_one_node")]
         self.dedup();
+        #[cfg(feature = "trace_one_node")]
+        let mut owned = std::mem::take(&mut self.owned);
         #[cfg(feature = "trace_one_node")]
         let traces = self
             .traces
             .into_iter()
             .map(|p| Trace {
                 context: p.frames.into_iter().rev().collect(),
-                expectation: p.expectation,
+                expectation: p.expectation.into_expectation(&mut owned),
             })
             .collect();
         Error {
@@ -268,9 +387,10 @@ pub enum Expectation {
         /// The bytes rejected.
         range: Range<usize>,
         /// What they must do: a
-        /// [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT), or
-        /// `"be convertible to T"` for a field of type `T`.
-        requirement: &'static str,
+        /// [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT),
+        /// `"be convertible to T"` for a field of type `T`, or what a
+        /// hand-written grammar passed to [`State::reject`].
+        requirement: Cow<'static, str>,
     },
     /// Anything but `excluded`, which a
     /// [`NotFollowedBy`](crate::NotFollowedBy) rules out and which matched
@@ -479,3 +599,12 @@ impl fmt::Debug for Error {
 }
 
 impl std::error::Error for Error {}
+
+#[cfg(all(test, feature = "trace_one_node", target_pointer_width = "64"))]
+mod tests {
+    /// What `History::expect` stores, millions of times per parse.
+    #[test]
+    fn a_record_is_two_words_of_context_and_an_expectation() {
+        assert_eq!(std::mem::size_of::<super::Pending>(), 80);
+    }
+}

@@ -11,6 +11,11 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
   surrogate pair, is an `OutOfRange { bound, excess }`, the nearest valid
   value and how far past it the position was, rather than being clamped
   silently. `unwrap_or_else(|e| e.bound)` clamps as 0.7 did.
+- `Expectation::Rejected`'s `requirement` is a `Cow<'static, str>`, and
+  `State::reject` takes any `Into<Cow<'static, str>>`: a hand-written
+  grammar can reject with a message built from what it parsed
+  (`format!(..)`), which the error carries. Recording a `&'static str`
+  costs what it did.
 
 ## [0.7.0] - 2026-11-12
 

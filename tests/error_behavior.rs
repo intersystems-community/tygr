@@ -76,7 +76,7 @@ fn conversion_records_requirement() {
                 Expectation::Rejected {
                     node: None,
                     range: 0..3,
-                    requirement: "be convertible to u8",
+                    requirement: "be convertible to u8".into(),
                 },
             ),
         ],
@@ -107,7 +107,7 @@ fn validated_records_requirement() {
                 Expectation::Rejected {
                     node: Some("NonZero"),
                     range: 0..3,
-                    requirement: "be non-zero",
+                    requirement: "be non-zero".into(),
                 },
             ),
         ],

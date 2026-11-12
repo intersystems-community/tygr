@@ -89,3 +89,65 @@ fn a_hand_written_leaf_reports_itself_when_skipped() {
         );
     }
 }
+
+/// A digit below five, rejected with a message built from the digit.
+#[derive(Debug)]
+struct Small(u8);
+
+impl Parse for Small {
+    type First = <char as Parse>::First;
+
+    fn parse_at<M: Mode>(
+        input: &str,
+        pos: usize,
+        mut state: State,
+    ) -> Option<(M::Output<Self>, usize)> {
+        let mut state = state.node("Small", pos);
+        let (ch, end) = char::parse_at::<Build>(input, pos, state.reborrow())?;
+        match ch.to_digit(10) {
+            Some(digit) if digit < 5 => Some((M::build(|_| Small(digit as u8)), end)),
+            _ => {
+                state.reject(
+                    Some("Small"),
+                    pos..end,
+                    format!("be a digit below 5, not {ch:?}"),
+                );
+                None
+            }
+        }
+    }
+
+    fn fail_at(pos: usize, mut state: State) -> bool {
+        char::fail_at(pos, state.node("Small", pos))
+    }
+
+    fn to_bnf() -> Expr {
+        Expr::RuleRef("Small".into())
+    }
+
+    fn visit_rules(rules: &mut Rules) {
+        rules.insert::<Self>("Small", || {
+            Expr::side_condition(char::to_bnf(), "be a digit below 5")
+        });
+    }
+}
+
+// Both variants reject "7" with the same built message.
+#[derive(Parse, Debug)]
+enum Twice {
+    A(Small, StringEq!("a")),
+    B(Small, StringEq!("b")),
+}
+
+#[test]
+fn a_rejection_carries_a_message_built_while_parsing() {
+    assert_eq!(Small::parse("3").unwrap().0, 3);
+    let err = Twice::parse("7").unwrap_err();
+    if cfg!(feature = "trace_one_node") {
+        assert_eq!(
+            err.to_string(),
+            "parse error at byte 1, expected:\n\t- Small at 0..1 must be a digit below 5, not '7'"
+        );
+        assert_eq!(err.traces().len(), 1);
+    }
+}

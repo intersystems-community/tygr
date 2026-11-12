@@ -5,10 +5,10 @@ use either::Either::{self, Left, Right};
 use std::fmt;
 use std::ops::Range;
 
-use crate::Expectation;
 use crate::bnf::{Expr, Rules};
 use crate::first::{ByteSet, Required, byte_set};
 use crate::grammar::{Grammar, Mode, Parse, Print};
+use crate::state::Recorded;
 use crate::state::State;
 use crate::{Raw, Vec1};
 
@@ -278,7 +278,7 @@ impl<G: Literal> Token<G> {
     fn expected(range: Range<usize>, mut state: State) {
         state.expect(
             range.end,
-            Expectation::Token {
+            Recorded::Token {
                 text: Self::TEXT,
                 range,
             },
@@ -343,7 +343,7 @@ impl Parse for char {
     }
 
     fn fail_at(pos: usize, mut state: State) -> bool {
-        state.expect(pos, Expectation::CharClass(ANY_CHAR));
+        state.expect(pos, Recorded::CharClass(ANY_CHAR));
         true
     }
 
@@ -530,7 +530,7 @@ pub fn class_to_bnf<C: CharClass>() -> Expr {
 /// `Parse::fail_at` for a `char_class!` type.
 #[doc(hidden)]
 pub fn class_fail_at<C: CharClass>(pos: usize, mut state: State) -> bool {
-    state.expect(pos, Expectation::CharClass(C::name()));
+    state.expect(pos, Recorded::CharClass(C::name()));
     true
 }
 
