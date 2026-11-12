@@ -2,7 +2,7 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
-## [Unreleased]
+## [0.7.0] - 2026-11-12
 
 Literals, FIRST sets and enum dispatch now match on bytes, under grammars
 that still see `&str`. On the JSON benchmark (`canada.json`), parsing is
