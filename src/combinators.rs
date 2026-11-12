@@ -20,12 +20,12 @@ impl Parse for () {
     fn parse_at<M: Mode>(
         _input: &str,
         pos: usize,
-        _state: State,
+        _state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         Some((M::build(|_| ()), pos))
     }
 
-    fn fail_at(_pos: usize, _state: State) -> bool {
+    fn fail_at<M: Mode>(_pos: usize, _state: State<M>) -> bool {
         false
     }
 
@@ -56,7 +56,7 @@ macro_rules! impl_tuple {
             fn parse_at<M: Mode>(
                 input: &str,
                 pos: usize,
-                mut state: State,
+                mut state: State<M>,
             ) -> Option<(M::Output<Self>, usize)> {
                 $(
                     #[allow(non_snake_case)]
@@ -65,7 +65,7 @@ macro_rules! impl_tuple {
                 Some((M::build(|mode| ($(mode.get($T),)+)), pos))
             }
 
-            fn fail_at(pos: usize, mut state: State) -> bool {
+            fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
                 $( <$T>::fail_at(pos, state.reborrow()) || )+ false
             }
 
@@ -236,7 +236,7 @@ impl<A: Parse, B: Parse> Parse for Either<A, B> {
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        mut state: State,
+        mut state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         if let Some((a, end)) = A::parse_at::<M>(input, pos, state.reborrow()) {
             return Some((M::map(a, Left), end));
@@ -245,7 +245,7 @@ impl<A: Parse, B: Parse> Parse for Either<A, B> {
         Some((M::map(b, Right), end))
     }
 
-    fn fail_at(pos: usize, mut state: State) -> bool {
+    fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
         let a = A::fail_at(pos, state.reborrow());
         let b = B::fail_at(pos, state);
         a && b
@@ -277,7 +277,7 @@ impl<T: Parse> Parse for Option<T> {
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        state: State,
+        state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         Some(match T::parse_at::<M>(input, pos, state) {
             Some((value, end)) => (M::map(value, Some), end),
@@ -285,7 +285,7 @@ impl<T: Parse> Parse for Option<T> {
         })
     }
 
-    fn fail_at(pos: usize, state: State) -> bool {
+    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
         T::fail_at(pos, state);
         false
     }
@@ -314,7 +314,7 @@ impl<T: Parse> Parse for Vec<T> {
     fn parse_at<M: Mode>(
         input: &str,
         mut pos: usize,
-        mut state: State,
+        mut state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         let mut items = M::build(|_| Vec::new());
         while let Some((item, end)) = T::parse_at::<M>(input, pos, state.reborrow())
@@ -328,7 +328,7 @@ impl<T: Parse> Parse for Vec<T> {
         Some((items, pos))
     }
 
-    fn fail_at(pos: usize, state: State) -> bool {
+    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
         T::fail_at(pos, state);
         false
     }
@@ -389,13 +389,13 @@ impl<T: Parse> Parse for Vec1<T> {
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        state: State,
+        state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         let (items, end) = <Vec<T>>::parse_at::<M>(input, pos, state)?;
         (end != pos).then(|| (M::map(items, Self), end))
     }
 
-    fn fail_at(pos: usize, state: State) -> bool {
+    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
         T::fail_at(pos, state)
     }
 
@@ -434,7 +434,7 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        mut state: State,
+        mut state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         // Probe, so only what `G` matched is recorded, not what it expected.
         match state.probe(|state| G::parse_at::<Check>(input, pos, state)) {
@@ -446,7 +446,7 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
         }
     }
 
-    fn fail_at(_pos: usize, _state: State) -> bool {
+    fn fail_at<M: Mode>(_pos: usize, _state: State<M>) -> bool {
         false
     }
 
@@ -479,18 +479,18 @@ impl<G: Parse> Parse for FollowedBy<G> {
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        mut state: State,
+        mut state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         // Probe, so a match records nothing past `pos`; on failure, rerun `G`
         // to record what it expected.
         let matched = state.probe(|state| G::parse_at::<Check>(input, pos, state));
         if matched.is_none() {
-            G::parse_at::<Check>(input, pos, state);
+            G::check_at(input, pos, state);
         }
         matched.map(|_| (M::build(|_| FollowedBy(PhantomData)), pos))
     }
 
-    fn fail_at(pos: usize, state: State) -> bool {
+    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
         G::fail_at(pos, state)
     }
 

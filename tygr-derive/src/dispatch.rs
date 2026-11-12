@@ -37,10 +37,10 @@ pub(crate) fn dispatch(
     let items = quote! {
         #(
             #[inline]
-            fn #cases<__Mode: ::tygr::Mode>(input: &str, pos: usize, mut state: ::tygr::State) -> #output {
+            fn #cases<__Mode: ::tygr::Mode>(input: &str, pos: usize, mut state: ::tygr::State<__Mode>) -> #output {
                 if let ::core::option::Option::Some(result) = (|| { #arms })() {
                     // Matching empty, it rules out none of the variants skipped.
-                    if ::tygr::__private::TRACING && ::tygr::first::contains::<#firsts>(::core::option::Option::None) && result.1 == pos {
+                    if <__Mode as ::tygr::Mode>::RECORD && ::tygr::first::contains::<#firsts>(::core::option::Option::None) && result.1 == pos {
                         Self::__fail_at_skipped(input, pos, state);
                     }
                     return ::core::option::Option::Some(result);
@@ -67,21 +67,19 @@ pub(crate) fn dispatch(
         // Report the variants the table skipped: those before the first that
         // can start with the next byte.
         #[cold]
-        fn __fail_at_skipped(input: &str, pos: usize, mut state: ::tygr::State) {
+        fn __fail_at_skipped<__Mode: ::tygr::Mode>(input: &str, pos: usize, mut state: ::tygr::State<__Mode>) {
             let k = Self::__FIRST_CASE[input.as_bytes().get(pos).map_or(256, |&byte| byte as usize)];
             #( if #indices < k { let _ = #fail_ats; } )*
         }
 
         // Nothing matched: report the variants the table skipped.
         #[inline]
-        fn __parse_miss<__Mode: ::tygr::Mode>(input: &str, pos: usize, state: ::tygr::State) -> #output {
-            if ::tygr::__private::TRACING {
-                Self::__fail_at_skipped(input, pos, state);
-            }
+        fn __parse_miss<__Mode: ::tygr::Mode>(input: &str, pos: usize, state: ::tygr::State<__Mode>) -> #output {
+            Self::__fail_at_skipped(input, pos, state);
             ::core::option::Option::None
         }
     };
-    let fn_ty = quote! { fn(&str, usize, ::tygr::State<'_>) -> #output };
+    let fn_ty = quote! { fn(&str, usize, ::tygr::State<'_, __Mode>) -> #output };
     let body = quote! {
         // One table per mode.
         let table: &'static [#fn_ty; 257] = &const {

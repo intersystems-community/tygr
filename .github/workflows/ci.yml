@@ -49,16 +49,6 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        features:
-          - { name: default, flags: "" }
-          - { name: no-features, flags: "--no-default-features" }
-          - { name: all-features, flags: "--all-features" }
-          # Each tracing level by name too, whatever the default or all-features mean.
-          - { name: trace-pos, flags: "--no-default-features --features trace_pos" }
-          - { name: trace-one-node, flags: "--no-default-features --features trace_one_node" }
-          - { name: trace-all-nodes, flags: "--no-default-features --features trace_all_nodes" }
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -69,17 +59,17 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
 
-      - name: Clippy (${{ matrix.features.name }})
-        run: cargo clippy --workspace --all-targets ${{ matrix.features.flags }}
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
 
-      - name: Test (${{ matrix.features.name }})
-        run: cargo test --lib --bins --examples --tests ${{ matrix.features.flags }}
+      - name: Test
+        run: cargo test --lib --bins --examples --tests
 
-      - name: Doc tests (${{ matrix.features.name }})
-        run: cargo test --doc ${{ matrix.features.flags }}
+      - name: Doc tests
+        run: cargo test --doc
 
-      - name: Docs (${{ matrix.features.name }})
-        run: cargo doc --no-deps ${{ matrix.features.flags }}
+      - name: Docs
+        run: cargo doc --no-deps
 
   minimum-supported-rust-version:
     permissions:
@@ -97,4 +87,4 @@ jobs:
           # Outranks rust-toolchain.toml, which pins stable.
           RUSTUP_TOOLCHAIN: "1.88"
         # Building, not checking, also runs post-monomorphization checks.
-        run: cargo test --no-run --all-targets --all-features
+        run: cargo test --no-run --all-targets

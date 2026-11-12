@@ -87,7 +87,6 @@ fn hidden_alternative_or_lookahead_vanishes() {
         "UsesHiddenAlternative = Digits custom_name ."
     );
     assert!(UsesHiddenAlternative::parse(";x").is_ok());
-    #[cfg(feature = "trace_one_node")]
     assert_eq!(
         UsesHiddenAlternative::parse("1x;").unwrap_err().to_string(),
         "parse error at byte 2, expected:\n\t- anything but the text at 2..3"

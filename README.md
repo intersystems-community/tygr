@@ -4,9 +4,9 @@ Define your grammar once as Rust types and get a **parser**, **printer**, and **
 
 ## Get Started
 
-Start with the crate documentation on [docs.rs](https://docs.rs/tygr): the API,
-grammar concepts, and feature flags, plus a complete arithmetic grammar with
-parsing, printing, and EBNF generation.
+Start with the crate documentation on [docs.rs](https://docs.rs/tygr): the API
+and grammar concepts, plus a complete arithmetic grammar with parsing,
+printing, and EBNF generation.
 
 For a runnable example, see [`json`](examples/json.rs), a small CLI around a
 [full JSON grammar](examples/common/json.rs) following json.org:

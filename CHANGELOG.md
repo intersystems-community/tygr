@@ -6,6 +6,20 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
 
 ### Breaking Changes
 
+- A failed parse runs twice: the first pass tracks only the furthest
+  position it reaches, and the second, in the new `Record<M>` mode, records
+  what was expected there. The `trace`, `trace_pos`, `trace_one_node` and
+  `trace_all_nodes` features are gone: every build has `Error::pos` and
+  `Error::traces`, and each `Trace::context` is the whole chain of rules,
+  outermost first. A successful parse does no tracing work: on the JSON
+  benchmark (`canada.json`) it takes 16 ms instead of 25 with the default
+  tracing, while a failed one takes 43 instead of 27.
+- `State<M>` carries the mode, so a hand-written grammar takes
+  `state: State<M>` and its calls to `node`, `reject` and `fail_at` infer it;
+  `Parse::fail_at` is generic over the mode like `parse_at`. `Mode` has
+  `RECORD`, `Built`, `Checked` and `built`, and `Parse` has `build_at` and
+  `check_at` (`State::built` and `checked` underneath), to parse a part
+  building or only checking it whatever the mode.
 - `OLC::offset_to_line_character` and `line_character_to_offset` return a
   `Result`: a position past the input or a line, or inside a char or a
   surrogate pair, is an `OutOfRange { bound, excess }`, the nearest valid
