@@ -31,7 +31,6 @@
 //! | [`Ranged<T>`] | parsed via `T`, kept alongside its `start..end` byte range |
 //! | [`PhantomData<T>`](std::marker::PhantomData) | parsed via `T`, kept as nothing; doesn't print |
 //! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | sequence shorthands, [`Deref`](std::ops::Deref)-ing to `T` |
-//! | `(T, Vec<(S, T)>)` | items with separators between them (`T { S T }`) |
 //!
 //! [`Parse::bnf_rules`] lists a grammar's rules, each once, to sort,
 //! [rename](bnf::Rule::rename) and print.
