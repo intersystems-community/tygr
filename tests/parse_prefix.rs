@@ -1,9 +1,11 @@
+//! `parse_prefix` and `check_prefix`, and errors whatever the tracing.
+
 use tygr::*;
 
-char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
+char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 
-#[derive(Grammar, Debug, PartialEq, Eq)]
-struct Digits(StringOf1<IsDigit>);
+#[derive(Grammar, Debug)]
+struct Digits(StringOf1<Digit>);
 
 #[test]
 fn parse_prefix_stops_at_the_match_without_consuming_the_rest() {
@@ -18,11 +20,19 @@ fn parse_prefix_fails_when_nothing_matches() {
 }
 
 #[test]
-fn scan_prefix_stops_at_the_match_without_consuming_the_rest() {
-    assert_eq!(Digits::scan_prefix("123abc").unwrap(), 3);
+fn check_prefix_stops_at_the_match_without_consuming_the_rest() {
+    assert_eq!(Digits::check_prefix("123abc").unwrap(), 3);
 }
 
 #[test]
-fn scan_prefix_fails_when_nothing_matches() {
-    assert!(Digits::scan_prefix("abc").is_err());
+fn check_prefix_fails_when_nothing_matches() {
+    assert!(Digits::check_prefix("abc").is_err());
+}
+
+#[test]
+fn errors_print_something_whatever_the_tracing() {
+    let err = Digits::parse("abc").unwrap_err();
+    assert!(!format!("{err:?}").is_empty());
+    let err: Box<dyn std::error::Error> = Box::new(err);
+    assert!(!err.to_string().is_empty());
 }

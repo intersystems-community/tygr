@@ -9,10 +9,6 @@ on:
       - "!.github/workflows/**"
   pull_request:
     branches: [master]
-    paths-ignore:
-      - "*.md"
-      - ".github/**"
-      - "!.github/workflows/**"
 
 env:
   CARGO_TERM_COLOR: always
@@ -47,10 +43,6 @@ jobs:
           }
           check_lock_entry Cargo.lock tygr "$tygr_version"
           check_lock_entry Cargo.lock tygr-derive "$derive_version"
-          # tygr-derive has its own Cargo.lock, separate from the root one
-          # (there's no [workspace] table linking them), so it needs
-          # checking independently — see #39.
-          check_lock_entry tygr-derive/Cargo.lock tygr-derive "$derive_version"
 
   test:
     permissions:
@@ -62,6 +54,10 @@ jobs:
           - { name: default, flags: "" }
           - { name: no-features, flags: "--no-default-features" }
           - { name: all-features, flags: "--all-features" }
+          # Each tracing level by name too, whatever the default or all-features mean.
+          - { name: trace-pos, flags: "--no-default-features --features trace_pos" }
+          - { name: trace-one-node, flags: "--no-default-features --features trace_one_node" }
+          - { name: trace-all-nodes, flags: "--no-default-features --features trace_all_nodes" }
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -73,7 +69,7 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy (${{ matrix.features.name }})
-        run: cargo clippy --all-targets ${{ matrix.features.flags }} -- -D warnings
+        run: cargo clippy --workspace --all-targets ${{ matrix.features.flags }}
 
       - name: Test (${{ matrix.features.name }})
         run: cargo test --lib --bins --examples --tests ${{ matrix.features.flags }}
@@ -83,3 +79,21 @@ jobs:
 
       - name: Docs (${{ matrix.features.name }})
         run: cargo doc --no-deps ${{ matrix.features.flags }}
+
+  minimum-supported-rust-version:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88"
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build on the rust-version (1.88)
+        env:
+          # Outranks rust-toolchain.toml, which pins stable.
+          RUSTUP_TOOLCHAIN: "1.88"
+        # Building, not checking, also runs post-monomorphization checks.
+        run: cargo test --no-run --all-targets --all-features

@@ -2,26 +2,27 @@
 name = "tygr"
 version = "0.6.2"
 edition = "2024"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 description = "Define your grammar once as Rust types and get a parser, printer, and EBNF presentation for free."
 repository = "https://github.com/intersystems-community/tygr"
 readme = "README.md"
 
+[workspace]
+
 [dependencies]
 either = "1.15.0"
-tygr-derive = { path = "tygr-derive", version = "0.6" }
+tygr-derive = { path = "tygr-derive", version = "=0.6.2" }
 
 [features]
 default = ["trace_one_node"]
-trace = ["trace_all_nodes", "tygr-derive/trace"]
-trace_pos = ["tygr-derive/trace_pos"]
-trace_one_node = ["trace_pos", "tygr-derive/trace"]
+trace = ["trace_all_nodes"]
+trace_pos = []
+trace_one_node = ["trace_pos"]
 trace_all_nodes = ["trace_one_node"]
-lower_bnf_name = ["tygr-derive/lower_bnf_name"]
-upper_bnf_name = ["tygr-derive/upper_bnf_name"]
 
 [[bench]]
-name = "json_optimized"
+name = "json"
 harness = false
 
 [lints.clippy]

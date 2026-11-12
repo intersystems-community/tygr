@@ -5,58 +5,95 @@
 //!
 //! ## Design
 //!
-//! Derive [`Grammar`] on a `struct` or `enum` to get a parser, a printer, and
-//! a BNF presentation for free. Each supported Rust construct maps to an
-//! EBNF concept.
+//! Derive [`Grammar`] on a `struct` or `enum` for all three, or only
+//! [`Parse`] (the parser and EBNF) or [`Print`]. Each supported Rust
+//! construct maps to an EBNF concept.
 //!
 //! | Rust construct | EBNF ([Wirth 1977](https://doi.org/10.1145/359863.359883)) |
 //! |----------------|-------------------------------|
-//! | `struct`       | concatenation (`A B C`)      |
-//! | `enum`         | alternation (`A B \| C`) |
-//! | `(A, B, …)`    | inline concatenation         |
-//! | [`Either<A, B>`](either::Either) | inline alternation (`A \| B`) |
+//! | `struct`       | sequence (`A B C`)           |
+//! | `enum`         | alternation (`A B \| C D`) |
+//! | `(A, B, …)`    | inline sequence              |
+//! | `()`           | the empty sequence           |
+//! | [`StringEq!`] / [`StringEqCI!`] | a literal (`"if"` / `"if"i`) |
+//! | `char`         | any one char (`'any'`)       |
+//! | a [`char_class!`] type | one char of the class (`'digit'`) |
+//! | [`StringOf<C>`] / [`StringOf1<C>`] | chars of class `C`, kept as text (`{ 'digit' }` / `'digit' { 'digit' }`) |
+//! | [`Either<A, B>`](either::Either), from the `either` crate | inline alternation (`A \| B`) |
 //! | [`Vec<T>`]     | repetition (`{ T }`)         |
 //! | [`Vec1<T>`]    | one-or-more repetition (`T { T }`)      |
 //! | [`Option<T>`]  | optional (`[ T ]`)           |
 //! | [`Box<T>`]     | recursive indirection        |
 //! | [`NotFollowedBy<G>`] | negative lookahead (`!G`), consumes nothing |
 //! | [`FollowedBy<G>`] | positive lookahead (`!!G`), consumes nothing |
-//! | [`Hidden<T>`]  | parsed/printed, omitted from BNF |
-//! | [`Raw<T>`]     | parsed via `T`, kept as the raw matched text |
-//! | [`Range<T>`]   | parsed via `T`, kept alongside its `[start, end)` span |
-//! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | concatenation shorthands, [`Deref`]-ing to `T` |
-//! | [`VecSep<T, S>`] | one-or-more repetition with separators (`T { S T }`) |
+//! | [`Hidden<T>`]  | parsed/printed, omitted from EBNF |
+//! | [`Raw<T>`] | parsed via `T`, kept as the raw matched text |
+//! | [`Ranged<T>`] | parsed via `T`, kept alongside its `start..end` byte range |
+//! | [`PhantomData<T>`](std::marker::PhantomData) | parsed via `T`, kept as nothing; doesn't print |
+//! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | sequence shorthands, [`Deref`](std::ops::Deref)-ing to `T` |
 //!
-//! For a type that isn't itself a direct concatenation/alternation of other
-//! grammars, but is instead built *from* one (e.g. parsing digits into a
-//! `u32`), derive [`GrammarFromStr`](derive@GrammarFromStr),
-//! [`GrammarFromOther`](derive@GrammarFromOther), or
-//! [`GrammarTryFromOther`](derive@GrammarTryFromOther) instead — each builds
-//! `Self` from a parsed [`GrammarFrom::Source`] via `FromStr`, `From`, or
-//! `TryFrom` respectively.
+//! [`Parse::bnf_rules`] lists a grammar's rules, each once, to sort,
+//! [rename](bnf::Rule::rename) and print.
 //!
-//! `#[grammar(...)]` on a `#[derive(Grammar)]` type:
-//! - `name = "..."` — override the BNF rule name (defaults to the type name).
+//! Parsing is ordered choice with backtracking, as in PEG: the first
+//! alternative that matches wins, so list a literal before its prefixes
+//! (`"<="` before `"<"`); likewise `[ T ]` and `{ T }` never give back what
+//! they matched, so `[ "a" ] "ab"` fails on `ab`. A left-recursive grammar
+//! doesn't compile, as its [`Parse::First`] would be cyclic.
+//!
+//! Parsing recurses as the grammar nests, so input nested deeply enough
+//! overflows the stack, which aborts the process. For untrusted input,
+//! limit its size first or parse it on a thread with a bigger stack.
+//!
+//! `#[tygr(...)]` on a derived type:
+//! - `name = "..."` — override the EBNF rule name (defaults to the type's
+//!   name, which a generic type's instantiations share, so mark such a type
+//!   `inline`).
 //! - `hidden` — same effect as wrapping in [`Hidden<T>`], but on a whole struct/enum.
 //! - `inline` — splice this type's own definition wherever it's
-//!   referenced, instead of a rule reference.
+//!   referenced, instead of a rule reference (a recursive one keeps its rule).
 //! - `validated` — after a successful parse, run [`Validate::validate`] on the
 //!   value; a rejection backtracks as if the grammar hadn't matched.
 //!
+//! `#[tygr(...)]` on a field of type `T` parses another grammar `S` and
+//! converts it to `T`, e.g. digits into a `u32`, naming how:
+//! - `try_from = S`: `S: TryInto<T>`, on the parsed value.
+//! - `try_from_infallible = S`: the same with `Error = Infallible`, as for
+//!   every `From` conversion.
+//! - `from_str = S`: `T: FromStr`, on the matched text.
+//! - `from_str_infallible = S`: the same with `Err = Infallible`.
+//!
+//! A failed conversion backtracks, recorded and footnoted in EBNF like a
+//! failed [`Validate`] check; an infallible one is skipped when checking.
+//! Converting loses the text, so to print, the field needs `print_to = f`,
+//! an `fn(&T, &mut String)` such as [`print_display`] (or
+//! [`Print::print_to`], if `T` is a grammar). A unit variant is a field of
+//! type `()`: `try_from_infallible = S` converts `S` into `()`, which a
+//! literal with one text does (`StringEq!`, or `StringEqCI!` without cased
+//! chars), as does a grammar of yours with `impl From<S> for ()`; `try_from`
+//! if the conversion can fail. Its `print_to` takes `&()`.
+//!
+//! ```
+//! # use tygr::*;
+//! # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
+//! #[derive(Grammar)]
+//! struct Port(#[tygr(from_str = StringOf1<Digit>, print_to = print_display)] u16);
+//! assert_eq!(Port::parse("8080").unwrap().0, 8080);
+//! assert!(Port::parse("99999").is_err());
+//! assert_eq!(Port(443).print(), "443");
+//! ```
+//!
 //! ## Feature Flags
 //!
-//! The `tygr` crate enables the `trace_one_node` feature by default.
-//! Available features are:
+//! Each tracing feature records more about a failed parse, at some cost,
+//! and implies the one above it. `trace_one_node` is on by default.
 //!
-//! | Feature | Description |
-//! | ------- | ----------- |
-//! | `default` | Enables `trace_one_node`. |
-//! | `trace` | Enables all tracing features. |
-//! | `trace_pos` | Traces parser positions. |
-//! | `trace_one_node` | Traces only the nearest grammar node for each attempt. |
-//! | `trace_all_nodes` | Traces the complete grammar node chain for each attempt. |
-//! | `lower_bnf_name` | Converts generated BNF names to lowercase. |
-//! | `upper_bnf_name` | Converts generated BNF names to uppercase. |
+//! | Feature | Records |
+//! | ------- | ------- |
+//! | `trace_pos` | [`Error::pos`]: the furthest byte offset reached. |
+//! | `trace_one_node` | [`Error::traces`]: what was expected there, each in its nearest rule. |
+//! | `trace_all_nodes` | The whole rule path of each ([`Trace::context`]); much slower, as it copies the path each time. |
+//! | `trace` | All of the above. |
 //!
 //! ## Quick Example
 //!
@@ -87,71 +124,79 @@
 //!     Number(Int),
 //! }
 //!
-//! char_class!(pub IsDigit, "digit", |ch| ch.is_ascii_digit());
+//! char_class!(pub Digit, "digit", |ch| ch.is_ascii_digit());
 //!
 //! #[derive(Grammar)]
-//! pub struct Int(pub StringOf1<IsDigit>);
+//! pub struct Int(pub StringOf1<Digit>);
 //!
-//! char_class!(pub IsSpace, "space", |ch| ch.is_ascii_whitespace());
+//! char_class!(pub Space, "space", |ch| ch.is_ascii_whitespace());
 //!
 //! #[derive(Grammar)]
-//! #[grammar(hidden)]
-//! pub struct Ws(pub StringOf<IsSpace>);
+//! #[tygr(hidden)]
+//! pub struct Ws(pub StringOf<Space>);
 //!
 //! let e = Expr::parse("1 + 2 * 3").unwrap();
 //! assert_eq!(e.print(), "1 + 2 * 3");
-//! assert_eq!(
-//!     bnf_rules![Expr, Op1, Expr1, Op2, Expr2, Int].to_string(),
-//!     "Expr = Expr1 { Op1 Expr1 } .\n\
-//! Op1 = \"+\" | \"-\" .\n\
-//! Expr1 = Expr2 { Op2 Expr2 } .\n\
-//! Op2 = \"*\" | \"/\" .\n\
-//! Expr2 = \"(\" Expr \")\" | Int .\n\
-//! Int = 'digit' { 'digit' } ."
-//! );
+//!
+//! let bnf: Vec<String> = Expr::bnf_rules().iter().map(ToString::to_string).collect();
+//! assert_eq!(bnf.join("\n"), r#"Expr = Expr1 { Op1 Expr1 } .
+//! Expr1 = Expr2 { Op2 Expr2 } .
+//! Expr2 = "(" Expr ")" | Int .
+//! Int = 'digit' { 'digit' } .
+//! Op2 = "*" | "/" .
+//! Op1 = "+" | "-" ."#);
 //! ```
+#![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 pub mod bnf;
-mod char;
+mod combinators;
+mod convert;
 pub mod first;
 mod grammar;
 mod olc;
+#[cfg(doctest)]
+mod rejected;
 mod state;
+mod token;
+mod wrappers;
 
-use std::ops::Deref;
-
-pub use char::*;
+pub use combinators::*;
 pub use grammar::*;
 pub use olc::*;
 pub use state::*;
+pub use token::{CharClass, StringOf, StringOf1};
+pub use wrappers::*;
 
-// Re-exported so the `StringEq!()`/`StringEqCI!()` macro expansions can
-// reference them, but hidden from docs so users always reach for the macros
-// instead of naming these types directly. `StringEq`/`StringEqCI` here are
-// types (in the type namespace); the macros of the same name below live in
-// the macro namespace, so there's no conflict.
+// Paths the macros expand to, whatever the user has in scope.
 #[doc(hidden)]
-pub use char::{CharCIThen, CharThen, StringEq, StringEqCI};
+pub mod __private {
+    pub use crate::bnf::{inline_bnf, visit_inline};
+    pub use crate::convert::{from_str, from_str_infallible, try_from, try_from_infallible};
+    pub use crate::token::{
+        ByteEq, NonAsciiStart, Token, class_fail_at, class_parse_at, class_to_bnf,
+    };
+    pub use either::Either;
 
-// Lets generated code inside this crate use `::tygr::...` paths, matching
-// how downstream crates refer to it.
-#[doc(hidden)]
+    /// Whether failures are traced, so derived code can skip reporting.
+    pub const TRACING: bool = cfg!(feature = "trace_pos");
+}
+
+// Lets derived code inside this crate use `::tygr::` paths.
 extern crate self as tygr;
 
-pub use tygr_derive::Grammar;
-pub use tygr_derive::{GrammarFromOther, GrammarFromStr, GrammarTryFromOther};
+pub use tygr_derive::{Grammar, Parse, Print};
 
-/// Expand a string literal into a literal-token type.
-///
-/// - Single character: `StringEq!(",")` → `StringEq<CharThen<',', ()>>`
-/// - Multiple characters: `StringEq!("->")` → `StringEq<CharThen<'-', CharThen<'>', ()>>>`
+/// A literal-string grammar: `StringEq!("->")` matches exactly `->`, and is
+/// `Default`, to build one by hand (e.g. to print).
+/// In a generic type, std's derives (`Debug`, `Clone`, …) reject a type macro
+/// as a field: alias it first, `type Arrow = StringEq!("->");`.
 ///
 /// ```
 /// # use tygr::*;
-/// # char_class!(pub IsDigit, "digit", |ch| ch.is_ascii_digit());
+/// # char_class!(pub Digit, "digit", |ch| ch.is_ascii_digit());
 /// # #[derive(Grammar)]
-/// # pub struct Num(StringOf1<IsDigit>);
+/// # pub struct Num(StringOf1<Digit>);
 /// # #[derive(Grammar)]
 /// # pub struct Expr(Num);
 /// #[derive(Grammar)]
@@ -162,13 +207,13 @@ pub use tygr_derive::{GrammarFromOther, GrammarFromStr, GrammarTryFromOther};
 /// ```
 pub use tygr_derive::StringEq;
 
-/// Expand a string literal into a *case-insensitive* literal-token type.
-///
-/// Like [`StringEq!`], but matches both uppercase and lowercase variants.
+/// A case-insensitive [`StringEq!`]: each char also matches its Unicode
+/// lower/upper case mappings and theirs (`'é'` matches `"É"`, `'ß'` matches
+/// `"SS"` and `"ss"`). The value keeps the spelling it matched, so it prints
+/// back as is and `"IF"` and `"if"` parse to unequal values.
 ///
 /// ```
 /// # use tygr::*;
-/// # char_class!(IsSpace, "space", |ch| matches!(ch, ' ' | '\t'));
 /// #[derive(Grammar)]
 /// pub enum Keyword {
 ///     Class(StringEqCI!("class")),  // matches "class", "CLASS", "Class", etc.
@@ -176,314 +221,3 @@ pub use tygr_derive::StringEq;
 /// }
 /// ```
 pub use tygr_derive::StringEqCI;
-
-// ── Macros ──────────────────────────────────────────────────────────────────
-
-/// Collect BNF rule definitions from one or more [`GrammarRule`] types.
-///
-/// ```
-/// # use tygr::*;
-/// # char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
-/// # #[derive(Grammar)] struct Number(StringOf1<IsDigit>);
-/// # #[derive(Grammar)] struct AddOp(StringEq!("+"));
-/// # #[derive(Grammar)] struct MulOp(StringEq!("*"));
-/// # #[derive(Grammar)] struct Factor(Number);
-/// # #[derive(Grammar)] struct Term(Factor);
-/// # #[derive(Grammar)] struct Expr(Term);
-/// let bnf = bnf_rules![Expr, Term, Factor, Number, AddOp, MulOp];
-/// println!("{bnf}");
-/// ```
-#[macro_export]
-macro_rules! bnf_rules {
-    ($($T:ty),+ $(,)?) => {{
-        let mut _buf = ::std::string::String::new();
-        $(
-            if !_buf.is_empty() { _buf.push('\n'); }
-            _buf.push_str(&<$T as $crate::GrammarRule>::bnf_rule());
-        )+
-        _buf
-    }};
-}
-
-/// Define a [`CharClass`] in one line.
-///
-/// Three forms:
-///
-/// ```
-/// # use tygr::*;
-/// char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
-/// ```
-///
-/// A visibility qualifier is optional (defaults to private):
-///
-/// ```
-/// # use tygr::*;
-/// char_class!(pub IsDigit, "digit", |ch| ch.is_ascii_digit());
-/// ```
-///
-/// ```
-/// # use tygr::*;
-/// char_class!(IsDigit, "digit", |ch| ch.is_ascii_digit());
-///
-/// #[derive(Grammar)]
-/// struct Num(StringOf1<IsDigit>);
-/// ```
-#[macro_export]
-macro_rules! char_class {
-    ($vis:vis $name:ident, $label:expr, |$ch:ident| $pred:expr) => {
-        $vis struct $name;
-        impl $crate::CharClass for $name {
-            fn matches($ch: char) -> bool { $pred }
-            fn name() -> &'static str { $label }
-        }
-    };
-}
-
-/// Post-parse validation for `#[grammar(validated)]` types.
-///
-/// Return `false` to reject the parsed value — the parse backtracks as if
-/// the grammar hadn't matched, and [`REQUIREMENT`](Validate::REQUIREMENT) is reported
-/// in traces as "must {REQUIREMENT}".
-pub trait Validate {
-    /// The property a value must satisfy — a fixed, per-type description,
-    /// not a per-value diagnostic, since it doesn't depend on `self`. Shown
-    /// in both error traces and generated BNF, so pick something concrete
-    /// rather than a generic placeholder.
-    const REQUIREMENT: &'static str;
-
-    /// Check the just-parsed value; return `false` to reject it.
-    fn validate(&self) -> bool;
-}
-
-// `pub`, not private: leaks into `VecSepSource`'s public `Grammar::First`
-// associated type through the `rest` field, so it must stay nameable (E0446).
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
-#[doc(hidden)]
-pub struct SepItem<S, T> {
-    sep: S,
-    item: T,
-}
-
-// The shape actually parsed (`T { S T }`); `VecSep` converts from this to
-// expose `items`/`seps` as plain vectors instead.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
-#[doc(hidden)]
-pub struct VecSepSource<T, S> {
-    head: Box<T>,
-    rest: Vec<SepItem<S, T>>,
-}
-
-/// One or more items, with a separator between each pair.
-#[derive(Debug, Clone, PartialEq, Eq, GrammarFromOther)]
-#[grammar(inline)]
-pub struct VecSep<T, S> {
-    /// The `T` items, in order.
-    pub items: Vec<T>,
-    /// The `S` separators, in order — always exactly one fewer than `items`.
-    pub seps: Vec<S>,
-}
-
-impl<T, S> From<VecSepSource<T, S>> for VecSep<T, S> {
-    fn from(source: VecSepSource<T, S>) -> Self {
-        let mut items = Vec::with_capacity(source.rest.len() + 1);
-        let mut seps = Vec::with_capacity(source.rest.len());
-        items.push(*source.head);
-        for sep_item in source.rest {
-            seps.push(sep_item.sep);
-            items.push(sep_item.item);
-        }
-        VecSep { items, seps }
-    }
-}
-
-impl<T: Grammar, S: Grammar> GrammarFrom for VecSep<T, S> {
-    type Source = VecSepSource<T, S>;
-
-    fn print_to(&self, buf: &mut String) {
-        let mut items = self.items.iter();
-        if let Some(first) = items.next() {
-            first.print_to(buf);
-        }
-        for (sep, item) in self.seps.iter().zip(items) {
-            sep.print_to(buf);
-            item.print_to(buf);
-        }
-    }
-}
-
-impl<T, S> VecSep<T, S> {
-    /// Consume into `(item, separator)` pairs, one per separator (the first
-    /// item is paired with the separator that follows it).
-    pub fn into_item_sep(self) -> impl Iterator<Item = (T, S)> {
-        self.items.into_iter().zip(self.seps)
-    }
-
-    /// The first `T` item.
-    pub fn first(&self) -> &T {
-        &self.items[0]
-    }
-
-    /// The last `T` item.
-    pub fn last(&self) -> &T {
-        self.items.last().unwrap()
-    }
-}
-
-/// Sequence of three grammars, [`Deref`]-ing to the middle one.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
-pub struct Wrap<L, T, R> {
-    /// The leading element.
-    pub before: L,
-    /// The wrapped value.
-    pub wrapped: T,
-    /// The trailing element.
-    pub after: R,
-}
-
-impl<L, T, R> Wrap<L, T, R> {
-    /// Construct a `Wrap` from its three parts.
-    pub fn new(before: L, wrapped: T, after: R) -> Self {
-        Self {
-            before,
-            wrapped,
-            after,
-        }
-    }
-
-    /// Apply `f` to the wrapped value, keeping `before`/`after` unchanged.
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Wrap<L, U, R> {
-        Wrap {
-            before: self.before,
-            wrapped: f(self.wrapped),
-            after: self.after,
-        }
-    }
-}
-
-impl<L, T, E, R> Wrap<L, Result<T, E>, R> {
-    /// Swap `Wrap<L, Result<T, E>, R>` for `Result<Wrap<L, T, R>, E>`.
-    pub fn transpose(self) -> Result<Wrap<L, T, R>, E> {
-        Ok(Wrap {
-            before: self.before,
-            wrapped: self.wrapped?,
-            after: self.after,
-        })
-    }
-}
-
-/// Sequence of two grammars, [`Deref`]-ing to the second.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
-pub struct Prefix<P, T> {
-    prefix: P,
-    /// The prefixed value.
-    pub prefixed: T,
-}
-
-/// Sequence of two grammars, [`Deref`]-ing to the first.
-#[derive(Debug, Clone, PartialEq, Eq, Grammar)]
-#[grammar(inline)]
-pub struct Suffix<T, S> {
-    suffixed: T,
-    suffix: S,
-}
-
-impl<L, T, R> Deref for Wrap<L, T, R> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.wrapped
-    }
-}
-
-impl<T, S> Deref for Suffix<T, S> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.suffixed
-    }
-}
-
-impl<P, T> Deref for Prefix<P, T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.prefixed
-    }
-}
-
-impl<P, T> Prefix<P, T> {
-    /// Construct a `Prefix` from its two parts.
-    pub fn new(prefix: P, prefixed: T) -> Self {
-        Self { prefix, prefixed }
-    }
-
-    /// Apply `f` to the prefixed value, keeping `prefix` unchanged.
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Prefix<P, U> {
-        Prefix {
-            prefix: self.prefix,
-            prefixed: f(self.prefixed),
-        }
-    }
-}
-
-impl<P, T, E> Prefix<P, Result<T, E>> {
-    /// Swap `Prefix<P, Result<T, E>>` for `Result<Prefix<P, T>, E>`.
-    pub fn transpose(self) -> Result<Prefix<P, T>, E> {
-        Ok(Prefix {
-            prefix: self.prefix,
-            prefixed: self.prefixed?,
-        })
-    }
-}
-
-impl<T, S> Suffix<T, S> {
-    /// Construct a `Suffix` from its two parts.
-    pub fn new(suffixed: T, suffix: S) -> Self {
-        Self { suffixed, suffix }
-    }
-
-    /// Apply `f` to the suffixed value, keeping `suffix` unchanged.
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Suffix<U, S> {
-        Suffix {
-            suffixed: f(self.suffixed),
-            suffix: self.suffix,
-        }
-    }
-}
-
-impl<T, S, E> Suffix<Result<T, E>, S> {
-    /// Swap `Suffix<Result<T, E>, S>` for `Result<Suffix<T, S>, E>`.
-    pub fn transpose(self) -> Result<Suffix<T, S>, E> {
-        Ok(Suffix {
-            suffixed: self.suffixed?,
-            suffix: self.suffix,
-        })
-    }
-}
-
-/// Unwrap a grammar wrapper (e.g. [`Wrap`], [`Prefix`], [`Suffix`]) to get
-/// at the value it wraps.
-pub trait IntoInner<T> {
-    /// Consume `self`, discarding whatever structure wrapped `T`.
-    fn into_inner(self) -> T;
-}
-
-impl<L, T, R> IntoInner<T> for Wrap<L, T, R> {
-    fn into_inner(self) -> T {
-        self.wrapped
-    }
-}
-
-impl<T, S> IntoInner<T> for Suffix<T, S> {
-    fn into_inner(self) -> T {
-        self.suffixed
-    }
-}
-
-impl<P, T> IntoInner<T> for Prefix<P, T> {
-    fn into_inner(self) -> T {
-        self.prefixed
-    }
-}

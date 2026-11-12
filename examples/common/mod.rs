@@ -1,57 +1,56 @@
-//! Shared CLI dispatch for the runnable grammar examples.
-//!
-//! `#[path]`-included by each example. Not a standalone target.
+//! The CLI verbs of `examples/json.rs`.
+//! Included as `mod common;`; not a standalone target.
 
 use std::fmt::Debug;
 use std::io::{self, Read};
 use std::process::ExitCode;
 
-use tygr::Grammar;
+use tygr::{Error, Grammar, Parse};
 
-/// Read all of stdin into a `String`.
+/// Read all of stdin, minus the trailing JSON whitespace (`echo` appends a newline).
 fn read_stdin() -> String {
     let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)
         .expect("failed to read stdin");
-    input
+    input.trim_end_matches([' ', '\t', '\n', '\r']).to_owned()
+}
+
+/// Print `shown`, or the error, and exit accordingly.
+fn report(shown: Result<String, Error>) -> ExitCode {
+    match shown {
+        Ok(text) => {
+            println!("{text}");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 /// `parse`: parse stdin with `R` and print the `Debug` tree.
-pub fn parse<R: Grammar + Debug>() -> ExitCode {
-    let input = read_stdin();
-    match R::parse(input.trim_end()) {
-        Ok(value) => {
-            println!("{value:#?}");
-            ExitCode::SUCCESS
-        }
-        Err(err) => {
-            eprintln!("parse error{err}");
-            ExitCode::FAILURE
-        }
-    }
+pub(crate) fn parse<R: Parse + Debug>() -> ExitCode {
+    report(R::parse(&read_stdin()).map(|value| format!("{value:#?}")))
 }
 
-/// `test`: check that stdin is well-formed under `R`; print `ok` / `error`.
-pub fn test<R: Grammar>() -> ExitCode {
-    let input = read_stdin();
-    match R::scan(input.trim_end()) {
-        Ok(()) => {
-            println!("ok");
-            ExitCode::SUCCESS
-        }
-        Err(err) => {
-            eprintln!("error{err}");
-            ExitCode::FAILURE
-        }
-    }
+/// `print`: parse stdin with `R` and print it back.
+pub(crate) fn print<R: Grammar>() -> ExitCode {
+    report(R::parse(&read_stdin()).map(|value| value.print()))
+}
+
+/// `test`: check that stdin is well-formed under `R`; print `ok`, or the error.
+pub(crate) fn test<R: Parse>() -> ExitCode {
+    report(R::check(&read_stdin()).map(|()| "ok".to_string()))
 }
 
 /// Print a usage line naming the available verbs and exit with failure.
-pub fn usage(name: &str) -> ExitCode {
-    eprintln!("usage: {name} <bnf|parse|test>");
+pub(crate) fn usage() -> ExitCode {
+    eprintln!("usage: json <bnf|parse|print|test>");
     eprintln!("  bnf          print the grammar as EBNF");
     eprintln!("  parse        parse stdin, print the AST");
+    eprintln!("  print        parse stdin, print it back");
     eprintln!("  test         check stdin is well-formed (exit 0/1)");
     ExitCode::FAILURE
 }

@@ -1,30 +1,25 @@
-# 🐯 tygr: TYpes Into Grammar Routines
+# 🐯 tygr: TYpe into Grammar Routines
 
-Define your grammar once as Rust types and get **parser**, **printer**, and **presentation in EBNF** for free.
+Define your grammar once as Rust types and get a **parser**, **printer**, and **presentation in EBNF** for free.
 
 ## Get Started
 
-Start with the crate documentation on [docs.rs](https://docs.rs/tygr), which
-contains a complete arithmetic grammar with parsing, printing, and EBNF generation.
+Start with the crate documentation on [docs.rs](https://docs.rs/tygr): the API,
+grammar concepts, and feature flags, plus a complete arithmetic grammar with
+parsing, printing, and EBNF generation.
 
-See the crate documentation for the complete API, grammar concepts, and feature
-flags.
-
-For runnable examples, see:
-
-- [`json`](examples/json.rs) — a full JSON grammar.
-- [`json_optimized`](examples/json_optimized.rs) — the same JSON grammar, hand-tuned for parsing throughput.
-
-Each is a small CLI:
+For a runnable example, see [`json`](examples/json.rs), a small CLI around a
+[full JSON grammar](examples/common/json.rs) following json.org:
 
 ```sh
 cargo run --example json -- bnf              # print the grammar as EBNF
 echo '{"a": [1, true]}' | cargo run --example json -- parse   # parse, print the AST
+echo '{"a": [1, true]}' | cargo run --example json -- print   # parse, print it back
 echo '{"a": 1}'         | cargo run --example json -- test    # check well-formed (exit 0/1)
 ```
 
-The optimized JSON grammar is also benchmarked (`cargo bench`) against the inputs
-in [`data/`](data/).
+The same grammar is benchmarked (`cargo bench`) against the inputs in
+[`data/`](data/).
 
 ## See Also
 
@@ -51,8 +46,8 @@ combinators keep all of that, but you write the parsing expressions _and_ the ty
 want the result in — two descriptions of the same structure to keep in sync. With tygr
 the type _is_ the grammar, so there is nothing to keep in sync.
 
-**PEG and parser combinators.** tygr reads a grammar as a recursive-descent parser with
-backtracking, the reading refined by Parsing Expression Grammars
+**PEG and parser combinators.** tygr reads a grammar as a backtracking recursive-descent
+parser, in the manner of Parsing Expression Grammars
 ([PEG](https://en.wikipedia.org/wiki/Parsing_expression_grammar)) and parser combinators
 ([Parsec](https://hackage.haskell.org/package/parsec)).
 

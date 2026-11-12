@@ -1,27 +1,26 @@
-//! Intermediate representation for BNF/EBNF generation with optimization.
-//!
-//! This module provides an AST for BNF expressions that can be built, optimized,
-//! and then formatted. This allows us to:
-//! - Simplify repetition patterns based on hidden elements
-//! - Detect and simplify enum-as-option patterns
-//!
-//! Formatted output follows Wirth syntax notation — see the crate-level
-//! `## Design` section for the exact notation and its citation.
+//! EBNF (Wirth notation): expressions, simplified as they're built, and the
+//! named rules a grammar collects.
 
+use crate::Parse;
+use std::any::TypeId;
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fmt;
 
-/// Intermediate representation of a BNF/EBNF expression.
-/// All instances are maintained in optimized form.
+/// An EBNF expression, kept simplified.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
-    /// A case-sensitive literal, formatted as `"text"`.
-    StringEq(String),
-    /// A case-insensitive literal, formatted as `"text"i`.
-    StringEqCI(String),
-    /// A reference to another named rule.
+    /// A literal, formatted as `"text"` or `"text"i`.
+    Token {
+        /// The literal.
+        text: String,
+        /// Also matches other cases (`"text"i`).
+        case_insensitive: bool,
+    },
+    /// A reference to a named rule.
     RuleRef(String),
-    /// A character class, formatted as `'label'`.
-    CharOf(String),
+    /// A character class, formatted as `'name'`.
+    CharClass(String),
     /// Concatenation: `A B C`.
     Sequence(Vec<Expr>),
     /// Alternation: `A | B | C`.
@@ -32,8 +31,12 @@ pub enum Expr {
     Optional(Box<Expr>),
     /// Negative lookahead: `!A`.
     NotFollowedBy(Box<Expr>),
-    /// A side-condition beyond the shown syntax: `A ^1` (see [`Expr::side_conditions`]).
+    /// A side-condition beyond the shown syntax: `A ^1` (see
+    /// [`Expr::side_conditions`]).
     SideCondition(Box<Expr>, &'static str),
+    /// Left out ([`Hidden`](crate::Hidden), `#[tygr(hidden)]`): dropped
+    /// from sequences and alternations.
+    Hidden,
 }
 
 /// Binding tightness, from loosest to tightest.
@@ -41,86 +44,109 @@ pub enum Expr {
 enum Prec {
     Alternation,
     Sequence,
+    SideCondition,
     Atom,
 }
 
 impl Expr {
-    /// Matches nothing; omitted from formatted output. Represented as an
-    /// empty [`Sequence`](Expr::Sequence) rather than its own variant, since
-    /// `format_list` already renders one as nothing.
+    /// The empty [`Sequence`](Expr::Sequence), which consumes nothing.
     pub fn empty() -> Expr {
         Expr::Sequence(vec![])
     }
 
-    /// Is this an empty [`Sequence`](Expr::Sequence) (see [`Expr::empty`])?
     fn is_empty(&self) -> bool {
         matches!(self, Expr::Sequence(exprs) if exprs.is_empty())
     }
 
-    /// Create a sequence, automatically flattening nested sequences.
-    pub fn sequence(mut exprs: Vec<Expr>) -> Expr {
-        // flatten nested sequences
-        exprs = exprs
-            .into_iter()
-            .flat_map(|expr| match expr {
-                Expr::Sequence(inner) => inner,
-                _ => vec![expr],
-            })
-            .collect();
-        match exprs.len() {
-            1 => exprs.into_iter().next().unwrap(),
-            _ => Expr::Sequence(exprs),
+    /// Empty or hidden.
+    fn is_blank(&self) -> bool {
+        self.is_empty() || *self == Expr::Hidden
+    }
+
+    /// A flattened sequence without its hidden parts (hidden if all are).
+    pub fn sequence(exprs: Vec<Expr>) -> Expr {
+        let mut hidden = false;
+        let mut parts = Vec::new();
+        for expr in exprs {
+            match expr {
+                Expr::Sequence(inner) => parts.extend(inner),
+                Expr::Hidden => hidden = true,
+                _ => parts.push(expr),
+            }
+        }
+        match parts.len() {
+            0 if hidden => Expr::Hidden,
+            1 => parts.pop().unwrap(),
+            _ => Expr::Sequence(parts),
         }
     }
 
-    /// Create an alternation, automatically flattening.
-    pub fn alternation(mut exprs: Vec<Expr>) -> Expr {
-        exprs = exprs
-            .into_iter()
-            .flat_map(|expr| match expr {
-                Expr::Alternation(inner) => inner,
-                _ => vec![expr],
-            })
-            .collect();
-
-        match exprs.len() {
-            1 => exprs.into_iter().next().unwrap(),
-            _ => Expr::Alternation(exprs),
+    /// A flattened alternation without its hidden alternatives (hidden if
+    /// all are); an empty alternative makes the rest optional, and none at
+    /// all (an empty enum) is footnoted `never matches`.
+    pub fn alternation(exprs: Vec<Expr>) -> Expr {
+        let (mut hidden, mut empty) = (false, false);
+        let mut alternatives = Vec::new();
+        for expr in exprs {
+            match expr {
+                Expr::Alternation(inner) => alternatives.extend(inner),
+                Expr::Hidden => hidden = true,
+                _ if expr.is_empty() => empty = true,
+                _ => alternatives.push(expr),
+            }
+        }
+        let alternation = match alternatives.len() {
+            0 if empty => Expr::empty(),
+            0 if hidden => Expr::Hidden,
+            0 => Expr::side_condition(Expr::empty(), "never matches"),
+            1 => alternatives.pop().unwrap(),
+            _ => Expr::Alternation(alternatives),
+        };
+        if empty {
+            Expr::optional(alternation)
+        } else {
+            alternation
         }
     }
 
-    /// Create a repetition, dropping any hidden (`Empty`) elements first; an
-    /// entirely-hidden inner expression vanishes rather than showing as `{ }`.
+    /// `{ expr }`, or `expr` if it's empty or hidden.
     pub fn repetition(expr: Expr) -> Expr {
-        let expr = expr.remove_empties();
-        if expr.is_empty() {
+        if expr.is_blank() {
             expr
         } else {
             Expr::Repetition(Box::new(expr))
         }
     }
 
-    /// Create an optional, dropping any hidden (`Empty`) elements first; an
-    /// entirely-hidden inner expression vanishes rather than showing as `[ ]`.
+    /// `[ expr ]`, or `expr` if it's empty or hidden.
     pub fn optional(expr: Expr) -> Expr {
-        let expr = expr.remove_empties();
-        if expr.is_empty() {
+        if expr.is_blank() {
             expr
         } else {
             Expr::Optional(Box::new(expr))
         }
     }
 
-    /// Attach a side-condition to `expr`, reported as a numbered marker —
-    /// see [`Expr::side_conditions`].
-    pub fn side_condition(expr: Expr, text: &'static str) -> Expr {
-        Expr::SideCondition(Box::new(expr), text)
+    /// `!expr`, or `expr` if it's hidden.
+    pub fn not_followed_by(expr: Expr) -> Expr {
+        if expr == Expr::Hidden {
+            expr
+        } else {
+            Expr::NotFollowedBy(Box::new(expr))
+        }
     }
 
-    /// This expression's [`SideCondition`](Expr::SideCondition) texts, deduplicated by string
-    /// equality, in first-occurrence order — the same order [`format`](
-    /// Self::format) numbers their `^1`, `^2`, ... markers. Callers print
-    /// these as footnotes after the formatted expression.
+    /// `expr` with a footnoted side-condition, or `expr` if it's hidden.
+    pub fn side_condition(expr: Expr, text: &'static str) -> Expr {
+        if expr == Expr::Hidden {
+            expr
+        } else {
+            Expr::SideCondition(Box::new(expr), text)
+        }
+    }
+
+    /// The side-condition texts, deduplicated, in the order `Display`
+    /// numbers them.
     pub fn side_conditions(&self) -> Vec<&'static str> {
         let mut notes = Vec::new();
         self.collect_side_conditions(&mut notes);
@@ -143,29 +169,37 @@ impl Expr {
             Expr::Repetition(inner) | Expr::Optional(inner) | Expr::NotFollowedBy(inner) => {
                 inner.collect_side_conditions(notes);
             }
-            Expr::StringEq(_) | Expr::StringEqCI(_) | Expr::RuleRef(_) | Expr::CharOf(_) => {}
+            Expr::Token { .. } | Expr::RuleRef(_) | Expr::CharClass(_) | Expr::Hidden => {}
         }
     }
 
-    /// Format this expression as EBNF. Each [`SideCondition`](Expr::SideCondition) renders as a
-    /// numbered marker (`^1`, `^2`, ...) rather than its text — see
-    /// [`side_conditions`](Self::side_conditions) for the footnotes to print
-    /// alongside.
-    pub fn format(&self, f: &mut dyn fmt::Write) -> fmt::Result {
-        let notes = self.side_conditions();
-        self.format_internal(f, Prec::Alternation, &notes)
+    /// Rename each rule this refers to with `f`.
+    fn rename(&mut self, f: &impl Fn(&str) -> String) {
+        match self {
+            Expr::RuleRef(name) => *name = f(name),
+            Expr::Sequence(exprs) | Expr::Alternation(exprs) => {
+                for expr in exprs {
+                    expr.rename(f);
+                }
+            }
+            Expr::Repetition(inner)
+            | Expr::Optional(inner)
+            | Expr::NotFollowedBy(inner)
+            | Expr::SideCondition(inner, _) => inner.rename(f),
+            Expr::Token { .. } | Expr::CharClass(_) | Expr::Hidden => {}
+        }
     }
 
     fn prec(&self) -> Prec {
         match self {
-            _ if self.is_empty() => Prec::Atom,
-            Expr::Alternation(_) | Expr::SideCondition(..) => Prec::Alternation,
-            Expr::Sequence(_) => Prec::Sequence,
+            Expr::Alternation(_) => Prec::Alternation,
+            Expr::Sequence(exprs) if !exprs.is_empty() => Prec::Sequence,
+            Expr::SideCondition(..) => Prec::SideCondition,
             _ => Prec::Atom,
         }
     }
 
-    /// Wrap in parens when this expression binds looser than the surrounding context.
+    /// Parenthesized when it binds looser than its context.
     fn format_internal(
         &self,
         f: &mut dyn fmt::Write,
@@ -177,10 +211,20 @@ impl Expr {
             write!(f, "( ")?;
         }
         match self {
-            Expr::StringEq(s) => write!(f, "\"{}\"", escape_string(s)),
-            Expr::StringEqCI(s) => write!(f, "\"{}\"i", escape_string(s)),
+            Expr::Token {
+                text,
+                case_insensitive,
+            } => write!(
+                f,
+                "\"{}\"{}",
+                escape(text, '"'),
+                if *case_insensitive { "i" } else { "" }
+            ),
             Expr::RuleRef(name) => write!(f, "{name}"),
-            Expr::CharOf(name) => write!(f, "'{}'", escape_char_class(name)),
+            Expr::CharClass(name) => write!(f, "'{}'", escape(name, '\'')),
+            Expr::Sequence(exprs) if exprs.is_empty() && min_prec > Prec::Sequence => {
+                write!(f, "( )")
+            }
             Expr::Sequence(exprs) => Self::format_list(exprs, " ", Prec::Sequence, f, notes),
             Expr::Alternation(exprs) => {
                 Self::format_list(exprs, " | ", Prec::Alternation, f, notes)
@@ -200,10 +244,12 @@ impl Expr {
                 inner.format_internal(f, Prec::Atom, notes)
             }
             Expr::SideCondition(inner, text) => {
-                inner.format_internal(f, Prec::Atom, notes)?;
+                inner.format_internal(f, Prec::SideCondition, notes)?;
+                write!(f, " ")?;
                 let index = notes.iter().position(|note| note == text).unwrap() + 1;
-                write!(f, " ^{index}")
+                write!(f, "^{index}")
             }
+            Expr::Hidden => Ok(()),
         }?;
         if paren {
             write!(f, " )")?;
@@ -220,7 +266,7 @@ impl Expr {
     ) -> fmt::Result {
         let mut first = true;
         for expr in exprs {
-            if !expr.is_empty() {
+            if !expr.is_blank() {
                 if !first {
                     write!(f, "{sep}")?;
                 }
@@ -230,34 +276,191 @@ impl Expr {
         }
         Ok(())
     }
+}
 
-    fn remove_empties(self) -> Expr {
-        if let Expr::Sequence(mut exprs) = self {
-            exprs.retain(|expr| !expr.is_empty());
-            match exprs.len() {
-                0 => Expr::empty(),
-                1 => exprs.pop().unwrap(),
-                _ => Expr::Sequence(exprs),
-            }
-        } else {
-            self
-        }
+/// EBNF; side-conditions become `^1`, `^2`, … markers.
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let notes = self.side_conditions();
+        self.format_internal(f, Prec::Alternation, &notes)
     }
 }
 
-/// Escape special characters in a string literal.
-fn escape_string(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
+/// A grammar's EBNF, built on demand by its [`to_bnf`](crate::Parse::to_bnf),
+/// so recording one costs a function pointer. Equal when the EBNF is.
+#[derive(Clone, Copy)]
+pub struct Lazy(pub fn() -> Expr);
+
+impl PartialEq for Lazy {
+    fn eq(&self, other: &Self) -> bool {
+        // A function can have several addresses, so fall back to the EBNF built.
+        std::ptr::fn_addr_eq(self.0, other.0) || (self.0)() == (other.0)()
+    }
 }
 
-fn escape_char_class(s: &str) -> String {
+impl Eq for Lazy {}
+
+impl fmt::Debug for Lazy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&(self.0)(), f)
+    }
+}
+
+impl fmt::Display for Lazy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&(self.0)(), f)
+    }
+}
+
+/// A named rule, `name = expr .`, as [`Parse::bnf_rules`] collects it.
+/// `Display` footnotes its side-conditions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rule {
+    /// The rule's name: by default, its type's.
+    pub name: String,
+    /// The rule's definition.
+    pub expr: Expr,
+}
+
+impl Rule {
+    /// Rename this rule, and the rules it refers to, with `f`.
+    ///
+    /// ```
+    /// # use tygr::*;
+    /// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
+    /// #[derive(Parse)]
+    /// struct Pair(Number, StringEq!(","), Number);
+    /// #[derive(Parse)]
+    /// struct Number(StringOf1<Digit>);
+    ///
+    /// let mut rules = Pair::bnf_rules();
+    /// for rule in &mut rules {
+    ///     rule.rename(str::to_lowercase);
+    /// }
+    /// assert_eq!(rules[0].to_string(), "pair = number \",\" number .");
+    /// ```
+    pub fn rename(&mut self, f: impl Fn(&str) -> String) {
+        self.name = f(&self.name);
+        self.expr.rename(&f);
+    }
+}
+
+impl fmt::Display for Rule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} =", self.name)?;
+        if !self.expr.is_blank() {
+            write!(f, " {}", self.expr)?;
+        }
+        write!(f, " .")?;
+        for (i, text) in self.expr.side_conditions().into_iter().enumerate() {
+            write!(f, "\n^{}: {text}", i + 1)?;
+        }
+        Ok(())
+    }
+}
+
+/// Collects each type's [`Rule`] once, for [`Parse::visit_rules`].
+pub struct Rules {
+    seen: HashSet<TypeId>,
+    rules: Vec<Rule>,
+}
+
+impl Rules {
+    /// Add `T`'s rule, `name = expr()`, unless it's added already. Returns
+    /// whether it's new, so `T` visits the rules it refers to only once.
+    pub fn insert<T: 'static>(&mut self, name: &str, expr: impl FnOnce() -> Expr) -> bool {
+        let new = self.seen.insert(TypeId::of::<T>());
+        if new {
+            self.rules.push(Rule {
+                name: name.to_string(),
+                expr: expr(),
+            });
+        }
+        new
+    }
+}
+
+/// `G`'s rules, for [`Parse::bnf_rules`].
+pub(crate) fn rules<G: Parse>() -> Vec<Rule> {
+    let mut rules = Rules {
+        seen: HashSet::new(),
+        rules: Vec::new(),
+    };
+    G::visit_rules(&mut rules);
+    rules.rules
+}
+
+thread_local! {
+    /// The inline grammars being expanded, innermost last, each with
+    /// whether it referred to itself.
+    static EXPANDING: RefCell<Vec<(TypeId, bool)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// `f()`, run with the grammar `id` marked, and whether it referred to it.
+fn expand<R>(id: TypeId, f: impl FnOnce() -> R) -> (R, bool) {
+    /// Unmarks it, even if `f` panics.
+    struct Unmark;
+    impl Drop for Unmark {
+        fn drop(&mut self) {
+            EXPANDING.with_borrow_mut(|stack| {
+                stack.pop();
+            });
+        }
+    }
+    EXPANDING.with_borrow_mut(|stack| stack.push((id, false)));
+    let _unmark = Unmark;
+    let value = f();
+    let recursive =
+        EXPANDING.with_borrow(|stack| stack.last().is_some_and(|&(_, recursive)| recursive));
+    (value, recursive)
+}
+
+/// An inline grammar `T`'s EBNF: `def()` spliced in, or, if it refers to
+/// itself, a reference to its own rule.
+#[doc(hidden)]
+pub fn inline_bnf<T: 'static>(name: &str, def: impl FnOnce() -> Expr) -> Expr {
+    let id = TypeId::of::<T>();
+    let expanding = EXPANDING.with_borrow_mut(|stack| {
+        let marked = stack.iter_mut().find(|(other, _)| *other == id);
+        marked.map(|(_, recursive)| *recursive = true).is_some()
+    });
+    if !expanding {
+        let (expr, recursive) = expand(id, def);
+        if !recursive {
+            return expr;
+        }
+    }
+    Expr::RuleRef(name.to_string())
+}
+
+/// Visit an inline grammar `T`'s rules: its parts', and, if it refers to
+/// itself, its own rule, as a named grammar would.
+#[doc(hidden)]
+pub fn visit_inline<T: 'static>(
+    rules: &mut Rules,
+    name: &str,
+    def: impl FnOnce() -> Expr,
+    visit_parts: impl FnOnce(&mut Rules),
+) {
+    let id = TypeId::of::<T>();
+    // Reached through its own definition: the visit expanding it covers its parts.
+    if EXPANDING.with_borrow(|stack| stack.iter().any(|&(other, _)| other == id)) {
+        return;
+    }
+    let (expr, recursive) = expand(id, def);
+    if !recursive {
+        visit_parts(rules);
+    } else if rules.insert::<T>(name, || expr) {
+        // Marked again while its parts are visited, so another inline grammar
+        // in the cycle refers to this rule instead of taking the cycle as its own.
+        expand(id, || visit_parts(rules));
+    }
+}
+
+/// `s` escaped for a literal between `quote`s.
+pub(crate) fn escape(s: &str, quote: char) -> String {
     s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\'', "\\'")
+        .replace(quote, &format!("\\{quote}"))
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\t', "\\t")
