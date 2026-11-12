@@ -2,6 +2,16 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
+## [Unreleased]
+
+### Breaking Changes
+
+- `OLC::offset_to_line_character` and `line_character_to_offset` return a
+  `Result`: a position past the input or a line, or inside a char or a
+  surrogate pair, is an `OutOfRange { bound, excess }`, the nearest valid
+  value and how far past it the position was, rather than being clamped
+  silently. `unwrap_or_else(|e| e.bound)` clamps as 0.7 did.
+
 ## [0.7.0] - 2026-11-12
 
 Literals, FIRST sets and enum dispatch now match on bytes, under grammars
