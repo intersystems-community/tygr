@@ -9,8 +9,8 @@ pub(crate) struct Json(Wrap<Ws, Value, Ws>);
 
 #[derive(Grammar, Debug)]
 pub(crate) enum Value {
-    Object(Object),
-    Array(Array),
+    Object(Box<Object>),
+    Array(Box<Array>),
     String(String),
     Number(Number),
     True(StringEq!("true")),
@@ -22,7 +22,10 @@ pub(crate) enum Value {
 pub(crate) struct Object(Wrap<(StringEq!("{"), Ws), Option<Members>, StringEq!("}")>);
 
 #[derive(Grammar, Debug)]
-pub(crate) struct Members(VecSep<Suffix<Member, Ws>, Suffix<StringEq!(","), Ws>>);
+pub(crate) struct Members(
+    Suffix<Member, Ws>,
+    Vec<(Suffix<StringEq!(","), Ws>, Suffix<Member, Ws>)>,
+);
 
 #[derive(Grammar, Debug)]
 pub(crate) struct Member {
@@ -35,7 +38,10 @@ pub(crate) struct Member {
 pub(crate) struct Array(Wrap<(StringEq!("["), Ws), Option<Elements>, StringEq!("]")>);
 
 #[derive(Grammar, Debug)]
-pub(crate) struct Elements(VecSep<Suffix<Value, Ws>, Suffix<StringEq!(","), Ws>>);
+pub(crate) struct Elements(
+    Suffix<Value, Ws>,
+    Vec<(Suffix<StringEq!(","), Ws>, Suffix<Value, Ws>)>,
+);
 
 #[derive(Grammar, Debug)]
 pub(crate) struct String(Wrap<StringEq!("\""), Characters, StringEq!("\"")>);

@@ -423,7 +423,7 @@ fn values_build_by_hand_to_print() {
 struct Hashable(
     Wrap<StringEq!("("), Vec1<Digit>, StringEq!(")")>,
     Prefix<StringEq!("#"), Ranged<Digit>>,
-    Suffix<VecSep<Digit, StringEq!(",")>, StringEq!(";")>,
+    Suffix<(Digit, Vec<(StringEq!(","), Digit)>), StringEq!(";")>,
     NotFollowedBy<StringEq!("!")>,
     FollowedBy<Digit>,
     Raw<Digit>,

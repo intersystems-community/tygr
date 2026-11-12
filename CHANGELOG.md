@@ -6,7 +6,7 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
 
 Literals, FIRST sets and enum dispatch now match on bytes, under grammars
 that still see `&str`. On the JSON benchmark (`canada.json`), parsing is
-over 15× faster with the default tracing and over 3× faster without it.
+over 12× faster with the default tracing and over 3× faster without it.
 
 ### Breaking Changes
 
@@ -97,6 +97,7 @@ over 15× faster with the default tracing and over 3× faster without it.
 - `OLC` breaks lines at `\r\n` and `\r` too, and `line_character_to_offset`
   clamps out-of-range positions, as LSP does, and maps one inside a
   surrogate pair to the pair's start.
+- Removed `VecSep`. Write `T { S T }` as `(T, Vec<(S, T)>)`.
 
 ### Non-breaking Changes
 
@@ -117,7 +118,7 @@ over 15× faster with the default tracing and over 3× faster without it.
   `Hidden`'s and `Ranged`'s. `Vec1` gains `IntoInner` and `TryFrom<Vec<T>>`.
   `Raw<T>` defaults to the text `T::default()` prints (empty for
   `StringOf`), and `Hidden`, `Wrap`, `Prefix` and `Suffix` derive `Default`.
-  `Wrap`, `Prefix`, `Suffix`, `Vec1`, `VecSep`, `Ranged`, literals and
+  `Wrap`, `Prefix`, `Suffix`, `Vec1`, `Ranged`, literals and
   `char_class!` types are `Hash`, so a grammar holding them can derive it.
   Every combinator can be built by hand, e.g. to print.
 - `OLC` is `Debug` and `Clone`, so a type holding one can derive them.
@@ -129,8 +130,6 @@ over 15× faster with the default tracing and over 3× faster without it.
   a footnoted factor in a sequence isn't parenthesized (`Digits ^1 ","
   Digits ^2`); an empty operand of a footnote or lookahead prints as
   `( )`.
-- `VecSep` parses straight into `items` and `seps`, rather than through an
-  intermediate `T { S T }` value that was then converted.
 - The name argument of `char_class!` is optional and defaults to the type
   name.
 - Fixed derived code failing to compile unless tygr's traits were in
