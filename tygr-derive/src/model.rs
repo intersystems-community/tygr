@@ -1,6 +1,6 @@
 //! A derive's input, read into what the generated code needs.
 
-use proc_macro2::{Span, TokenStream, TokenTree};
+use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
 use syn::spanned::Spanned;
 use syn::{Attribute, Data, DeriveInput, Fields, Generics, Ident, LitStr, Path, Type};
@@ -17,6 +17,8 @@ pub(crate) struct Model {
     pub(crate) inline: bool,
     /// Checked with `Validate` after parsing.
     pub(crate) validated: bool,
+    /// Type parameters left with only the bounds the user wrote.
+    pub(crate) unbounded: Vec<Ident>,
     pub(crate) shape: Shape,
 }
 
@@ -100,6 +102,7 @@ impl Model {
             hidden: false,
             inline: false,
             validated: false,
+            unbounded: Vec::new(),
             shape,
         };
         for attr in tygr_attrs(&input.attrs) {
@@ -111,6 +114,15 @@ impl Model {
                     model.inline = true;
                 } else if meta.path.is_ident("inline") {
                     model.inline = true;
+                } else if meta.path.is_ident("unbounded") {
+                    meta.parse_nested_meta(|param| {
+                        let ident = param.path.require_ident()?.clone();
+                        if !model.generics.type_params().any(|p| p.ident == ident) {
+                            return Err(param.error("not a type parameter"));
+                        }
+                        model.unbounded.push(ident);
+                        Ok(())
+                    })?;
                 } else if meta.path.is_ident("validated") {
                     model.validated = true;
                 } else {
@@ -145,35 +157,16 @@ impl Model {
         }
     }
 
-    /// The generics, with `bound` on each type parameter that `types` use.
-    pub(crate) fn bounded<'a>(
-        &self,
-        bound: TokenStream,
-        types: impl Iterator<Item = &'a Type>,
-    ) -> Generics {
-        let types: Vec<TokenStream> = types.map(|ty| quote! { #ty }).collect();
+    /// The generics, with `bound` on each type parameter not `unbounded`.
+    pub(crate) fn bounded(&self, bound: TokenStream) -> Generics {
         let mut generics = self.generics.clone();
         for param in generics.type_params_mut() {
-            if types.iter().any(|ty| mentions(ty.clone(), &param.ident)) {
+            if !self.unbounded.contains(&param.ident) {
                 param.bounds.push(syn::parse_quote!(#bound));
             }
         }
         generics
     }
-}
-
-/// Does `tokens` use `ident`, other than as a path prefix (`T::Assoc` uses
-/// the associated type, not `T`)?
-fn mentions(tokens: TokenStream, ident: &Ident) -> bool {
-    let tokens: Vec<TokenTree> = tokens.into_iter().collect();
-    tokens.iter().enumerate().any(|(i, token)| match token {
-        TokenTree::Ident(other) => {
-            other == ident
-                && !matches!(tokens.get(i + 1), Some(TokenTree::Punct(p)) if p.as_char() == ':')
-        }
-        TokenTree::Group(group) => mentions(group.stream(), ident),
-        _ => false,
-    })
 }
 
 impl Variant {
@@ -254,20 +247,6 @@ impl Field {
                 ..
             } => &conversion.source,
             Field::Kept { ty, .. } | Field::Dropped { source: ty, .. } => ty,
-        }
-    }
-
-    /// The type it prints with `Print`: its own, unless converted or
-    /// `print_to` prints it.
-    pub(crate) fn printed(&self) -> Option<&Type> {
-        match self {
-            Field::Kept {
-                ty,
-                conversion: None,
-                print_to: None,
-                ..
-            } => Some(ty),
-            _ => None,
         }
     }
 

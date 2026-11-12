@@ -152,8 +152,10 @@ over 12× faster with the default tracing and over 3× faster without it.
 - An enum of four or more variants reports every variant that could have
   matched, as a smaller one does; the variants its dispatch table skipped
   went unreported.
-- Derived impls bound only the type parameters their fields parse or
-  print, so a converted field can be generic. Deriving works for an empty
+- Derived impls bound every type parameter with `Parse` (and `Print`),
+  as std's derives do; `#[tygr(unbounded(T))]` leaves `T` with only its
+  own bounds, for a conversion target or a trait carrier whose associated
+  type is the grammar. Deriving works for an empty
   enum, and a recursive `#[tygr(inline)]` type gets an EBNF rule of its own
   rather than recursing forever.
 - Declared the minimum supported Rust version, `rust-version = "1.88"`,
