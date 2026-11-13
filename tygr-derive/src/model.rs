@@ -2,6 +2,7 @@
 
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote};
+use syn::meta::ParseNestedMeta;
 use syn::spanned::Spanned;
 use syn::{Attribute, Data, DeriveInput, Fields, Generics, Ident, LitStr, Path, Type};
 
@@ -22,18 +23,21 @@ pub(crate) struct Model {
     pub(crate) shape: Shape,
 }
 
-/// A sequence, or an alternation of sequences.
+/// A sequence, an alternation of sequences, or another grammar converted.
 pub(crate) enum Shape {
     Struct(Variant),
     Enum(Vec<Variant>),
+    /// `#[tygr(<kind> = source)]` on the type: one converted field, bound to
+    /// the whole value, which is also its constructor.
+    Converted(Variant),
 }
 
-/// A struct, or one enum variant.
+/// A struct, one enum variant, or a converted type.
 pub(crate) struct Variant {
     /// Builds it from its fields' bindings; also its pattern.
     pub(crate) constructor: TokenStream,
     pub(crate) fields: Vec<Field>,
-    /// Of the field list.
+    /// Of the field list, or of a converted type's source.
     pub(crate) span: Span,
 }
 
@@ -57,13 +61,13 @@ pub(crate) enum Field {
     },
 }
 
-/// `#[tygr(<kind> = source)]` on a field.
+/// `#[tygr(<kind> = source)]` on a field or on the type.
 pub(crate) struct Conversion {
     pub(crate) kind: Kind,
     pub(crate) source: Type,
 }
 
-/// The std trait a field converts with, and whether it can fail.
+/// The std trait a conversion uses, and whether it can fail.
 #[derive(Clone, Copy)]
 pub(crate) enum Kind {
     TryFrom,
@@ -75,26 +79,6 @@ pub(crate) enum Kind {
 impl Model {
     pub(crate) fn new(input: &DeriveInput) -> syn::Result<Self> {
         let ident = &input.ident;
-        let shape = match &input.data {
-            Data::Struct(data) => {
-                Shape::Struct(Variant::new(quote! { #ident }, &data.fields, &[])?)
-            }
-            Data::Enum(data) => Shape::Enum(
-                data.variants
-                    .iter()
-                    .map(|variant| {
-                        let path = &variant.ident;
-                        Variant::new(quote! { #ident::#path }, &variant.fields, &variant.attrs)
-                    })
-                    .collect::<syn::Result<_>>()?,
-            ),
-            Data::Union(_) => {
-                return Err(syn::Error::new_spanned(
-                    ident,
-                    "a grammar is a struct or an enum, not a union",
-                ));
-            }
-        };
         let mut model = Model {
             ident: ident.clone(),
             generics: input.generics.clone(),
@@ -103,8 +87,10 @@ impl Model {
             inline: false,
             validated: false,
             unbounded: Vec::new(),
-            shape,
+            // Read below, once the attributes say whether the type converts.
+            shape: Shape::Enum(Vec::new()),
         };
+        let mut converted = FieldAttrs::default();
         for attr in tygr_attrs(&input.attrs) {
             attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("name") {
@@ -125,19 +111,70 @@ impl Model {
                     })?;
                 } else if meta.path.is_ident("validated") {
                     model.validated = true;
-                } else {
-                    return Err(meta.error("expected `name`, `hidden`, `inline`, or `validated`"));
+                } else if !converted.read(&meta, false)? {
+                    return Err(meta.error(
+                        "expected `name`, `hidden`, `inline`, `validated`, `unbounded`, a conversion \
+                         (`try_from`, `try_from_infallible`, `from_str` or `from_str_infallible`), \
+                         or `print_to`",
+                    ));
                 }
                 Ok(())
             })?;
         }
+        let FieldAttrs {
+            conversion,
+            print_to,
+        } = converted;
+        model.shape = match (&input.data, conversion, print_to) {
+            (Data::Union(_), ..) => {
+                return Err(syn::Error::new_spanned(
+                    ident,
+                    "a grammar is a struct or an enum, not a union",
+                ));
+            }
+            // The fields are the conversion's to fill, not parts of the grammar.
+            (data, Some(conversion), print_to) => {
+                if let Some(attr) = inner_attr(data) {
+                    return Err(syn::Error::new_spanned(
+                        attr,
+                        "a converted type parses its source, not its fields or variants, so they \
+                         take no `#[tygr(...)]`",
+                    ));
+                }
+                Shape::Converted(Variant::converted(
+                    ident,
+                    &input.generics,
+                    conversion,
+                    print_to,
+                ))
+            }
+            (_, None, Some(print_to)) => {
+                return Err(syn::Error::new_spanned(
+                    print_to,
+                    "`print_to` on a type needs a source, e.g. `try_from = S`; without one it \
+                     prints its fields",
+                ));
+            }
+            (Data::Struct(data), None, None) => {
+                Shape::Struct(Variant::new(quote! { #ident }, &data.fields, &[])?)
+            }
+            (Data::Enum(data), None, None) => Shape::Enum(
+                data.variants
+                    .iter()
+                    .map(|variant| {
+                        let path = &variant.ident;
+                        Variant::new(quote! { #ident::#path }, &variant.fields, &variant.attrs)
+                    })
+                    .collect::<syn::Result<_>>()?,
+            ),
+        };
         Ok(model)
     }
 
     /// The variants (a struct is one).
     pub(crate) fn variants(&self) -> &[Variant] {
         match &self.shape {
-            Shape::Struct(variant) => std::slice::from_ref(variant),
+            Shape::Struct(variant) | Shape::Converted(variant) => std::slice::from_ref(variant),
             Shape::Enum(variants) => variants,
         }
     }
@@ -235,6 +272,28 @@ impl Variant {
             fields,
             span,
         })
+    }
+
+    /// A converted type's source, as one converted field of the type itself,
+    /// bound to the whole value.
+    fn converted(
+        ident: &Ident,
+        generics: &Generics,
+        conversion: Conversion,
+        print_to: Option<Path>,
+    ) -> Self {
+        let (_, ty_generics, _) = generics.split_for_impl();
+        let binding = format_ident!("_f0");
+        Variant {
+            constructor: quote! { #binding },
+            span: conversion.source.span(),
+            fields: vec![Field::Kept {
+                binding,
+                ty: syn::parse_quote!(#ident #ty_generics),
+                conversion: Some(conversion),
+                print_to,
+            }],
+        }
     }
 }
 
@@ -336,7 +395,8 @@ impl Kind {
     }
 }
 
-/// The `#[tygr(...)]` options of a field or unit variant.
+/// The `#[tygr(...)]` options of a field or unit variant, which a type takes
+/// too.
 #[derive(Default)]
 struct FieldAttrs {
     conversion: Option<Conversion>,
@@ -349,27 +409,7 @@ impl FieldAttrs {
         let mut field = FieldAttrs::default();
         for attr in tygr_attrs(attrs) {
             attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("print_to") {
-                    if field.print_to.is_some() {
-                        return Err(meta.error("a field prints only one way"));
-                    }
-                    field.print_to = Some(meta.value()?.parse()?);
-                } else if let Some(kind) = Kind::ALL
-                    .into_iter()
-                    .find(|kind| meta.path.is_ident(kind.keyword()))
-                {
-                    if field.conversion.is_some() {
-                        return Err(meta.error("a field converts only one way"));
-                    }
-                    if unit && matches!(kind, Kind::FromStr | Kind::FromStrInfallible) {
-                        return Err(meta.error(
-                            "a unit variant converts its source into `()`, with `try_from` or \
-                             `try_from_infallible`",
-                        ));
-                    }
-                    let source = meta.value()?.parse()?;
-                    field.conversion = Some(Conversion { kind, source });
-                } else {
+                if !field.read(&meta, unit)? {
                     return Err(meta.error(
                         "expected `try_from`, `try_from_infallible`, `from_str`, \
                          `from_str_infallible`, or `print_to`",
@@ -380,9 +420,55 @@ impl FieldAttrs {
         }
         Ok(field)
     }
+
+    /// Read `meta` if it's a conversion or `print_to`: whether it was.
+    fn read(&mut self, meta: &ParseNestedMeta, unit: bool) -> syn::Result<bool> {
+        if meta.path.is_ident("print_to") {
+            if self.print_to.is_some() {
+                return Err(meta.error("only one `print_to`"));
+            }
+            self.print_to = Some(meta.value()?.parse()?);
+        } else if let Some(kind) = Kind::ALL
+            .into_iter()
+            .find(|kind| meta.path.is_ident(kind.keyword()))
+        {
+            if self.conversion.is_some() {
+                return Err(meta.error("only one conversion"));
+            }
+            if unit && matches!(kind, Kind::FromStr | Kind::FromStrInfallible) {
+                return Err(meta.error(
+                    "a unit variant converts its source into `()`, with `try_from` or \
+                     `try_from_infallible`",
+                ));
+            }
+            let source = meta.value()?.parse()?;
+            self.conversion = Some(Conversion { kind, source });
+        } else {
+            return Ok(false);
+        }
+        Ok(true)
+    }
 }
 
 /// The `#[tygr(...)]` attributes among `attrs`.
 fn tygr_attrs(attrs: &[Attribute]) -> impl Iterator<Item = &Attribute> {
     attrs.iter().filter(|attr| attr.path().is_ident("tygr"))
+}
+
+/// The first `#[tygr(...)]` on a variant or field of `data`.
+fn inner_attr(data: &Data) -> Option<&Attribute> {
+    fn on_fields(fields: &Fields) -> Option<&Attribute> {
+        fields
+            .iter()
+            .find_map(|field| tygr_attrs(&field.attrs).next())
+    }
+    match data {
+        Data::Struct(data) => on_fields(&data.fields),
+        Data::Enum(data) => data.variants.iter().find_map(|variant| {
+            tygr_attrs(&variant.attrs)
+                .next()
+                .or_else(|| on_fields(&variant.fields))
+        }),
+        Data::Union(_) => None,
+    }
 }

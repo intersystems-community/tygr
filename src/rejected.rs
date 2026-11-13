@@ -55,6 +55,51 @@ fn unprintable_converted_field() {}
 
 /// ```compile_fail
 /// #[derive(tygr::Parse)]
+/// #[tygr(try_from = ())]
+/// struct S(#[tygr(from_str = ())] u32);
+/// ```
+fn field_attribute_on_converted_type() {}
+
+/// ```compile_fail
+/// #[derive(tygr::Parse)]
+/// #[tygr(try_from = ())]
+/// enum E {
+///     #[tygr(try_from = ())]
+///     Unit,
+/// }
+/// ```
+fn variant_attribute_on_converted_enum() {}
+
+/// ```compile_fail
+/// #[derive(tygr::Grammar)]
+/// #[tygr(print_to = tygr::print_display)]
+/// struct S(());
+/// ```
+fn type_print_to_without_source() {}
+
+/// ```compile_fail
+/// #[derive(tygr::Parse)]
+/// #[tygr(try_from = (), from_str = ())]
+/// struct S;
+/// ```
+fn two_conversions_on_a_type() {}
+
+/// ```compile_fail
+/// #[derive(tygr::Grammar)]
+/// #[tygr(from_str = ())]
+/// struct S(u32);
+///
+/// impl std::str::FromStr for S {
+///     type Err = std::num::ParseIntError;
+///     fn from_str(s: &str) -> Result<S, Self::Err> {
+///         s.parse().map(S)
+///     }
+/// }
+/// ```
+fn unprintable_converted_type() {}
+
+/// ```compile_fail
+/// #[derive(tygr::Parse)]
 /// union U {
 ///     a: u8,
 /// }

@@ -105,6 +105,23 @@ mod bare {
             self.0 != 0
         }
     }
+
+    #[derive(::tygr::Grammar)]
+    #[tygr(from_str = ::tygr::StringOf1<Digit>, print_to = ::tygr::print_display)]
+    pub(super) struct Port(u16);
+
+    impl ::core::str::FromStr for Port {
+        type Err = ::core::num::ParseIntError;
+        fn from_str(s: &str) -> ::core::result::Result<Self, Self::Err> {
+            s.parse().map(Port)
+        }
+    }
+
+    impl ::core::fmt::Display for Port {
+        fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+            ::core::fmt::Display::fmt(&self.0, f)
+        }
+    }
 }
 
 #[test]
@@ -113,6 +130,8 @@ fn derives_work_without_a_prelude() {
     assert!(bare::Op::parse("*").is_ok() && bare::Op::parse("x").is_err());
     assert_eq!(bare::NonZero::parse("42").unwrap().print(), "42");
     assert!(bare::NonZero::parse("0").is_err());
+    assert_eq!(bare::Port::parse("80").unwrap().print(), "80");
+    assert!(bare::Port::parse("65536").is_err());
     assert_eq!(bare::Digit::name(), "Digit");
 }
 

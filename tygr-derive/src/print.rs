@@ -1,24 +1,31 @@
 //! A derived `Print`.
 
-use crate::model::{Field, Model};
+use crate::model::{Field, Model, Shape};
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Ident;
 use syn::spanned::Spanned;
 
 /// The `Print` impl, printing each field in turn; a compile error if a
-/// converted field has no `print_to`.
+/// converted field or type has no `print_to`.
 pub(crate) fn expand(model: &Model) -> TokenStream {
     let ident = &model.ident;
     let generics = model.bounded(quote! { ::tygr::Print });
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let mut unprintable = model.fields().filter_map(Field::unprintable).map(|source| {
-        syn::Error::new_spanned(
-            source,
+    let message = match model.shape {
+        Shape::Converted(_) => {
+            "a converted type needs `print_to = f` to print (`f: fn(&Self, &mut String)`, e.g. \
+             `print_display`), or derive only `Parse`"
+        }
+        _ => {
             "a converted field needs `print_to = f` to print (`f: fn(&T, &mut String)`, e.g. \
-             `print_display`; `&()` for a unit variant), or derive only `Parse`",
-        )
-    });
+             `print_display`; `&()` for a unit variant), or derive only `Parse`"
+        }
+    };
+    let mut unprintable = model
+        .fields()
+        .filter_map(Field::unprintable)
+        .map(|source| syn::Error::new_spanned(source, message));
     if let Some(mut error) = unprintable.next() {
         unprintable.for_each(|other| error.combine(other));
         let error = error.into_compile_error();

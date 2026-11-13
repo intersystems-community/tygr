@@ -23,7 +23,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     }
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let (first, parse_at, fail_at, def, inherent) = match shape {
-        Shape::Struct(variant) => (
+        Shape::Struct(variant) | Shape::Converted(variant) => (
             first(variant),
             parse(model, variant),
             fail_at(variant),
@@ -219,8 +219,12 @@ fn sequence(variant: &Variant) -> TokenStream {
 /// Reads every field, as a derived `Print` would: a grammar's fields are
 /// its syntax, so the dead-code lint shouldn't flag them as never read.
 /// Nothing calls it: the `allow(dead_code)` is what makes rustc walk its
-/// body, since allowed items seed the dead-code analysis.
+/// body, since allowed items seed the dead-code analysis. A converted
+/// type's fields are its own data, read or not.
 pub(crate) fn read_fields(model: &Model) -> TokenStream {
+    if let Shape::Converted(_) = model.shape {
+        return quote! {};
+    }
     let ident = &model.ident;
     let (impl_generics, ty_generics, where_clause) = model.generics.split_for_impl();
     let constructors = model.variants().iter().map(|variant| &variant.constructor);
