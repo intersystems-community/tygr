@@ -1,4 +1,4 @@
-//! `parse_prefix` and `check_prefix`, and errors whatever the tracing.
+//! `parse_prefix` and `check_prefix`, and `Error` as a `std::error::Error`.
 
 use tygr::*;
 
@@ -16,7 +16,10 @@ fn parse_prefix_stops_at_the_match_without_consuming_the_rest() {
 
 #[test]
 fn parse_prefix_fails_when_nothing_matches() {
-    assert!(Digits::parse_prefix("abc").is_err());
+    assert_eq!(
+        Digits::parse_prefix("abc").unwrap_err().to_string(),
+        "parse error at byte 0, expected:\n\t- Digits"
+    );
 }
 
 #[test]
@@ -26,13 +29,14 @@ fn check_prefix_stops_at_the_match_without_consuming_the_rest() {
 
 #[test]
 fn check_prefix_fails_when_nothing_matches() {
-    assert!(Digits::check_prefix("abc").is_err());
+    assert_eq!(
+        Digits::check_prefix("abc").unwrap_err().to_string(),
+        "parse error at byte 0, expected:\n\t- Digits"
+    );
 }
 
 #[test]
-fn errors_print_something_whatever_the_tracing() {
+fn error_is_a_std_error() {
     let err = Digits::parse("abc").unwrap_err();
-    assert!(!format!("{err:?}").is_empty());
-    let err: Box<dyn std::error::Error> = Box::new(err);
-    assert!(!err.to_string().is_empty());
+    let _: Box<dyn std::error::Error> = Box::new(err);
 }
