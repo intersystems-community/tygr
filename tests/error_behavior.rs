@@ -396,6 +396,26 @@ fn enum_dispatch_records_the_variants_it_skips_when_matching_empty() {
     );
 }
 
+#[derive(Grammar, Debug)]
+enum FourOrEmpty {
+    A(StringEq!("a")),
+    B(StringEq!("b")),
+    C(StringEq!("c")),
+    Empty,
+}
+
+#[derive(Grammar, Debug)]
+struct ZThenFourOrEmpties(StringEq!("z"), Vec1<FourOrEmpty>);
+
+#[test]
+fn enum_dispatch_reaches_where_a_unit_variant_matched_empty() {
+    // Neither `Empty` nor `Vec1`, failing on it, expects anything at byte 1:
+    // only the variants the table skipped reach it.
+    let err = ZThenFourOrEmpties::parse("zx").unwrap_err();
+    assert_eq!(err.pos(), 1);
+    assert_eq!(expectations(&err), [r#""a""#, r#""b""#, r#""c""#]);
+}
+
 #[test]
 fn enum_dispatch_at_end_of_input() {
     assert!(matches!(
