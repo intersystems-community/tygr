@@ -45,6 +45,9 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
   `try_from_infallible` and `try_from`, with `print_to` for
   `GrammarFrom::print_to`. The derive's error for an unknown option on a
   type now names every option, `unbounded` included.
+- The published crate holds the sources, tests, examples, README, CHANGELOG
+  and licenses, no longer the benchmark with its 2.2 MB of data or the
+  repository's tooling: a tenth of the download.
 
 ## [0.7.0] - 2026-11-12
 

@@ -40,7 +40,9 @@ git push origin vX.Y.Z
 
 Pushing the tag triggers [`.github/workflows/publish.yml`](.github/workflows/publish.yml),
 which checks the tag against both `Cargo.toml` versions, runs the test suite,
-then publishes `tygr-derive` before `tygr`, which depends on it.
+then publishes `tygr-derive` before `tygr`, which depends on it. Publishing
+warns that it ignores the benchmark: `Cargo.toml`'s `include` lists what
+ships, and the benchmark and its data are left out on purpose.
 
 ## License
 

@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 description = "Define your grammar once as Rust types and get a parser, printer, and EBNF presentation for free."
 repository = "https://github.com/intersystems-community/tygr"
 readme = "README.md"
+include = ["src/**", "tests/**", "examples/**", "README.md", "CHANGELOG.md", "LICENSE-*"]
 
 [workspace]
 
