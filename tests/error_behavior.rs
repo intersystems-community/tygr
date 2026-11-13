@@ -48,6 +48,9 @@ fn string_eq_ci_records_literal() {
 struct Arrow(StringEq!("->"));
 
 #[derive(Grammar, Debug)]
+struct Pair(Lit, StringEq!(","), Lit);
+
+#[derive(Grammar, Debug)]
 struct Digits(StringOf1<Digit>);
 
 #[test]
@@ -80,6 +83,21 @@ fn conversion_records_requirement() {
             ),
         ],
         3,
+    );
+}
+
+/// Two variants reject the same text with different requirements.
+#[derive(Parse, Debug)]
+enum Signed {
+    U(#[tygr(from_str = StringOf1<Digit>)] u8, StringEq!("u")),
+    I(#[tygr(from_str = StringOf1<Digit>)] i8, StringEq!("i")),
+}
+
+#[test]
+fn distinct_requirements_at_one_position_are_both_recorded() {
+    assert_eq!(
+        Signed::parse("999").unwrap_err().to_string(),
+        "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to i8\n\t- Text at 0..3 must be convertible to u8"
     );
 }
 
@@ -190,6 +208,10 @@ fn display_names_a_rule_starting_at_the_error_else_its_expectation() {
             "parse error at byte 1, expected:\n\t- \"->\" at 0..1",
         ),
         (
+            Pair::parse("foo,fob").unwrap_err(),
+            "parse error at byte 6, expected:\n\t- \"foo\" at 4..6",
+        ),
+        (
             Digits::parse("abc").unwrap_err(),
             "parse error at byte 0, expected:\n\t- Digits",
         ),
@@ -283,22 +305,24 @@ enum Outermost {
 }
 
 fn nullable_variant_traces() -> Vec<Trace> {
-    let outermost = vec![frame("Outermost", 0)];
-    let tail = [&outermost[..], &[frame("NullableOpThenTail", 0)]].concat();
-    let op = [&tail[..], &[frame("NullableOp", 0)]].concat();
-    let expected = |context: &[Frame], text| Trace {
-        context: context.to_vec(),
+    let chain = [
+        frame("Outermost", 0),
+        frame("NullableOpThenTail", 0),
+        frame("NullableOp", 0),
+    ];
+    let expected = |depth: usize, text| Trace {
+        context: chain[..depth].to_vec(),
         expectation: token(text, 0..0),
     };
     vec![
-        expected(&op, "+"),
-        expected(&op, "-"),
-        expected(&op, "*"),
-        expected(&op, "y"),
-        expected(&tail, "TAIL"),
-        expected(&outermost, "b"),
-        expected(&outermost, "c"),
-        expected(&outermost, "d"),
+        expected(3, "+"),
+        expected(3, "-"),
+        expected(3, "*"),
+        expected(3, "y"),
+        expected(2, "TAIL"),
+        expected(1, "b"),
+        expected(1, "c"),
+        expected(1, "d"),
     ]
 }
 
@@ -376,6 +400,23 @@ fn enum_dispatch_records_both_sides_of_a_skipped_either_variant() {
     );
 }
 
+#[derive(Parse, Debug)]
+enum ByteOrThree {
+    Byte(Byte),
+    A(StringEq!("a")),
+    B(StringEq!("b")),
+    C(StringEq!("c")),
+}
+
+#[test]
+fn enum_dispatch_records_a_skipped_converted_type_under_its_rule() {
+    let err = ByteOrThree::parse("x").unwrap_err();
+    assert_eq!(
+        format!("{err:?}"),
+        "parse error at byte 0, expected:\n\t- ByteOrThree@0/Byte@0/'digit'\n\t- ByteOrThree@0/\"a\"\n\t- ByteOrThree@0/\"b\"\n\t- ByteOrThree@0/\"c\""
+    );
+}
+
 #[derive(Grammar, Debug)]
 enum FourOrNone {
     A(StringEq!("a")),
@@ -394,6 +435,26 @@ fn enum_dispatch_records_the_variants_it_skips_when_matching_empty() {
         expectations(&err),
         [r#""!""#, r#""a""#, r#""b""#, r#""c""#, r#""d""#]
     );
+}
+
+#[derive(Grammar, Debug)]
+enum FourOrEmpty {
+    A(StringEq!("a")),
+    B(StringEq!("b")),
+    C(StringEq!("c")),
+    Empty,
+}
+
+#[derive(Grammar, Debug)]
+struct ZThenFourOrEmpties(StringEq!("z"), Vec1<FourOrEmpty>);
+
+#[test]
+fn enum_dispatch_reaches_where_a_unit_variant_matched_empty() {
+    // Neither `Empty` nor `Vec1`, failing on it, expects anything at byte 1:
+    // only the variants the table skipped reach it.
+    let err = ZThenFourOrEmpties::parse("zx").unwrap_err();
+    assert_eq!(err.pos(), 1);
+    assert_eq!(expectations(&err), [r#""a""#, r#""b""#, r#""c""#]);
 }
 
 #[test]

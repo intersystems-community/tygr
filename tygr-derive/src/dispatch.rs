@@ -10,9 +10,8 @@ const THRESHOLD: usize = 4;
 
 /// The `parse_at` body trying `arms` (one per variant) in order, and the
 /// inherent items it needs. With enough variants, a table on the next byte
-/// skips to the first variant that can start there; when tracing, the
-/// variants it skipped are reported with `fail_ats`, unless one matched
-/// input.
+/// skips to the first variant that can start there; the variants it skipped
+/// are reported with `fail_ats`, unless one matched input.
 pub(crate) fn dispatch(
     arms: &[TokenStream],
     firsts: &[TokenStream],
@@ -40,7 +39,7 @@ pub(crate) fn dispatch(
             fn #cases<__Mode: ::tygr::Mode>(input: &str, pos: usize, mut state: ::tygr::State<__Mode>) -> #output {
                 if let ::core::option::Option::Some(result) = (|| { #arms })() {
                     // Matching empty, it rules out none of the variants skipped.
-                    if <__Mode as ::tygr::Mode>::RECORD && ::tygr::first::contains::<#firsts>(::core::option::Option::None) && result.1 == pos {
+                    if const { ::tygr::first::contains::<#firsts>(::core::option::Option::None) } && result.1 == pos {
                         Self::__fail_at_skipped(input, pos, state);
                     }
                     return ::core::option::Option::Some(result);

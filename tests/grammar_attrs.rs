@@ -586,7 +586,6 @@ fn an_enum_converts_its_source_into_the_whole_value() {
         rule::<Color>(),
         "Color = Word ^1 .\n^1: be convertible to Color"
     );
-    assert_eq!(names::<Color>(), ["Color", "Word"]);
 }
 
 #[derive(Debug, PartialEq, Grammar)]

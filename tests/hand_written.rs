@@ -1,5 +1,6 @@
 //! A leaf grammar implemented by hand, through the public API.
 
+use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use tygr::bnf::{Expr, Rules};
 use tygr::*;
 
@@ -86,9 +87,12 @@ fn a_hand_written_leaf_reports_itself_when_skipped() {
     );
 }
 
-/// A digit below five, rejected with a message built from the digit.
+/// A digit below five, rejected with a message built from the digit, only
+/// in the pass that records it.
 #[derive(Debug)]
 struct Small(u8);
+
+static BUILT: AtomicUsize = AtomicUsize::new(0);
 
 impl Parse for Small {
     type First = <char as Parse>::First;
@@ -103,11 +107,13 @@ impl Parse for Small {
         match ch.to_digit(10) {
             Some(digit) if digit < 5 => Some((M::build(|_| Small(digit as u8)), end)),
             _ => {
-                state.reject(
-                    Some("Small"),
-                    pos..end,
-                    format!("be a digit below 5, not {ch:?}"),
-                );
+                let requirement = if M::RECORD {
+                    BUILT.fetch_add(1, Relaxed);
+                    format!("be a digit below 5, not {ch:?}")
+                } else {
+                    String::new()
+                };
+                state.reject(Some("Small"), pos..end, requirement);
                 None
             }
         }
@@ -144,4 +150,6 @@ fn a_rejection_carries_a_message_built_while_parsing() {
         "parse error at byte 1, expected:\n\t- Small at 0..1 must be a digit below 5, not '7'"
     );
     assert_eq!(err.traces().len(), 1);
+    // Once per variant, in the recording pass alone.
+    assert_eq!(BUILT.load(Relaxed), 2);
 }

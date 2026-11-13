@@ -6,6 +6,7 @@ use crate::State;
 use crate::bnf::{Expr, Rules};
 use crate::first::{First, Optional, byte_set};
 use crate::grammar::{Check, Mode, Parse, Print};
+use crate::state::probe;
 use either::Either::{self, Left, Right};
 use std::fmt;
 use std::marker::PhantomData;
@@ -437,7 +438,7 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
         mut state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         // Probe, so only what `G` matched is recorded, not what it expected.
-        match state.probe(|state| G::parse_at::<Check>(input, pos, state)) {
+        match probe(|state| G::parse_at::<Check>(input, pos, state)) {
             Some(((), end)) => {
                 state.not_followed_by(G::to_bnf, pos..end);
                 None
@@ -479,11 +480,11 @@ impl<G: Parse> Parse for FollowedBy<G> {
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        mut state: State<M>,
+        state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         // Probe, so a match records nothing past `pos`; on failure, rerun `G`
         // to record what it expected.
-        let matched = state.probe(|state| G::parse_at::<Check>(input, pos, state));
+        let matched = probe(|state| G::parse_at::<Check>(input, pos, state));
         if matched.is_none() {
             G::check_at(input, pos, state);
         }
