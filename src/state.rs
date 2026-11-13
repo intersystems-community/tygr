@@ -1,4 +1,4 @@
-//! The state threaded through parsing, and the [`Error`] it traces.
+//! The state threaded through parsing, and the [`Error`] it builds.
 
 use crate::bnf::{Expr, Lazy, escape};
 use crate::grammar::{Check, Mode, Record};
@@ -8,20 +8,21 @@ use std::ops::Range;
 
 /// Parse state threaded through [`Parse::parse_at`](crate::Parse::parse_at),
 /// in mode `M`. A parse runs once, tracking only the furthest position it
-/// reaches; if it fails, it runs again in [`Record`] mode,
-/// recording what it expected there. A hand-written grammar enters its rule
-/// with [`node`](Self::node), in [`fail_at`](crate::Parse::fail_at) too, and
+/// reaches; if it fails, it runs again in [`Record`] mode, recording what it
+/// expected there. A hand-written grammar enters its rule with
+/// [`node`](Self::node), in [`fail_at`](crate::Parse::fail_at) too, and
 /// passes a [`reborrow`](Self::reborrow) to each grammar it delegates to.
 pub struct State<'a, M: Mode> {
-    history: &'a mut History,
+    /// The error so far: the furthest position, then what was expected there.
+    error: &'a mut Error,
     /// The rules entered, when recording.
     context: M::Context<'a>,
 }
 
 impl<'a, M: Mode> State<'a, M> {
-    fn new(history: &'a mut History) -> Self {
+    fn new(error: &'a mut Error) -> Self {
         State {
-            history,
+            error,
             context: Default::default(),
         }
     }
@@ -30,7 +31,7 @@ impl<'a, M: Mode> State<'a, M> {
     #[inline(always)]
     pub fn reborrow(&mut self) -> State<'_, M> {
         State {
-            history: &mut *self.history,
+            error: &mut *self.error,
             context: M::reborrow(self.context),
         }
     }
@@ -39,7 +40,7 @@ impl<'a, M: Mode> State<'a, M> {
     #[inline(always)]
     pub fn node(&mut self, node: &'static str, pos: usize) -> State<'_, M> {
         State {
-            history: &mut *self.history,
+            error: &mut *self.error,
             context: M::enter(&self.context, Frame { node, pos }),
         }
     }
@@ -49,7 +50,7 @@ impl<'a, M: Mode> State<'a, M> {
     pub(crate) fn at_end(&mut self, input: &str, pos: usize) -> bool {
         let end = pos == input.len();
         if !end {
-            self.expect(pos, |_| Recorded::End);
+            self.expect(pos, || Expectation::End);
         }
         end
     }
@@ -57,7 +58,7 @@ impl<'a, M: Mode> State<'a, M> {
     /// Record that a negative lookahead ruled out `excluded`, which matched
     /// the text at `range`.
     pub(crate) fn not_followed_by(&mut self, excluded: fn() -> Expr, range: Range<usize>) {
-        self.expect(range.start, |_| Recorded::NotFollowedBy {
+        self.expect(range.start, || Expectation::NotFollowedBy {
             excluded: Lazy(excluded),
             range,
         });
@@ -65,18 +66,13 @@ impl<'a, M: Mode> State<'a, M> {
 
     /// Note that `pos` was reached; when recording, record what was expected
     /// there if it's the furthest position. The expectation is built only
-    /// then, out of line, so that the parse keeps nothing for it; it gets the
-    /// history to keep an owned requirement in.
+    /// then, out of line, so that the parse keeps nothing for it.
     #[inline(always)]
-    pub(crate) fn expect(
-        &mut self,
-        pos: usize,
-        expectation: impl FnOnce(&mut History) -> Recorded,
-    ) {
+    pub(crate) fn expect(&mut self, pos: usize, expectation: impl FnOnce() -> Expectation) {
         if !M::RECORD {
-            self.history.reach(pos);
-        } else if pos == self.history.pos {
-            record::<M>(self.history, self.context, expectation);
+            self.error.reach(pos);
+        } else if pos == self.error.pos {
+            record::<M>(self.error, self.context, expectation);
         }
     }
 
@@ -84,7 +80,7 @@ impl<'a, M: Mode> State<'a, M> {
     /// `requirement`: by validated rule `node`, or by a conversion. Call it
     /// in every mode: the first pass only notes the position. A `String`
     /// requirement, built from what was parsed, is kept for the error;
-    /// build it only when [`Mode::RECORD`], passing `""` otherwise.
+    /// build it only when [`Mode::RECORD`], passing `String::new()` otherwise.
     #[inline(always)]
     pub fn reject(
         &mut self,
@@ -92,10 +88,10 @@ impl<'a, M: Mode> State<'a, M> {
         range: Range<usize>,
         requirement: impl Into<Cow<'static, str>>,
     ) {
-        self.expect(range.end, |history| Recorded::Rejected {
+        self.expect(range.end, || Expectation::Rejected {
             node,
             range,
-            requirement: history.own(requirement.into()),
+            requirement: requirement.into(),
         });
     }
 
@@ -104,7 +100,7 @@ impl<'a, M: Mode> State<'a, M> {
     /// parses one.
     pub fn built(self) -> State<'a, M::Built> {
         State {
-            history: self.history,
+            error: self.error,
             context: self.context.into(),
         }
     }
@@ -113,7 +109,7 @@ impl<'a, M: Mode> State<'a, M> {
     /// needed: [`Parse::check_at`](crate::Parse::check_at) parses one.
     pub fn checked(self) -> State<'a, M::Checked> {
         State {
-            history: self.history,
+            error: self.error,
             context: self.context.into(),
         }
     }
@@ -123,33 +119,31 @@ impl<'a, M: Mode> State<'a, M> {
 #[cold]
 #[inline(never)]
 fn record<M: Mode>(
-    history: &mut History,
+    error: &mut Error,
     context: M::Context<'_>,
-    expectation: impl FnOnce(&mut History) -> Recorded,
+    expectation: impl FnOnce() -> Expectation,
 ) {
-    let expectation = expectation(history);
-    history.record(M::frames(&context), expectation);
+    error.record(M::frames(&context), expectation());
 }
 
 /// Run a parse: `parse` tracks the furthest position it reaches; if it
 /// fails, `rerun`, the same parse in [`Record`] mode, records what was
-/// expected there, for the `Error`.
+/// expected there.
 pub(crate) fn run<M: Mode, R>(
     parse: impl FnOnce(State<'_, M>) -> Option<R>,
     rerun: impl FnOnce(State<'_, Record<Check>>),
 ) -> Result<R, Error> {
-    let mut history = History::default();
-    if let Some(value) = parse(State::new(&mut history)) {
+    let mut error = Error::new();
+    if let Some(value) = parse(State::new(&mut error)) {
         return Ok(value);
     }
-    rerun(State::new(&mut history));
-    Err(history.into_error())
+    rerun(State::new(&mut error));
+    Err(error)
 }
 
 /// Run `f` without recording anything.
 pub(crate) fn probe<R>(f: impl FnOnce(State<'_, Check>) -> R) -> R {
-    let mut ignored = History::default();
-    f(State::new(&mut ignored))
+    f(State::new(&mut Error::new()))
 }
 
 /// The rules entered so far, innermost first: a list through the stack, as
@@ -159,166 +153,6 @@ pub(crate) fn probe<R>(f: impl FnOnce(State<'_, Check>) -> R) -> R {
 pub struct Frames<'a> {
     pub(crate) frame: Frame,
     pub(crate) parent: Option<&'a Frames<'a>>,
-}
-
-/// The furthest position a parse reached and, in the second pass, what it
-/// expected there.
-#[derive(Default)]
-pub(crate) struct History {
-    /// The furthest position reached; fixed in the second pass, which keeps
-    /// only the records made there.
-    pos: usize,
-    traces: Vec<Pending>,
-    /// Requirements built while parsing, which `Pending`s refer to by index.
-    owned: Vec<String>,
-}
-
-/// A recorded trace: the rules it was made in, innermost first, and what was
-/// expected.
-struct Pending {
-    frames: Vec<Frame>,
-    expectation: Recorded,
-}
-
-/// An [`Expectation`] as recorded: a rejection's requirement is a
-/// `&'static str` or an index into [`History::owned`].
-#[derive(PartialEq)]
-pub(crate) enum Recorded {
-    Token {
-        text: &'static str,
-        range: Range<usize>,
-    },
-    CharClass(&'static str),
-    Rejected {
-        node: Option<&'static str>,
-        range: Range<usize>,
-        requirement: Requirement,
-    },
-    NotFollowedBy {
-        excluded: Lazy,
-        range: Range<usize>,
-    },
-    End,
-}
-
-#[derive(PartialEq)]
-pub(crate) enum Requirement {
-    Static(&'static str),
-    Owned(usize),
-}
-
-impl Requirement {
-    fn text<'a>(&'a self, owned: &'a [String]) -> &'a str {
-        match self {
-            Requirement::Static(text) => text,
-            Requirement::Owned(i) => &owned[*i],
-        }
-    }
-}
-
-impl Recorded {
-    /// The expectation to report, taking an owned requirement out of `owned`.
-    fn into_expectation(self, owned: &mut [String]) -> Expectation {
-        match self {
-            Recorded::Token { text, range } => Expectation::Token { text, range },
-            Recorded::CharClass(name) => Expectation::CharClass(name),
-            Recorded::Rejected {
-                node,
-                range,
-                requirement,
-            } => Expectation::Rejected {
-                node,
-                range,
-                requirement: match requirement {
-                    Requirement::Static(text) => Cow::Borrowed(text),
-                    Requirement::Owned(i) => Cow::Owned(std::mem::take(&mut owned[i])),
-                },
-            },
-            Recorded::NotFollowedBy { excluded, range } => {
-                Expectation::NotFollowedBy { excluded, range }
-            }
-            Recorded::End => Expectation::End,
-        }
-    }
-}
-
-impl History {
-    /// The first pass: only the furthest position matters.
-    #[inline]
-    fn reach(&mut self, pos: usize) {
-        if pos > self.pos {
-            self.pos = pos;
-        }
-    }
-
-    /// Record `expectation` in `frames` (innermost first), unless it's
-    /// recorded there already: a backtracking grammar can expect the same few
-    /// things exponentially often.
-    fn record(&mut self, frames: impl Iterator<Item = Frame> + Clone, expectation: Recorded) {
-        let recorded = self.traces.iter().any(|t| {
-            self.same(&t.expectation, &expectation) && t.frames.iter().copied().eq(frames.clone())
-        });
-        if !recorded {
-            self.traces.push(Pending {
-                frames: frames.collect(),
-                expectation,
-            });
-        } else if let Recorded::Rejected {
-            requirement: Requirement::Owned(i),
-            ..
-        } = expectation
-        {
-            // A dropped duplicate drops the requirement it just owned.
-            self.owned.truncate(i);
-        }
-    }
-
-    /// A rejection's `requirement` as recorded, keeping an owned one for the
-    /// error.
-    fn own(&mut self, requirement: Cow<'static, str>) -> Requirement {
-        match requirement {
-            Cow::Borrowed(text) => Requirement::Static(text),
-            Cow::Owned(text) => {
-                self.owned.push(text);
-                Requirement::Owned(self.owned.len() - 1)
-            }
-        }
-    }
-
-    /// Would `a` and `b` report the same expectation? Owned requirements
-    /// compare by text.
-    fn same(&self, a: &Recorded, b: &Recorded) -> bool {
-        match (a, b) {
-            (
-                Recorded::Rejected {
-                    node,
-                    range,
-                    requirement,
-                },
-                Recorded::Rejected {
-                    node: n,
-                    range: r,
-                    requirement: q,
-                },
-            ) => node == n && range == r && requirement.text(&self.owned) == q.text(&self.owned),
-            (a, b) => a == b,
-        }
-    }
-
-    fn into_error(mut self) -> Error {
-        let traces = self
-            .traces
-            .into_iter()
-            .map(|pending| Trace {
-                context: pending.frames.into_iter().rev().collect(),
-                expectation: pending.expectation.into_expectation(&mut self.owned),
-            })
-            .collect();
-        Error {
-            traces,
-            pos: self.pos,
-        }
-    }
 }
 
 /// What was expected at [`Error::pos`].
@@ -423,6 +257,40 @@ pub struct Error {
 }
 
 impl Error {
+    /// No position reached yet.
+    fn new() -> Self {
+        Error {
+            traces: Vec::new(),
+            pos: 0,
+        }
+    }
+
+    /// The first pass: only the furthest position matters.
+    #[inline]
+    fn reach(&mut self, pos: usize) {
+        if pos > self.pos {
+            self.pos = pos;
+        }
+    }
+
+    /// Record `expectation` in `frames` (innermost first), unless it's
+    /// recorded there already: a backtracking grammar can expect the same few
+    /// things exponentially often.
+    fn record(&mut self, frames: impl Iterator<Item = Frame> + Clone, expectation: Expectation) {
+        let recorded = self.traces.iter().any(|trace| {
+            trace.expectation == expectation
+                && trace.context.iter().rev().copied().eq(frames.clone())
+        });
+        if !recorded {
+            let mut context: Vec<Frame> = frames.collect();
+            context.reverse();
+            self.traces.push(Trace {
+                context,
+                expectation,
+            });
+        }
+    }
+
     /// What was expected at [`pos`](Self::pos), without repeats.
     pub fn traces(&self) -> &[Trace] {
         &self.traces

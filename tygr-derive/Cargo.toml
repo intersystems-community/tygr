@@ -6,6 +6,7 @@ rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 description = "Derive macros for tygr — do not depend on this directly."
 repository = "https://github.com/intersystems-community/tygr"
+readme = "../README.md"
 
 [lib]
 proc-macro = true

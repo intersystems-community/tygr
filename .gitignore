@@ -28,3 +28,4 @@ target
 
 tests/corpus
 .DS_Store
+.claude/

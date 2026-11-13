@@ -8,7 +8,7 @@ use std::ops::Range;
 use crate::bnf::{Expr, Rules};
 use crate::first::{ByteSet, Required, byte_set};
 use crate::grammar::{Grammar, Mode, Parse, Print};
-use crate::state::{Recorded, State};
+use crate::state::{Expectation, State};
 use crate::{Raw, Vec1};
 
 /// Matches one literal byte.
@@ -273,7 +273,7 @@ impl<G: Literal> Token<G> {
     /// Record the literal as expected where it diverged, having matched
     /// `range`, like a rejected validation.
     fn expected<M: Mode>(range: Range<usize>, mut state: State<M>) {
-        state.expect(range.end, |_| Recorded::Token {
+        state.expect(range.end, || Expectation::Token {
             text: Self::TEXT,
             range,
         });
@@ -336,7 +336,7 @@ impl Parse for char {
     }
 
     fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
-        state.expect(pos, |_| Recorded::CharClass(ANY_CHAR));
+        state.expect(pos, || Expectation::CharClass(ANY_CHAR));
         true
     }
 
@@ -523,7 +523,7 @@ pub fn class_to_bnf<C: CharClass>() -> Expr {
 /// `Parse::fail_at` for a `char_class!` type.
 #[doc(hidden)]
 pub fn class_fail_at<C: CharClass, M: Mode>(pos: usize, mut state: State<M>) -> bool {
-    state.expect(pos, |_| Recorded::CharClass(C::name()));
+    state.expect(pos, || Expectation::CharClass(C::name()));
     true
 }
 

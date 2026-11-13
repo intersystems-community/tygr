@@ -152,7 +152,7 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
             let start = pos;
             let mut state = state.reborrow().built();
             #(#steps)*
-            #(let #bindings = <__Mode as ::tygr::Mode>::built(#bindings);)*
+            #(let #bindings = <__Mode as ::tygr::Mode>::value(#bindings);)*
             let value = #constructor;
             if !::tygr::Validate::validate(&value) {
                 state.reject(::core::option::Option::Some(#name), start..pos, <Self as ::tygr::Validate>::REQUIREMENT);
