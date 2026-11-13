@@ -334,9 +334,8 @@ impl Field {
         }
     }
 
-    /// What its text must do if its conversion can fail, in errors and EBNF:
-    /// be convertible to its type.
-    pub(crate) fn requirement(&self) -> Option<String> {
+    /// The type a fallible conversion converts into, as written.
+    pub(crate) fn target(&self) -> Option<String> {
         let (kind, ty) = match self {
             Field::Kept {
                 ty,
@@ -348,7 +347,13 @@ impl Field {
                 conversion: None, ..
             } => return None,
         };
-        matches!(kind, Kind::TryFrom | Kind::FromStr).then(|| format!("be convertible to {ty}"))
+        matches!(kind, Kind::TryFrom | Kind::FromStr).then_some(ty)
+    }
+
+    /// What its text must do if its conversion can fail, as an EBNF side
+    /// condition.
+    pub(crate) fn requirement(&self) -> Option<String> {
+        self.target().map(|ty| format!("be convertible to {ty}"))
     }
 }
 

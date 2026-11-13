@@ -48,7 +48,7 @@ impl Parse for Never {
         } else {
             String::new()
         };
-        state.reject(Some("Never"), pos..end, requirement);
+        state.reject("Never", pos..end, requirement);
         None
     }
 

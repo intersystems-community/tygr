@@ -1,29 +1,29 @@
 //! Conversions: `#[tygr(try_from = S)]` and friends parse `S`, then convert
 //! it to the field's type, or to the type they're on.
 
-use crate::State;
 use crate::grammar::{Mode, Parse};
 use crate::wrappers::text;
+use crate::{Expectation, State};
 use std::convert::Infallible;
 use std::fmt::Display;
 use std::ops::Range;
 use std::str::FromStr;
 
 /// `try_from = S`: parse `S`, then convert it, even when checking, as the
-/// conversion can fail. A failure rejects the text, which must `requirement`,
-/// saying why it doesn't.
+/// conversion can fail. A failure records the text as not convertible
+/// `into` the type, with the error.
 #[inline(always)]
 pub fn try_from<S: Parse + TryInto<T>, T, M: Mode>(
     input: &str,
     pos: usize,
     mut state: State<M>,
-    requirement: &'static str,
+    into: &'static str,
 ) -> Option<(M::Output<T>, usize)>
 where
     S::Error: Display,
 {
     let (source, end) = S::build_at(input, pos, state.reborrow())?;
-    let value = converted(source.try_into(), pos..end, state, requirement)?;
+    let value = converted(source.try_into(), pos..end, state, into)?;
     Some((M::build(|_| value), end))
 }
 
@@ -45,25 +45,20 @@ pub fn try_from_infallible<S: Parse + TryInto<T, Error = Infallible>, T, M: Mode
 }
 
 /// `from_str = S`: check `S`, then convert its text, even when checking, as
-/// the conversion can fail. A failure rejects the text, which must
-/// `requirement`, saying why it doesn't.
+/// the conversion can fail. A failure records the text as not convertible
+/// `into` the type, with the error.
 #[inline(always)]
 pub fn from_str<S: Parse, T: FromStr, M: Mode>(
     input: &str,
     pos: usize,
     mut state: State<M>,
-    requirement: &'static str,
+    into: &'static str,
 ) -> Option<(M::Output<T>, usize)>
 where
     T::Err: Display,
 {
     let end = S::check_at(input, pos, state.reborrow())?;
-    let value = converted(
-        T::from_str(text(input, pos, end)),
-        pos..end,
-        state,
-        requirement,
-    )?;
+    let value = converted(T::from_str(text(input, pos, end)), pos..end, state, into)?;
     Some((M::build(|_| value), end))
 }
 
@@ -85,23 +80,22 @@ pub fn from_str_infallible<S: Parse, T: FromStr<Err = Infallible>, M: Mode>(
 }
 
 /// The converted value, or `None` once the text at `range` is recorded as
-/// rejected: it must `requirement`, and the error says why it doesn't.
+/// not convertible `into` the type.
 #[inline(always)]
 fn converted<M: Mode, T, E: Display>(
     result: Result<T, E>,
     range: Range<usize>,
     mut state: State<M>,
-    requirement: &'static str,
+    into: &'static str,
 ) -> Option<T> {
     match result {
         Ok(value) => Some(value),
         Err(error) => {
-            let why = if M::RECORD {
-                format!("{requirement}: {error}")
-            } else {
-                String::new()
-            };
-            state.reject(None, range, why);
+            state.expect(range.end, || Expectation::Convertible {
+                into,
+                range,
+                error: error.to_string().into(),
+            });
             None
         }
     }

@@ -18,7 +18,7 @@ impl Parse for Letter {
         let mut state = state.node("Letter", pos);
         let (ch, end) = char::build_at(input, pos, state.reborrow())?;
         if !ch.is_alphabetic() {
-            state.reject(Some("Letter"), pos..end, "be a letter");
+            state.reject("Letter", pos..end, "be a letter");
             return None;
         }
         Some((M::build(|_| Letter(ch)), end))
@@ -113,7 +113,7 @@ impl Parse for Small {
                 } else {
                     String::new()
                 };
-                state.reject(Some("Small"), pos..end, requirement);
+                state.reject("Small", pos..end, requirement);
                 None
             }
         }
