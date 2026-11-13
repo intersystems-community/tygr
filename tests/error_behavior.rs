@@ -83,6 +83,66 @@ fn conversion_records_requirement() {
     );
 }
 
+#[derive(Parse, Debug)]
+#[tygr(from_str = StringOf1<Digit>)]
+struct Byte(u8);
+
+impl std::str::FromStr for Byte {
+    type Err = std::num::ParseIntError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse().map(Byte)
+    }
+}
+
+#[derive(Parse, Debug)]
+struct Bytes(Byte, StringEq!(","), Byte);
+
+#[test]
+fn type_conversion_records_requirement() {
+    assert_eq!(Byte::parse("255").unwrap().0, 255);
+    let err = Byte::parse("999").unwrap_err();
+    assert_eq!(Byte::check("999").unwrap_err(), err);
+    assert_eq!(
+        err.to_string(),
+        "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to Byte"
+    );
+    assert_eq!(
+        format!("{err:?}"),
+        "parse error at byte 3, expected:\n\t- Byte@0/'digit'\n\t- Byte@0/Text at 0..3 must be convertible to Byte"
+    );
+    assert_error(
+        err,
+        vec![
+            trace("Byte", Expectation::CharClass("digit")),
+            trace(
+                "Byte",
+                Expectation::Rejected {
+                    node: None,
+                    range: 0..3,
+                    requirement: "be convertible to Byte".into(),
+                },
+            ),
+        ],
+        3,
+    );
+    // Within another rule, the frame and range are the converted type's.
+    let err = Bytes::parse("1,999").unwrap_err();
+    let rejected = err
+        .traces()
+        .iter()
+        .find(|trace| matches!(trace.expectation, Expectation::Rejected { .. }))
+        .unwrap();
+    assert_eq!(rejected.context.last(), Some(&frame("Byte", 2)));
+    assert_eq!(
+        rejected.expectation,
+        Expectation::Rejected {
+            node: None,
+            range: 2..5,
+            requirement: "be convertible to Byte".into(),
+        }
+    );
+}
+
 #[derive(Grammar, Debug)]
 #[tygr(validated)]
 struct NonZero(StringOf1<Digit>);

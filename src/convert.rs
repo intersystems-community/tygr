@@ -1,5 +1,5 @@
-//! Field conversions: `#[tygr(try_from = S)]` and friends parse `S`, then
-//! convert it to the field's type.
+//! Conversions: `#[tygr(try_from = S)]` and friends parse `S`, then convert
+//! it to the field's type, or to the type they're on.
 
 use crate::State;
 use crate::grammar::{Mode, Parse};

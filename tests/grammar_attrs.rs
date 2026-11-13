@@ -1,5 +1,6 @@
 //! `#[tygr(...)]` options on types and fields, and the EBNF they give.
 
+use std::fmt;
 use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
@@ -369,8 +370,9 @@ fn validated_conversion_rejects_when_checking_too() {
 
 static CONVERSIONS: AtomicUsize = AtomicUsize::new(0);
 
-/// Counts its conversions.
-#[derive(Debug, PartialEq)]
+/// Counts its conversions, converting on the type as well as in a field.
+#[derive(Debug, PartialEq, Parse)]
+#[tygr(from_str_infallible = StringOf1<Digit>)]
 struct Counted(String);
 
 impl FromStr for Counted {
@@ -387,10 +389,11 @@ struct UsesCounted(#[tygr(from_str_infallible = StringOf1<Digit>)] Counted);
 #[test]
 fn infallible_conversion_is_skipped_when_checking() {
     let before = CONVERSIONS.load(Relaxed);
-    assert!(UsesCounted::check("123").is_ok());
+    assert!(UsesCounted::check("123").is_ok() && Counted::check("123").is_ok());
     assert_eq!(CONVERSIONS.load(Relaxed), before);
     assert_eq!(UsesCounted::parse("123").unwrap().0, Counted("123".into()));
-    assert_eq!(CONVERSIONS.load(Relaxed), before + 1);
+    assert_eq!(Counted::parse("123").unwrap(), Counted("123".into()));
+    assert_eq!(CONVERSIONS.load(Relaxed), before + 2);
 }
 
 /// Parsed only: a `u32` doesn't print.
@@ -536,4 +539,245 @@ struct Stmt<D: Dialect>(D::Kw, Digits);
 fn an_unbounded_parameter_keeps_only_its_own_bounds() {
     assert_eq!(Stmt::<En>::parse("if1").unwrap().print(), "if1");
     assert!(Stmt::<En>::parse("if").is_err());
+}
+
+// Conversions on the type: `#[tygr(<kind> = S)]` on a struct or enum
+// converts `S` into the whole value; its fields and variants aren't parsed.
+
+char_class!(Lower, "lower", |ch| ch.is_ascii_lowercase());
+
+#[derive(Grammar, Debug)]
+struct Word(StringOf1<Lower>);
+
+#[derive(Debug, PartialEq, Grammar)]
+#[tygr(try_from = Word, print_to = print_color)]
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+
+impl TryFrom<Word> for Color {
+    type Error = ();
+    fn try_from(word: Word) -> Result<Color, ()> {
+        match word.0.as_str() {
+            "red" => Ok(Color::Red),
+            "green" => Ok(Color::Green),
+            "blue" => Ok(Color::Blue),
+            _ => Err(()),
+        }
+    }
+}
+
+fn print_color(color: &Color, buf: &mut String) {
+    buf.push_str(match color {
+        Color::Red => "red",
+        Color::Green => "green",
+        Color::Blue => "blue",
+    });
+}
+
+#[test]
+fn an_enum_converts_its_source_into_the_whole_value() {
+    assert_eq!(Color::parse("red").unwrap(), Color::Red);
+    assert_eq!(Color::Blue.print(), "blue");
+    assert!(Color::parse("pink").is_err() && Color::check("pink").is_err());
+    assert_eq!(
+        rule::<Color>(),
+        "Color = Word ^1 .\n^1: be convertible to Color"
+    );
+    assert_eq!(names::<Color>(), ["Color", "Word"]);
+}
+
+#[derive(Debug, PartialEq, Grammar)]
+#[tygr(from_str = Digits, print_to = print_display)]
+struct Port(u16);
+
+impl FromStr for Port {
+    type Err = std::num::ParseIntError;
+    fn from_str(s: &str) -> Result<Port, Self::Err> {
+        s.parse().map(Port)
+    }
+}
+
+impl fmt::Display for Port {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Built from a sequence, kept as numbers: infallible, so no footnote.
+#[derive(Debug, PartialEq, Grammar)]
+#[tygr(try_from_infallible = (Digits, StringEq!(","), Digits), print_to = print_point)]
+struct Point {
+    x: u32,
+    y: u32,
+}
+
+impl From<(Digits, StringEq!(","), Digits)> for Point {
+    fn from((x, _, y): (Digits, StringEq!(","), Digits)) -> Point {
+        let number = |digits: Digits| digits.0.parse().unwrap();
+        Point {
+            x: number(x),
+            y: number(y),
+        }
+    }
+}
+
+fn print_point(point: &Point, buf: &mut String) {
+    buf.push_str(&format!("{},{}", point.x, point.y));
+}
+
+#[test]
+fn a_struct_converts_from_its_source_or_its_text() {
+    assert_eq!(Port::parse("8080").unwrap(), Port(8080));
+    assert!(Port::parse("99999").is_err());
+    assert_eq!(Port(443).print(), "443");
+    assert_eq!(
+        rule::<Port>(),
+        "Port = Digits ^1 .\n^1: be convertible to Port"
+    );
+    assert_eq!(Point::parse("1,2").unwrap(), Point { x: 1, y: 2 });
+    assert_eq!(Point { x: 3, y: 4 }.print(), "3,4");
+    assert_eq!(rule::<Point>(), "Point = Digits \",\" Digits .");
+}
+
+/// Used as a field, as the wrapper it replaces was.
+#[derive(Debug, Grammar)]
+struct Colors(Color, StringEq!(","), Color);
+
+#[test]
+fn a_converted_type_is_a_rule_other_rules_refer_to() {
+    assert_eq!(Colors::parse("red,blue").unwrap().print(), "red,blue");
+    assert!(Colors::parse("red,pink").is_err());
+    let rules: Vec<String> = Colors::bnf_rules()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(
+        rules,
+        [
+            "Colors = Color \",\" Color .",
+            "Color = Word ^1 .\n^1: be convertible to Color",
+            "Word = 'lower' { 'lower' } .",
+        ]
+    );
+}
+
+/// The requirement names the Rust type, whatever the rule is named.
+#[derive(Debug, Parse)]
+#[tygr(name = "even", from_str = StringOf1<Digit>, validated)]
+struct Even(u32);
+
+impl FromStr for Even {
+    type Err = std::num::ParseIntError;
+    fn from_str(s: &str) -> Result<Even, Self::Err> {
+        s.parse().map(Even)
+    }
+}
+
+impl Validate for Even {
+    const REQUIREMENT: &'static str = "be even";
+    fn validate(&self) -> bool {
+        self.0.is_multiple_of(2)
+    }
+}
+
+#[test]
+fn a_converted_type_is_validated_after_converting() {
+    assert_eq!(
+        rule::<Even>(),
+        "even = ( 'digit' { 'digit' } ) ^1 ^2 .\n^1: be convertible to Even\n^2: be even"
+    );
+    assert_eq!(Even::parse("4").unwrap().0, 4);
+    assert!(Even::parse("3").is_err() && Even::check("3").is_err());
+}
+
+/// A converted type's generic parameter is no grammar either.
+#[derive(Debug, Grammar)]
+#[tygr(unbounded(T), from_str = StringOf1<Digit>, print_to = print_display)]
+struct Parsed<T: FromStr + fmt::Display>(T);
+
+impl<T: FromStr + fmt::Display> FromStr for Parsed<T> {
+    type Err = T::Err;
+    fn from_str(s: &str) -> Result<Self, T::Err> {
+        s.parse().map(Parsed)
+    }
+}
+
+impl<T: FromStr + fmt::Display> fmt::Display for Parsed<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[test]
+fn a_converted_type_can_be_generic() {
+    assert_eq!(Parsed::<u8>::parse("42").unwrap().print(), "42");
+    assert!(Parsed::<u8>::parse("300").is_err());
+    assert_eq!(
+        rule::<Parsed<i8>>(),
+        "Parsed = ( 'digit' { 'digit' } ) ^1 .\n^1: be convertible to Parsed<T>"
+    );
+}
+
+#[derive(Debug, Parse)]
+#[tygr(inline, try_from = Word)]
+struct InlineColor(Color);
+
+impl TryFrom<Word> for InlineColor {
+    type Error = ();
+    fn try_from(word: Word) -> Result<Self, ()> {
+        Color::try_from(word).map(InlineColor)
+    }
+}
+
+#[derive(Debug, Parse)]
+#[tygr(hidden, try_from_infallible = Word)]
+struct HiddenWord(String);
+
+impl From<Word> for HiddenWord {
+    fn from(word: Word) -> Self {
+        HiddenWord(word.0.into_inner())
+    }
+}
+
+#[derive(Debug, Parse)]
+struct UsesConvertedTypes(InlineColor, StringEq!(":"), HiddenWord);
+
+#[test]
+fn a_converted_type_can_be_inline_or_hidden() {
+    let value = UsesConvertedTypes::parse("red:x").unwrap();
+    assert_eq!((value.0.0, value.2.0.as_str()), (Color::Red, "x"));
+    assert_eq!(
+        rule::<UsesConvertedTypes>(),
+        "UsesConvertedTypes = Word ^1 \":\" .\n^1: be convertible to InlineColor"
+    );
+    assert_eq!(
+        names::<UsesConvertedTypes>(),
+        ["UsesConvertedTypes", "Word"]
+    );
+    assert!(HiddenWord::bnf_rules().is_empty());
+}
+
+/// A unit struct from a literal, as a unit variant converts one into `()`.
+#[derive(Debug, PartialEq, Grammar)]
+#[tygr(try_from_infallible = StringEq!("null"), print_to = print_null_struct)]
+struct NullStruct;
+
+impl From<StringEq!("null")> for NullStruct {
+    fn from(_: StringEq!("null")) -> Self {
+        NullStruct
+    }
+}
+
+fn print_null_struct(_: &NullStruct, buf: &mut String) {
+    buf.push_str("null");
+}
+
+#[test]
+fn a_unit_struct_converts_from_a_literal() {
+    assert_eq!(NullStruct::parse("null").unwrap(), NullStruct);
+    assert_eq!(NullStruct.print(), "null");
+    assert_eq!(rule::<NullStruct>(), "NullStruct = \"null\" .");
 }

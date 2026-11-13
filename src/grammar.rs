@@ -19,7 +19,7 @@ use std::fmt::{self, Write};
 /// keeping the text panics.
 #[diagnostic::on_unimplemented(
     message = "`{Self}` doesn't parse as a grammar",
-    note = "derive `Parse` for it, or convert the field from a grammar `S` with `#[tygr(from_str = S)]` or `#[tygr(try_from = S)]`"
+    note = "derive `Parse` for it, or convert the field or its type from a grammar `S` with `#[tygr(from_str = S)]` or `#[tygr(try_from = S)]`"
 )]
 pub trait Parse: Sized + 'static {
     /// The bytes (and whether empty input) this grammar can start with, used
@@ -153,10 +153,11 @@ pub trait Parse: Sized + 'static {
 ///
 /// Implemented for tygr's own grammars; for `struct`s and `enum`s,
 /// `#[derive(Print)]` or `#[derive(Grammar)]` generates it. A converted field
-/// prints with `#[tygr(print_to = f)]` instead, such as [`print_display`].
+/// or type prints with `#[tygr(print_to = f)]` instead, such as
+/// [`print_display`].
 #[diagnostic::on_unimplemented(
     message = "`{Self}` doesn't print as a grammar",
-    note = "derive `Print` for it, or print the field with `#[tygr(print_to = f)]`, e.g. `tygr::print_display`"
+    note = "derive `Print` for it, or print the field or its converted type with `#[tygr(print_to = f)]`, e.g. `tygr::print_display`"
 )]
 pub trait Print {
     /// Append `self`'s text to `buf`.

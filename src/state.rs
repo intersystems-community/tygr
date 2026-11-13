@@ -76,7 +76,7 @@ impl<'a, M: Mode> State<'a, M> {
     }
 
     /// Record that the text at `range` was rejected, as it must
-    /// `requirement`: by validated rule `node`, or by a field conversion. A
+    /// `requirement`: by validated rule `node`, or by a conversion. A
     /// `String` requirement, built from what was parsed, is kept for the
     /// error; test [`Mode::RECORD`] first to build it only when it's kept.
     #[inline(always)]
@@ -363,15 +363,15 @@ pub enum Expectation {
     /// `"any"` for `char`.
     CharClass(&'static str),
     /// The text at `range` matched but was rejected: a
-    /// `#[tygr(validated)]` check or a field conversion failed.
+    /// `#[tygr(validated)]` check or a conversion failed.
     Rejected {
-        /// The validated rule's name; `None` for a field conversion.
+        /// The validated rule's name; `None` for a conversion.
         node: Option<&'static str>,
         /// The bytes rejected.
         range: Range<usize>,
         /// What they must do: a
         /// [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT),
-        /// `"be convertible to T"` for a field of type `T`, or what a
+        /// `"be convertible to T"` for a conversion into `T`, or what a
         /// hand-written grammar passed to [`State::reject`].
         requirement: Cow<'static, str>,
     },
