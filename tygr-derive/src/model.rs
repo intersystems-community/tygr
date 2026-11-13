@@ -79,43 +79,34 @@ pub(crate) enum Kind {
 impl Model {
     pub(crate) fn new(input: &DeriveInput) -> syn::Result<Self> {
         let ident = &input.ident;
-        let mut model = Model {
-            ident: ident.clone(),
-            generics: input.generics.clone(),
-            name: ident.to_string(),
-            hidden: false,
-            inline: false,
-            validated: false,
-            unbounded: Vec::new(),
-            // Read below, once the attributes say whether the type converts.
-            shape: Shape::Enum(Vec::new()),
-        };
+        let mut name = ident.to_string();
+        let (mut hidden, mut inline, mut validated) = (false, false, false);
+        let mut unbounded = Vec::new();
         let mut converted = FieldAttrs::default();
         for attr in tygr_attrs(&input.attrs) {
             attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident("name") {
-                    model.name = meta.value()?.parse::<LitStr>()?.value();
+                    name = meta.value()?.parse::<LitStr>()?.value();
                 } else if meta.path.is_ident("hidden") {
-                    model.hidden = true;
-                    model.inline = true;
+                    hidden = true;
+                    inline = true;
                 } else if meta.path.is_ident("inline") {
-                    model.inline = true;
+                    inline = true;
                 } else if meta.path.is_ident("unbounded") {
                     meta.parse_nested_meta(|param| {
                         let ident = param.path.require_ident()?.clone();
-                        if !model.generics.type_params().any(|p| p.ident == ident) {
+                        if !input.generics.type_params().any(|p| p.ident == ident) {
                             return Err(param.error("not a type parameter"));
                         }
-                        model.unbounded.push(ident);
+                        unbounded.push(ident);
                         Ok(())
                     })?;
                 } else if meta.path.is_ident("validated") {
-                    model.validated = true;
+                    validated = true;
                 } else if !converted.read(&meta, false)? {
                     return Err(meta.error(
-                        "expected `name`, `hidden`, `inline`, `validated`, `unbounded`, a conversion \
-                         (`try_from`, `try_from_infallible`, `from_str` or `from_str_infallible`), \
-                         or `print_to`",
+                        "expected `name`, `hidden`, `inline`, `validated`, `unbounded`, `try_from`, \
+                         `try_from_infallible`, `from_str`, `from_str_infallible`, or `print_to`",
                     ));
                 }
                 Ok(())
@@ -125,14 +116,13 @@ impl Model {
             conversion,
             print_to,
         } = converted;
-        model.shape = match (&input.data, conversion, print_to) {
+        let shape = match (&input.data, conversion, print_to) {
             (Data::Union(_), ..) => {
                 return Err(syn::Error::new_spanned(
                     ident,
                     "a grammar is a struct or an enum, not a union",
                 ));
             }
-            // The fields are the conversion's to fill, not parts of the grammar.
             (data, Some(conversion), print_to) => {
                 if let Some(attr) = inner_attr(data) {
                     return Err(syn::Error::new_spanned(
@@ -168,7 +158,16 @@ impl Model {
                     .collect::<syn::Result<_>>()?,
             ),
         };
-        Ok(model)
+        Ok(Model {
+            ident: ident.clone(),
+            generics: input.generics.clone(),
+            name,
+            hidden,
+            inline,
+            validated,
+            unbounded,
+            shape,
+        })
     }
 
     /// The variants (a struct is one).

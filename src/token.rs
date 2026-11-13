@@ -8,8 +8,7 @@ use std::ops::Range;
 use crate::bnf::{Expr, Rules};
 use crate::first::{ByteSet, Required, byte_set};
 use crate::grammar::{Grammar, Mode, Parse, Print};
-use crate::state::Recorded;
-use crate::state::State;
+use crate::state::{Recorded, State};
 use crate::{Raw, Vec1};
 
 /// Matches one literal byte.

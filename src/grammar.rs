@@ -56,7 +56,7 @@ pub trait Parse: Sized + 'static {
                 let (value, end) = Self::parse_at::<Build>(input, 0, state.reborrow())?;
                 state.at_end(input, end).then_some(value)
             },
-            |state| record::<Self, _>(input, state),
+            |state| rerun::<Self, _>(input, state),
         )
     }
 
@@ -78,7 +78,7 @@ pub trait Parse: Sized + 'static {
                 let ((), end) = Self::parse_at::<Check>(input, 0, state.reborrow())?;
                 state.at_end(input, end).then_some(())
             },
-            |state| record::<Self, _>(input, state),
+            |state| rerun::<Self, _>(input, state),
         )
     }
 
@@ -190,14 +190,15 @@ pub trait Grammar: Parse + Print {}
 impl<T: Parse + Print> Grammar for T {}
 
 /// The second pass of a failed `parse` or `check`: the same parse, recording.
-fn record<T: Parse, M: Mode>(input: &str, mut state: State<Record<M>>) {
+fn rerun<T: Parse, M: Mode>(input: &str, mut state: State<Record<M>>) {
     if let Some((_, end)) = T::parse_at(input, 0, state.reborrow()) {
         state.at_end(input, end);
     }
 }
 
 /// Whether [`Parse::parse_at`] builds values ([`Build`]) or only matches
-/// ([`Check`]), so one function does both.
+/// ([`Check`]), so one function does both; [`Record`] wraps either to also
+/// record what it expected.
 ///
 /// ```
 /// # use tygr::*;
@@ -254,8 +255,8 @@ pub trait Mode: Copy + 'static + private::Sealed {
     /// pass of a parse that failed.
     const RECORD: bool;
 
-    /// This mode, building values: for a part whose value is needed whatever
-    /// the mode, e.g. to convert it. [`built`](Self::built) unwraps its output.
+    /// This mode, building values: what [`build_at`](Parse::build_at) parses
+    /// in; [`built`](Self::built) unwraps its output.
     type Built: Mode;
 
     /// This mode, keeping only the end position.
@@ -284,8 +285,8 @@ pub trait Mode: Copy + 'static + private::Sealed {
         context: &'s Self::Context<'a>,
     ) -> impl Iterator<Item = Frame> + Clone + 's;
 
-    /// An output built by `f`. Only [`Build`] calls it, passing itself to
-    /// [`get`](Self::get) the outputs it combines.
+    /// An output built by `f`. Only [`Build`] (or [`Record`] of it) calls it,
+    /// passing itself to [`get`](Self::get) the outputs it combines.
     fn build<T>(f: impl FnOnce(Self) -> T) -> Self::Output<T>;
 
     /// `output` with `f` applied to its value.
@@ -416,14 +417,17 @@ impl<M: Mode> Mode for Record<M> {
 
     #[inline(always)]
     fn enter<'s, 'a: 's>(parent: &'s Option<Frames<'a>>, frame: Frame) -> Option<Frames<'s>> {
-        Frames::enter(parent, frame)
+        Some(Frames {
+            frame,
+            parent: parent.as_ref(),
+        })
     }
 
     #[inline(always)]
     fn frames<'s, 'a: 's>(
         context: &'s Option<Frames<'a>>,
     ) -> impl Iterator<Item = Frame> + Clone + 's {
-        Frames::iter(context)
+        std::iter::successors(context.as_ref(), |frames| frames.parent).map(|frames| frames.frame)
     }
 
     #[inline(always)]
@@ -456,10 +460,9 @@ mod private {
     /// Only [`Build`](super::Build), [`Check`](super::Check) and
     /// [`Record`](super::Record) are modes.
     pub trait Sealed {}
-    use super::Mode;
     impl Sealed for super::Build {}
     impl Sealed for super::Check {}
-    impl<M: Mode> Sealed for super::Record<M> {}
+    impl<M: super::Mode> Sealed for super::Record<M> {}
 }
 
 /// Post-parse validation for `#[tygr(validated)]` types.

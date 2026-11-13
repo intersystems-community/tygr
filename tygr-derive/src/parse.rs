@@ -138,7 +138,6 @@ fn first(variant: &Variant) -> TokenStream {
 /// Parse each field, then build the value; or, if `validated`, build it
 /// whatever the mode and check it.
 fn parse(model: &Model, variant: &Variant) -> TokenStream {
-    // Validating needs the values, whatever the pass.
     let mode = if model.validated {
         quote! { <__Mode as ::tygr::Mode>::Built }
     } else {
