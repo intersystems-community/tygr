@@ -187,7 +187,7 @@ pub enum Expectation {
     /// `from_str` conversion of it failed.
     Convertible {
         /// The type converted into, as written in the attribute's field or
-        /// type.
+        /// type: not a rule's `name`, which the trace's innermost frame has.
         into: &'static str,
         /// The bytes that didn't convert.
         range: Range<usize>,
