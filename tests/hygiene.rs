@@ -36,8 +36,8 @@ struct Field(
 struct Keyword;
 
 impl TryFrom<Kw> for Keyword {
-    type Error = ();
-    fn try_from(_: Kw) -> Result<Keyword, ()> {
+    type Error = &'static str;
+    fn try_from(_: Kw) -> Result<Keyword, &'static str> {
         Ok(Keyword)
     }
 }

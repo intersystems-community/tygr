@@ -246,9 +246,12 @@ impl From<Digit> for u8 {
 }
 
 impl TryFrom<Digit> for bool {
-    type Error = ();
-    fn try_from(d: Digit) -> Result<bool, ()> {
-        [false, true].get(u8::from(d) as usize).copied().ok_or(())
+    type Error = &'static str;
+    fn try_from(d: Digit) -> Result<bool, &'static str> {
+        [false, true]
+            .get(u8::from(d) as usize)
+            .copied()
+            .ok_or("be 0 or 1")
     }
 }
 
@@ -512,7 +515,7 @@ fn an_empty_enum_never_parses() {
 
 #[derive(Grammar)]
 #[tygr(unbounded(T))]
-struct Num<T: FromStr + std::fmt::Display>(
+struct Num<T: FromStr<Err: std::fmt::Display> + std::fmt::Display>(
     #[tygr(from_str = StringOf1<Digit>, print_to = print_display)] T,
 );
 
@@ -558,13 +561,13 @@ enum Color {
 }
 
 impl TryFrom<Word> for Color {
-    type Error = ();
-    fn try_from(word: Word) -> Result<Color, ()> {
+    type Error = &'static str;
+    fn try_from(word: Word) -> Result<Color, &'static str> {
         match word.0.as_str() {
             "red" => Ok(Color::Red),
             "green" => Ok(Color::Green),
             "blue" => Ok(Color::Blue),
-            _ => Err(()),
+            _ => Err("name a color"),
         }
     }
 }
@@ -695,16 +698,16 @@ fn a_converted_type_is_validated_after_converting() {
 /// A converted type's generic parameter is no grammar either.
 #[derive(Debug, Grammar)]
 #[tygr(unbounded(T), from_str = StringOf1<Digit>, print_to = print_display)]
-struct Parsed<T: FromStr + fmt::Display>(T);
+struct Parsed<T: FromStr<Err: fmt::Display> + fmt::Display>(T);
 
-impl<T: FromStr + fmt::Display> FromStr for Parsed<T> {
+impl<T: FromStr<Err: fmt::Display> + fmt::Display> FromStr for Parsed<T> {
     type Err = T::Err;
     fn from_str(s: &str) -> Result<Self, T::Err> {
         s.parse().map(Parsed)
     }
 }
 
-impl<T: FromStr + fmt::Display> fmt::Display for Parsed<T> {
+impl<T: FromStr<Err: fmt::Display> + fmt::Display> fmt::Display for Parsed<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
@@ -725,8 +728,8 @@ fn a_converted_type_can_be_generic() {
 struct InlineColor(Color);
 
 impl TryFrom<Word> for InlineColor {
-    type Error = ();
-    fn try_from(word: Word) -> Result<Self, ()> {
+    type Error = &'static str;
+    fn try_from(word: Word) -> Result<Self, &'static str> {
         Color::try_from(word).map(InlineColor)
     }
 }

@@ -78,7 +78,8 @@ fn conversion_records_requirement() {
                 Expectation::Rejected {
                     node: None,
                     range: 0..3,
-                    requirement: "be convertible to u8".into(),
+                    requirement: "be convertible to u8: number too large to fit in target type"
+                        .into(),
                 },
             ),
         ],
@@ -97,7 +98,7 @@ enum Signed {
 fn distinct_requirements_at_one_position_are_both_recorded() {
     assert_eq!(
         Signed::parse("999").unwrap_err().to_string(),
-        "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to i8\n\t- Text at 0..3 must be convertible to u8"
+        "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to i8: number too large to fit in target type\n\t- Text at 0..3 must be convertible to u8: number too large to fit in target type"
     );
 }
 
@@ -122,11 +123,11 @@ fn type_conversion_records_requirement() {
     assert_eq!(Byte::check("999").unwrap_err(), err);
     assert_eq!(
         err.to_string(),
-        "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to Byte"
+        "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to Byte: number too large to fit in target type"
     );
     assert_eq!(
         format!("{err:?}"),
-        "parse error at byte 3, expected:\n\t- Byte@0/'digit'\n\t- Byte@0/Text at 0..3 must be convertible to Byte"
+        "parse error at byte 3, expected:\n\t- Byte@0/'digit'\n\t- Byte@0/Text at 0..3 must be convertible to Byte: number too large to fit in target type"
     );
     assert_error(
         err,
@@ -137,7 +138,8 @@ fn type_conversion_records_requirement() {
                 Expectation::Rejected {
                     node: None,
                     range: 0..3,
-                    requirement: "be convertible to Byte".into(),
+                    requirement: "be convertible to Byte: number too large to fit in target type"
+                        .into(),
                 },
             ),
         ],
@@ -156,7 +158,7 @@ fn type_conversion_records_requirement() {
         Expectation::Rejected {
             node: None,
             range: 2..5,
-            requirement: "be convertible to Byte".into(),
+            requirement: "be convertible to Byte: number too large to fit in target type".into(),
         }
     );
 }
@@ -217,7 +219,7 @@ fn display_names_a_rule_starting_at_the_error_else_its_expectation() {
         ),
         (
             SmallNumber::parse("999").unwrap_err(),
-            "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to u8",
+            "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to u8: number too large to fit in target type",
         ),
         (
             NonZero::parse("007").unwrap_err(),
