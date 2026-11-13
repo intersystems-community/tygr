@@ -51,7 +51,6 @@ fn char_decodes_one_character_of_any_width() {
     assert!(char::parse("").is_err());
 }
 
-#[cfg(feature = "trace_one_node")]
 #[test]
 fn literal_errors_report_the_whole_literal_where_it_diverged() {
     fn token(text: &'static str, range: std::ops::Range<usize>) -> Expectation {

@@ -14,13 +14,6 @@ readme = "README.md"
 either = "1.15.0"
 tygr-derive = { path = "tygr-derive", version = "=0.7.0" }
 
-[features]
-default = ["trace_one_node"]
-trace = ["trace_all_nodes"]
-trace_pos = []
-trace_one_node = ["trace_pos"]
-trace_all_nodes = ["trace_one_node"]
-
 [[bench]]
 name = "json"
 harness = false

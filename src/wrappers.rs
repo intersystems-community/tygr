@@ -2,7 +2,7 @@
 
 use crate::State;
 use crate::bnf::{Expr, Rules};
-use crate::grammar::{Check, Mode, Parse, Print};
+use crate::grammar::{Mode, Parse, Print};
 use std::fmt;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut, Range};
@@ -84,13 +84,13 @@ impl<T: Parse> Parse for Raw<T> {
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        state: State,
+        state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
-        let ((), end) = T::parse_at::<Check>(input, pos, state)?;
+        let end = T::check_at(input, pos, state)?;
         Some((M::build(|_| Raw::from(text(input, pos, end))), end))
     }
 
-    fn fail_at(pos: usize, state: State) -> bool {
+    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
         T::fail_at(pos, state)
     }
 
@@ -258,13 +258,13 @@ impl<T: Parse> Parse for Ranged<T> {
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        state: State,
+        state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         let (ranged, end) = T::parse_at::<M>(input, pos, state)?;
         Some((M::map(ranged, |ranged| Ranged::new(pos, ranged, end)), end))
     }
 
-    fn fail_at(pos: usize, state: State) -> bool {
+    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
         T::fail_at(pos, state)
     }
 
@@ -290,13 +290,13 @@ impl<T: Parse> Parse for Box<T> {
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        state: State,
+        state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         let (value, end) = T::parse_at::<M>(input, pos, state)?;
         Some((M::map(value, Box::new), end))
     }
 
-    fn fail_at(pos: usize, state: State) -> bool {
+    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
         T::fail_at(pos, state)
     }
 
@@ -324,13 +324,13 @@ impl<T: Parse> Parse for PhantomData<T> {
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        state: State,
+        state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
-        let ((), end) = T::parse_at::<Check>(input, pos, state)?;
+        let end = T::check_at(input, pos, state)?;
         Some((M::build(|_| PhantomData), end))
     }
 
-    fn fail_at(pos: usize, state: State) -> bool {
+    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
         T::fail_at(pos, state)
     }
 

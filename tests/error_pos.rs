@@ -1,5 +1,4 @@
-//! Where a failed parse stops, whenever positions are traced.
-#![cfg(feature = "trace_pos")]
+//! Where a failed parse stops.
 
 use tygr::*;
 

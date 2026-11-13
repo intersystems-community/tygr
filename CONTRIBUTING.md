@@ -19,10 +19,9 @@ cargo clippy --workspace --all-targets -- -D warnings  # lint both crates
 cargo doc --no-deps                           # build docs
 ```
 
-CI runs `fmt --check`, `clippy`, `test`, doc tests, and `doc` across the
-`default`, `--no-default-features`, and `--all-features` feature sets and
-each `trace_*` feature alone, builds on the `rust-version` in Cargo.toml,
-and checks that both crates' versions and `Cargo.lock` line up.
+CI runs `fmt --check`, `clippy`, `test`, doc tests, and `doc`, builds on the
+`rust-version` in Cargo.toml, and checks that both crates' versions and
+`Cargo.lock` line up.
 
 ## Releasing
 
