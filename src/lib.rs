@@ -43,7 +43,8 @@
 //!
 //! A parse that fails runs a second time, in [`Record`] mode, to record what
 //! it expected at the furthest position it reached ([`Error::traces`]): a
-//! success costs no tracing, a failure about one and a half parses.
+//! success costs only tracking the furthest position, a failure about one
+//! and a half parses.
 //!
 //! Parsing recurses as the grammar nests, so input nested deeply enough
 //! overflows the stack, which aborts the process. For untrusted input,

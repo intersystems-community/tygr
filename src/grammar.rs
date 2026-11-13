@@ -131,7 +131,7 @@ pub trait Parse: Sized + 'static {
     #[inline(always)]
     fn build_at<M: Mode>(input: &str, pos: usize, state: State<M>) -> Option<(Self, usize)> {
         let (value, end) = Self::parse_at(input, pos, state.built())?;
-        Some((M::built(value), end))
+        Some((M::value(value), end))
     }
 
     /// Parse at `pos` for the end position alone, recording as `M` does.
@@ -257,14 +257,14 @@ pub trait Mode: Copy + 'static + private::Sealed {
     const RECORD: bool;
 
     /// This mode, building values: what [`build_at`](Parse::build_at) parses
-    /// in; [`built`](Self::built) unwraps its output.
+    /// in; [`value`](Self::value) unwraps its output.
     type Built: Mode;
 
     /// This mode, keeping only the end position.
     type Checked: Mode;
 
     /// The `T` a [`Built`](Self::Built) output holds.
-    fn built<T>(output: <Self::Built as Mode>::Output<T>) -> T;
+    fn value<T>(output: <Self::Built as Mode>::Output<T>) -> T;
 
     /// The rules entered so far, a list through the stack, when recording;
     /// otherwise `()`.
@@ -334,7 +334,7 @@ impl Mode for Build {
     }
 
     #[inline(always)]
-    fn built<T>(output: T) -> T {
+    fn value<T>(output: T) -> T {
         output
     }
 
@@ -378,7 +378,7 @@ impl Mode for Check {
     }
 
     #[inline(always)]
-    fn built<T>(output: T) -> T {
+    fn value<T>(output: T) -> T {
         output
     }
 
@@ -402,7 +402,7 @@ impl Mode for Check {
 /// Mode `M`, also recording what was expected at the furthest position: the
 /// second pass of a parse that failed.
 #[derive(Debug, Clone, Copy)]
-pub struct Record<M>(M);
+pub struct Record<M: Mode>(M);
 
 impl<M: Mode> Mode for Record<M> {
     type Output<T> = M::Output<T>;
@@ -432,8 +432,8 @@ impl<M: Mode> Mode for Record<M> {
     }
 
     #[inline(always)]
-    fn built<T>(output: <M::Built as Mode>::Output<T>) -> T {
-        M::built(output)
+    fn value<T>(output: <M::Built as Mode>::Output<T>) -> T {
+        M::value(output)
     }
 
     #[inline(always)]

@@ -11,13 +11,14 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
   what was expected there. The `trace`, `trace_pos`, `trace_one_node` and
   `trace_all_nodes` features are gone: every build has `Error::pos` and
   `Error::traces`, and each `Trace::context` is the whole chain of rules,
-  outermost first. A successful parse does no tracing work: on the JSON
-  benchmark (`canada.json`) it takes 16 ms instead of 25 with the default
-  tracing, and a failed one 26 instead of 27.
+  outermost first. A successful parse only tracks the furthest position: on
+  the JSON benchmark (`canada.json`) it takes about what it took with tracing
+  off, two thirds of what the default tracing took; a failed parse takes
+  about what the default tracing took.
 - `State<M>` carries the mode, so a hand-written grammar takes
   `state: State<M>` and its calls to `node`, `reject` and `fail_at` infer it;
   `Parse::fail_at` is generic over the mode like `parse_at`. `Mode` has
-  `RECORD`, `Built`, `Checked` and `built`, and `Parse` has `build_at` and
+  `RECORD`, `Built`, `Checked` and `value`, and `Parse` has `build_at` and
   `check_at` (`State::built` and `checked` underneath), to parse a part
   building or only checking it whatever the mode.
 - `OLC::offset_to_line_character` and `line_character_to_offset` return a
@@ -36,18 +37,17 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
 - A conversion on the type itself: `#[tygr(try_from = S, print_to = f)]`
   (or `try_from_infallible`, `from_str`, `from_str_infallible`) on a
   struct or enum parses `S` and converts it into the whole value, as on a
-  field, `f` taking `&Self`. Its fields or variants are the conversion's
-  to fill rather than parts of the grammar, so a type built from a grammar
-  (an enum of keywords from a word rule, a struct from a sequence) needs
-  no wrapper struct. `name`, `hidden`, `inline`, `validated` and
+  field, `f` taking `&Self`. Its fields or variants are the conversion's to
+  fill, not parts of the grammar, so an enum of keywords or a struct of
+  data needs no wrapper; `name`, `hidden`, `inline`, `validated` and
   `unbounded` combine with it. This is 0.6's `GrammarFromStr`,
   `GrammarFromOther` and `GrammarTryFromOther` as `from_str`,
-  `try_from_infallible` and `try_from`, with `print_to` for
-  `GrammarFrom::print_to`. The derive's error for an unknown option on a
-  type now names every option, `unbounded` included.
+  `try_from_infallible` and `try_from`. The derive's error for an unknown
+  option on a type now names every option.
 - The published crate holds the sources, tests, examples, README, CHANGELOG
   and licenses, no longer the benchmark with its 2.2 MB of data or the
-  repository's tooling: a tenth of the download.
+  repository's tooling: a tenth of the download. `tygr-derive`'s package
+  gains the license texts and the README.
 
 ## [0.7.0] - 2026-11-12
 
