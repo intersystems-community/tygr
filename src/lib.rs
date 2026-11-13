@@ -57,9 +57,12 @@
 //! - `unbounded(T, …)` — the derive bounds every type parameter with
 //!   [`Parse`] (and [`Print`]); these keep only the bounds you wrote, as a
 //!   conversion target or a `D` whose `D::Kw` is the grammar must.
+//! - `try_from = S` or another conversion below — convert the whole value
+//!   from `S`, instead of parsing the fields or variants.
 //!
-//! `#[tygr(...)]` on a field of type `T` parses another grammar `S` and
-//! converts it to `T`, e.g. digits into a `u32`, naming how:
+//! `#[tygr(...)]` on a field of type `T`, or on a struct or enum `T` itself,
+//! parses another grammar `S` and converts it to `T`, e.g. digits into a
+//! `u32`, naming how:
 //! - `try_from = S`: `S: TryInto<T>`, on the parsed value.
 //! - `try_from_infallible = S`: the same with `Error = Infallible`, as for
 //!   every `From` conversion.
@@ -68,13 +71,13 @@
 //!
 //! A failed conversion backtracks, recorded and footnoted in EBNF like a
 //! failed [`Validate`] check; an infallible one is skipped when checking.
-//! Converting loses the text, so to print, the field needs `print_to = f`,
-//! an `fn(&T, &mut String)` such as [`print_display`] (or
-//! [`Print::print_to`], if `T` is a grammar). A unit variant is a field of
-//! type `()`: `try_from_infallible = S` converts `S` into `()`, which a
-//! literal with one text does (`StringEq!`, or `StringEqCI!` without cased
-//! chars), as does a grammar of yours with `impl From<S> for ()`; `try_from`
-//! if the conversion can fail. Its `print_to` takes `&()`.
+//! Converting loses the text, so to print, the field or type needs
+//! `print_to = f`, an `fn(&T, &mut String)` such as [`print_display`] (or,
+//! for a field whose `T` is a grammar, [`Print::print_to`]). A unit variant
+//! is a field of type `()`: `try_from_infallible = S` converts `S` into `()`,
+//! which a literal with one text does (`StringEq!`, or `StringEqCI!` without
+//! cased chars), as does a grammar of yours with `impl From<S> for ()`;
+//! `try_from` if the conversion can fail. Its `print_to` takes `&()`.
 //!
 //! ```
 //! # use tygr::*;
@@ -84,6 +87,51 @@
 //! assert_eq!(Port::parse("8080").unwrap().0, 8080);
 //! assert!(Port::parse("99999").is_err());
 //! assert_eq!(Port(443).print(), "443");
+//! ```
+//!
+//! Convert a field when the type around it is the grammar, as `Port` is.
+//! Convert the type when it is built from a grammar rather than made of
+//! grammars, as an enum of plain variants or a struct of data fields is: its
+//! fields or variants are then yours to fill, not parts of the grammar, and
+//! take no `#[tygr(...)]`.
+//!
+//! ```
+//! # use tygr::*;
+//! # use std::{fmt, str::FromStr};
+//! # char_class!(Letter, "letter", |ch| ch.is_ascii_lowercase());
+//! # #[derive(Grammar)]
+//! # struct Word(StringOf1<Letter>);
+//! #[derive(Grammar, Debug, PartialEq)]
+//! #[tygr(from_str = Word, print_to = print_display)]
+//! enum Answer {
+//!     Yes,
+//!     No,
+//! }
+//!
+//! impl FromStr for Answer {
+//!     type Err = ();
+//!     fn from_str(s: &str) -> Result<Answer, ()> {
+//!         match s {
+//!             "yes" | "y" => Ok(Answer::Yes),
+//!             "no" | "n" => Ok(Answer::No),
+//!             _ => Err(()),
+//!         }
+//!     }
+//! }
+//!
+//! impl fmt::Display for Answer {
+//!     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//!         f.write_str(if *self == Answer::Yes { "yes" } else { "no" })
+//!     }
+//! }
+//!
+//! assert_eq!(Answer::parse("y").unwrap(), Answer::Yes);
+//! assert!(Answer::parse("maybe").is_err());
+//! assert_eq!(Answer::No.print(), "no");
+//! assert_eq!(
+//!     Answer::bnf_rules()[0].to_string(),
+//!     "Answer = Word ^1 .\n^1: be convertible to Answer"
+//! );
 //! ```
 //!
 //! ## Feature Flags

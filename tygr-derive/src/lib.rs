@@ -12,12 +12,13 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 
 /// Derive `Parse` and `Print` for a `struct` or `enum`: a `struct` is a
-/// sequence of its fields, an `enum` an alternation of its variants.
+/// sequence of its fields, an `enum` an alternation of its variants, unless
+/// a conversion on the type converts another grammar into the whole value.
 ///
-/// `#[tygr(name = "…", hidden, inline, validated)]` on the type, and
-/// `#[tygr(try_from/try_from_infallible/from_str/from_str_infallible = S,
-/// print_to = f)]` on a field, are optional, except that a converted field
-/// prints only with `print_to` (see `tygr`'s crate docs).
+/// `#[tygr(name = "…", hidden, inline, validated, unbounded(T))]` on the
+/// type, and `#[tygr(try_from/try_from_infallible/from_str/from_str_infallible
+/// = S, print_to = f)]` on a field or on the type, are optional, except that
+/// a conversion prints only with `print_to` (see `tygr`'s crate docs).
 #[proc_macro_derive(Grammar, attributes(tygr))]
 pub fn derive_grammar(input: TokenStream) -> TokenStream {
     derive(input, |model| {

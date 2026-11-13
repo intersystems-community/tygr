@@ -12,6 +12,21 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
   value and how far past it the position was, rather than being clamped
   silently. `unwrap_or_else(|e| e.bound)` clamps as 0.7 did.
 
+### Non-breaking Changes
+
+- A conversion on the type itself: `#[tygr(try_from = S, print_to = f)]`
+  (or `try_from_infallible`, `from_str`, `from_str_infallible`) on a
+  struct or enum parses `S` and converts it into the whole value, as on a
+  field, `f` taking `&Self`. Its fields or variants are the conversion's
+  to fill rather than parts of the grammar, so a type built from a grammar
+  (an enum of keywords from a word rule, a struct from a sequence) needs
+  no wrapper struct. `name`, `hidden`, `inline`, `validated` and
+  `unbounded` combine with it. This is 0.6's `GrammarFromStr`,
+  `GrammarFromOther` and `GrammarTryFromOther` as `from_str`,
+  `try_from_infallible` and `try_from`, with `print_to` for
+  `GrammarFrom::print_to`. The derive's error for an unknown option on a
+  type now names every option, `unbounded` included.
+
 ## [0.7.0] - 2026-11-12
 
 Literals, FIRST sets and enum dispatch now match on bytes, under grammars
