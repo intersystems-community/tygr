@@ -13,7 +13,7 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
   `Error::traces`, and each `Trace::context` is the whole chain of rules,
   outermost first. A successful parse does no tracing work: on the JSON
   benchmark (`canada.json`) it takes 16 ms instead of 25 with the default
-  tracing, while a failed one takes 43 instead of 27.
+  tracing, and a failed one 26 instead of 27.
 - `State<M>` carries the mode, so a hand-written grammar takes
   `state: State<M>` and its calls to `node`, `reject` and `fail_at` infer it;
   `Parse::fail_at` is generic over the mode like `parse_at`. `Mode` has

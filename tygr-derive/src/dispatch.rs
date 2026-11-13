@@ -39,7 +39,7 @@ pub(crate) fn dispatch(
             fn #cases<__Mode: ::tygr::Mode>(input: &str, pos: usize, mut state: ::tygr::State<__Mode>) -> #output {
                 if let ::core::option::Option::Some(result) = (|| { #arms })() {
                     // Matching empty, it rules out none of the variants skipped.
-                    if ::tygr::first::contains::<#firsts>(::core::option::Option::None) && result.1 == pos {
+                    if const { ::tygr::first::contains::<#firsts>(::core::option::Option::None) } && result.1 == pos {
                         Self::__fail_at_skipped(input, pos, state);
                     }
                     return ::core::option::Option::Some(result);

@@ -56,7 +56,7 @@ pub trait Parse: Sized + 'static {
                 let (value, end) = Self::parse_at::<Build>(input, 0, state.reborrow())?;
                 state.at_end(input, end).then_some(value)
             },
-            |state| rerun::<Self, _>(input, state),
+            |state| rerun::<Self>(input, state),
         )
     }
 
@@ -78,7 +78,7 @@ pub trait Parse: Sized + 'static {
                 let ((), end) = Self::parse_at::<Check>(input, 0, state.reborrow())?;
                 state.at_end(input, end).then_some(())
             },
-            |state| rerun::<Self, _>(input, state),
+            |state| rerun::<Self>(input, state),
         )
     }
 
@@ -190,7 +190,8 @@ pub trait Grammar: Parse + Print {}
 impl<T: Parse + Print> Grammar for T {}
 
 /// The second pass of a failed `parse` or `check`: the same parse, recording.
-fn rerun<T: Parse, M: Mode>(input: &str, mut state: State<Record<M>>) {
+/// It only checks, as no value is kept.
+fn rerun<T: Parse>(input: &str, mut state: State<Record<Check>>) {
     if let Some((_, end)) = T::parse_at(input, 0, state.reborrow()) {
         state.at_end(input, end);
     }
