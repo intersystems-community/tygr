@@ -1,5 +1,4 @@
 //! What a failed parse records, and how its error reads.
-#![cfg(feature = "trace_one_node")]
 
 use std::ops::Range;
 use tygr::*;
@@ -14,7 +13,7 @@ fn frame(node: &'static str, pos: usize) -> Frame {
     Frame { node, pos }
 }
 
-/// A trace from `node`, entered at 0, expecting `expectation`.
+/// A trace from top-level rule `node`, entered at 0, expecting `expectation`.
 fn trace(node: &'static str, expectation: Expectation) -> Trace {
     Trace {
         context: vec![frame(node, 0)],
@@ -76,7 +75,7 @@ fn conversion_records_requirement() {
                 Expectation::Rejected {
                     node: None,
                     range: 0..3,
-                    requirement: "be convertible to u8",
+                    requirement: "be convertible to u8".into(),
                 },
             ),
         ],
@@ -120,7 +119,7 @@ fn type_conversion_records_requirement() {
                 Expectation::Rejected {
                     node: None,
                     range: 0..3,
-                    requirement: "be convertible to Byte",
+                    requirement: "be convertible to Byte".into(),
                 },
             ),
         ],
@@ -139,7 +138,7 @@ fn type_conversion_records_requirement() {
         Expectation::Rejected {
             node: None,
             range: 2..5,
-            requirement: "be convertible to Byte",
+            requirement: "be convertible to Byte".into(),
         }
     );
 }
@@ -167,7 +166,7 @@ fn validated_records_requirement() {
                 Expectation::Rejected {
                     node: Some("NonZero"),
                     range: 0..3,
-                    requirement: "be non-zero",
+                    requirement: "be non-zero".into(),
                 },
             ),
         ],
@@ -218,19 +217,7 @@ fn display_escapes_tokens() {
 struct Wrapper(Lit);
 
 #[test]
-#[cfg(not(feature = "trace_all_nodes"))]
-fn context_records_nearest_node() {
-    let err = Wrapper::parse("bar").unwrap_err();
-    assert_eq!(
-        format!("{err:?}"),
-        "parse error at byte 0, expected:\n\t- Lit@0/\"foo\""
-    );
-    assert_error(err, vec![trace("Lit", token("foo", 0..0))], 0);
-}
-
-#[test]
-#[cfg(feature = "trace_all_nodes")]
-fn context_records_full_node_chain() {
+fn context_records_the_rule_chain() {
     let err = Wrapper::parse("bar").unwrap_err();
     assert_eq!(
         format!("{err:?}"),
@@ -296,40 +283,29 @@ enum Outermost {
 }
 
 fn nullable_variant_traces() -> Vec<Trace> {
+    let outermost = vec![frame("Outermost", 0)];
+    let tail = [&outermost[..], &[frame("NullableOpThenTail", 0)]].concat();
+    let op = [&tail[..], &[frame("NullableOp", 0)]].concat();
+    let expected = |context: &[Frame], text| Trace {
+        context: context.to_vec(),
+        expectation: token(text, 0..0),
+    };
     vec![
-        trace("NullableOp", token("+", 0..0)),
-        trace("NullableOp", token("-", 0..0)),
-        trace("NullableOp", token("*", 0..0)),
-        trace("NullableOp", token("y", 0..0)),
-        trace("NullableOpThenTail", token("TAIL", 0..0)),
-        trace("Outermost", token("b", 0..0)),
-        trace("Outermost", token("c", 0..0)),
-        trace("Outermost", token("d", 0..0)),
+        expected(&op, "+"),
+        expected(&op, "-"),
+        expected(&op, "*"),
+        expected(&op, "y"),
+        expected(&tail, "TAIL"),
+        expected(&outermost, "b"),
+        expected(&outermost, "c"),
+        expected(&outermost, "d"),
     ]
 }
 
 #[test]
-#[cfg(not(feature = "trace_all_nodes"))]
 fn nullable_variant_does_not_block_sibling_field_or_sibling_variant() {
     let err = Outermost::parse("x").unwrap_err();
     assert_error(err, nullable_variant_traces(), 0);
-}
-
-#[test]
-#[cfg(feature = "trace_all_nodes")]
-fn nullable_variant_does_not_block_sibling_field_or_sibling_variant() {
-    let err = Outermost::parse("x").unwrap_err();
-    let mut expected = nullable_variant_traces();
-    expected[0].context = vec![
-        frame("Outermost", 0),
-        frame("NullableOpThenTail", 0),
-        frame("NullableOp", 0),
-    ];
-    expected[1].context = expected[0].context.clone();
-    expected[2].context = expected[0].context.clone();
-    expected[3].context = expected[0].context.clone();
-    expected[4].context = vec![frame("Outermost", 0), frame("NullableOpThenTail", 0)];
-    assert_error(err, expected, 0);
 }
 
 #[test]

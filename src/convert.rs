@@ -2,7 +2,7 @@
 //! it to the field's type, or to the type they're on.
 
 use crate::State;
-use crate::grammar::{Build, Check, Mode, Parse};
+use crate::grammar::{Mode, Parse};
 use crate::wrappers::text;
 use std::convert::Infallible;
 use std::ops::Range;
@@ -14,10 +14,10 @@ use std::str::FromStr;
 pub fn try_from<S: Parse + TryInto<T>, T, M: Mode>(
     input: &str,
     pos: usize,
-    mut state: State,
+    mut state: State<M>,
     requirement: &'static str,
 ) -> Option<(M::Output<T>, usize)> {
-    let (source, end) = S::parse_at::<Build>(input, pos, state.reborrow())?;
+    let (source, end) = S::build_at(input, pos, state.reborrow())?;
     let value = converted(source.try_into(), pos..end, state, requirement)?;
     Some((M::build(|_| value), end))
 }
@@ -27,7 +27,7 @@ pub fn try_from<S: Parse + TryInto<T>, T, M: Mode>(
 pub fn try_from_infallible<S: Parse + TryInto<T, Error = Infallible>, T, M: Mode>(
     input: &str,
     pos: usize,
-    state: State,
+    state: State<M>,
 ) -> Option<(M::Output<T>, usize)> {
     let (source, end) = S::parse_at::<M>(input, pos, state)?;
     Some((
@@ -46,10 +46,10 @@ pub fn try_from_infallible<S: Parse + TryInto<T, Error = Infallible>, T, M: Mode
 pub fn from_str<S: Parse, T: FromStr, M: Mode>(
     input: &str,
     pos: usize,
-    mut state: State,
+    mut state: State<M>,
     requirement: &'static str,
 ) -> Option<(M::Output<T>, usize)> {
-    let ((), end) = S::parse_at::<Check>(input, pos, state.reborrow())?;
+    let end = S::check_at(input, pos, state.reborrow())?;
     let value = converted(
         T::from_str(text(input, pos, end)),
         pos..end,
@@ -64,9 +64,9 @@ pub fn from_str<S: Parse, T: FromStr, M: Mode>(
 pub fn from_str_infallible<S: Parse, T: FromStr<Err = Infallible>, M: Mode>(
     input: &str,
     pos: usize,
-    state: State,
+    state: State<M>,
 ) -> Option<(M::Output<T>, usize)> {
-    let ((), end) = S::parse_at::<Check>(input, pos, state)?;
+    let end = S::check_at(input, pos, state)?;
     Some((
         M::build(|_| {
             let Ok(value) = T::from_str(text(input, pos, end));
@@ -79,10 +79,10 @@ pub fn from_str_infallible<S: Parse, T: FromStr<Err = Infallible>, M: Mode>(
 /// The converted value, or `None` once the text at `range` is recorded as
 /// rejected.
 #[inline(always)]
-fn converted<T, E>(
+fn converted<M: Mode, T, E>(
     result: Result<T, E>,
     range: Range<usize>,
-    mut state: State,
+    mut state: State<M>,
     requirement: &'static str,
 ) -> Option<T> {
     if result.is_err() {

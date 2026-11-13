@@ -96,11 +96,11 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
             type First = #first;
 
             #[inline(always)]
-            fn parse_at<__Mode: ::tygr::Mode>(input: &str, pos: usize, mut state: ::tygr::State) -> ::core::option::Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> {
+            fn parse_at<__Mode: ::tygr::Mode>(input: &str, pos: usize, mut state: ::tygr::State<__Mode>) -> ::core::option::Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> {
                 #parse_at
             }
 
-            fn fail_at(pos: usize, mut state: ::tygr::State) -> bool {
+            fn fail_at<__Mode: ::tygr::Mode>(pos: usize, mut state: ::tygr::State<__Mode>) -> bool {
                 #fail_at
             }
 
@@ -115,7 +115,7 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     }
 }
 
-/// `body` in a trace node for this rule, unless it's inline.
+/// `body` in this rule's node, unless it's inline.
 fn with_node(model: &Model, body: TokenStream) -> TokenStream {
     if model.inline {
         return body;
@@ -138,18 +138,22 @@ fn first(variant: &Variant) -> TokenStream {
 /// Parse each field, then build the value; or, if `validated`, build it
 /// whatever the mode and check it.
 fn parse(model: &Model, variant: &Variant) -> TokenStream {
+    // Validating needs the values, whatever the pass.
     let mode = if model.validated {
-        quote! { ::tygr::Build }
+        quote! { <__Mode as ::tygr::Mode>::Built }
     } else {
         quote! { __Mode }
     };
     let name = &model.name;
     let steps = variant.fields.iter().map(|field| parse_field(field, &mode));
     let constructor = &variant.constructor;
+    let bindings: Vec<_> = variant.fields.iter().filter_map(Field::binding).collect();
     if model.validated {
         return quote! {
             let start = pos;
+            let mut state = state.reborrow().built();
             #(#steps)*
+            #(let #bindings = <__Mode as ::tygr::Mode>::built(#bindings);)*
             let value = #constructor;
             if !::tygr::Validate::validate(&value) {
                 state.reject(::core::option::Option::Some(#name), start..pos, <Self as ::tygr::Validate>::REQUIREMENT);
@@ -158,7 +162,6 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
             ::core::option::Option::Some((<__Mode as ::tygr::Mode>::build(|_| value), pos))
         };
     }
-    let bindings: Vec<_> = variant.fields.iter().filter_map(Field::binding).collect();
     quote! {
         #(#steps)*
         ::core::option::Option::Some((<__Mode as ::tygr::Mode>::build(|mode| {

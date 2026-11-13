@@ -5,10 +5,10 @@ use either::Either::{self, Left, Right};
 use std::fmt;
 use std::ops::Range;
 
-use crate::Expectation;
 use crate::bnf::{Expr, Rules};
 use crate::first::{ByteSet, Required, byte_set};
 use crate::grammar::{Grammar, Mode, Parse, Print};
+use crate::state::Recorded;
 use crate::state::State;
 use crate::{Raw, Vec1};
 
@@ -208,11 +208,10 @@ impl<G: Literal> Parse for Token<G> {
     type First = Required<G::Start>;
 
     #[inline(always)]
-    #[cfg_attr(not(feature = "trace_pos"), allow(unused_variables))]
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        state: State,
+        state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         const {
             assert!(G::WHOLE_CHARS, "a literal must be whole chars");
@@ -224,14 +223,13 @@ impl<G: Literal> Parse for Token<G> {
             let _ = Self::TEXT;
         };
         let result = G::match_at::<M>(input.as_bytes(), pos);
-        #[cfg(feature = "trace_pos")]
         if result.is_none() {
             Self::expected(pos..diverged::<G>(input.as_bytes(), pos), state);
         }
         result.map(|(matched, end)| (M::map(matched, Token), end))
     }
 
-    fn fail_at(pos: usize, state: State) -> bool {
+    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
         Self::expected(pos..pos, state);
         true
     }
@@ -275,20 +273,16 @@ impl<G: Literal> Token<G> {
 
     /// Record the literal as expected where it diverged, having matched
     /// `range`, like a rejected validation.
-    fn expected(range: Range<usize>, mut state: State) {
-        state.expect(
-            range.end,
-            Expectation::Token {
-                text: Self::TEXT,
-                range,
-            },
-        );
+    fn expected<M: Mode>(range: Range<usize>, mut state: State<M>) {
+        state.expect(range.end, || Recorded::Token {
+            text: Self::TEXT,
+            range,
+        });
     }
 }
 
 /// Where literal `G` diverged from `input` at `pos`, backed out of any char
 /// it matched only part of.
-#[cfg(feature = "trace_pos")]
 fn diverged<G: Literal>(input: &[u8], pos: usize) -> usize {
     // One byte long, it can only diverge at once: skip the rescan.
     if G::LONGEST == 1 {
@@ -331,7 +325,7 @@ impl Parse for char {
     fn parse_at<M: Mode>(
         input: &str,
         pos: usize,
-        state: State,
+        state: State<M>,
     ) -> Option<(M::Output<Self>, usize)> {
         match decode_char(input, pos) {
             Some((ch, end)) => Some((M::build(|_| ch), end)),
@@ -342,8 +336,8 @@ impl Parse for char {
         }
     }
 
-    fn fail_at(pos: usize, mut state: State) -> bool {
-        state.expect(pos, Expectation::CharClass(ANY_CHAR));
+    fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
+        state.expect(pos, || Recorded::CharClass(ANY_CHAR));
         true
     }
 
@@ -475,13 +469,13 @@ macro_rules! char_class {
             fn parse_at<M: $crate::Mode>(
                 input: &str,
                 pos: usize,
-                state: $crate::State,
+                state: $crate::State<M>,
             ) -> ::core::option::Option<(M::Output<Self>, usize)> {
                 $crate::__private::class_parse_at::<Self, M>(input, pos, state)
             }
 
-            fn fail_at(pos: usize, state: $crate::State) -> bool {
-                $crate::__private::class_fail_at::<Self>(pos, state)
+            fn fail_at<M: $crate::Mode>(pos: usize, state: $crate::State<M>) -> bool {
+                $crate::__private::class_fail_at::<Self, M>(pos, state)
             }
 
             fn to_bnf() -> $crate::bnf::Expr {
@@ -505,7 +499,7 @@ macro_rules! char_class {
 pub fn class_parse_at<C: CharClass, M: Mode>(
     input: &str,
     pos: usize,
-    state: State,
+    state: State<M>,
 ) -> Option<(M::Output<C>, usize)> {
     let matched = match input.as_bytes().get(pos) {
         // The byte set is exact for ASCII: no decoding or predicate needed.
@@ -515,7 +509,7 @@ pub fn class_parse_at<C: CharClass, M: Mode>(
     match matched {
         Some((ch, end)) => Some((M::build(|_| C::new(ch)), end)),
         None => {
-            class_fail_at::<C>(pos, state);
+            class_fail_at::<C, M>(pos, state);
             None
         }
     }
@@ -529,8 +523,8 @@ pub fn class_to_bnf<C: CharClass>() -> Expr {
 
 /// `Parse::fail_at` for a `char_class!` type.
 #[doc(hidden)]
-pub fn class_fail_at<C: CharClass>(pos: usize, mut state: State) -> bool {
-    state.expect(pos, Expectation::CharClass(C::name()));
+pub fn class_fail_at<C: CharClass, M: Mode>(pos: usize, mut state: State<M>) -> bool {
+    state.expect(pos, || Recorded::CharClass(C::name()));
     true
 }
 
@@ -570,7 +564,13 @@ mod tests {
     #[test]
     fn no_char_is_found_mid_char() {
         // 'é' is 0xC3 0xA9: byte 1 is inside it.
-        assert!(crate::state::run(|state| char::parse_at::<crate::Check>("é", 1, state)).is_err());
+        assert!(
+            crate::state::run(
+                |state| char::parse_at::<crate::Check>("é", 1, state),
+                |_| {}
+            )
+            .is_err()
+        );
     }
 
     #[test]

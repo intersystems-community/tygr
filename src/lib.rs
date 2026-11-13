@@ -41,6 +41,10 @@
 //! they matched, so `[ "a" ] "ab"` fails on `ab`. A left-recursive grammar
 //! doesn't compile, as its [`Parse::First`] would be cyclic.
 //!
+//! A parse that fails runs a second time, in [`Record`] mode, to record what
+//! it expected at the furthest position it reached ([`Error::traces`]): a
+//! success costs no tracing, a failure about two and a half parses.
+//!
 //! Parsing recurses as the grammar nests, so input nested deeply enough
 //! overflows the stack, which aborts the process. For untrusted input,
 //! limit its size first or parse it on a thread with a bigger stack.
@@ -134,18 +138,6 @@
 //! );
 //! ```
 //!
-//! ## Feature Flags
-//!
-//! Each tracing feature records more about a failed parse, at some cost,
-//! and implies the one above it. `trace_one_node` is on by default.
-//!
-//! | Feature | Records |
-//! | ------- | ------- |
-//! | `trace_pos` | [`Error::pos`]: the furthest byte offset reached. |
-//! | `trace_one_node` | [`Error::traces`]: what was expected there, each in its nearest rule. |
-//! | `trace_all_nodes` | The whole rule path of each ([`Trace::context`]); much slower, as it copies the path each time. |
-//! | `trace` | All of the above. |
-//!
 //! ## Quick Example
 //!
 //! ```rust
@@ -228,9 +220,6 @@ pub mod __private {
         ByteEq, NonAsciiStart, Token, class_fail_at, class_parse_at, class_to_bnf,
     };
     pub use either::Either;
-
-    /// Whether failures are traced, so derived code can skip reporting.
-    pub const TRACING: bool = cfg!(feature = "trace_pos");
 }
 
 // Lets derived code inside this crate use `::tygr::` paths.

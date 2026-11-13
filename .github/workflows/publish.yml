@@ -26,7 +26,7 @@ jobs:
           done
 
       - name: Test
-        run: cargo test --all-features
+        run: cargo test
 
       - name: Publish tygr-derive
         working-directory: tygr-derive

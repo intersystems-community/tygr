@@ -1,59 +1,46 @@
 //! The state threaded through parsing, and the [`Error`] it traces.
 
 use crate::bnf::{Expr, Lazy, escape};
-#[cfg(feature = "trace_pos")]
-use std::cmp::Ordering;
+use crate::grammar::{Check, Mode};
+use std::borrow::Cow;
 use std::fmt;
-use std::marker::PhantomData;
 use std::ops::Range;
 
-/// Parse state threaded through [`Parse::parse_at`](crate::Parse::parse_at):
-/// what a failure will report, or nothing without a `trace_*` feature. A
-/// hand-written grammar enters its rule with [`node`](Self::node), in
-/// [`fail_at`](crate::Parse::fail_at) too, and passes a
-/// [`reborrow`](Self::reborrow) to each grammar it delegates to.
-pub struct State<'a> {
-    #[cfg(feature = "trace_pos")]
+/// Parse state threaded through [`Parse::parse_at`](crate::Parse::parse_at),
+/// in mode `M`. A parse runs once, tracking only the furthest position it
+/// reaches; if it fails, it runs again in [`Record`](crate::Record) mode,
+/// recording what it expected there. A hand-written grammar enters its rule
+/// with [`node`](Self::node), in [`fail_at`](crate::Parse::fail_at) too, and
+/// passes a [`reborrow`](Self::reborrow) to each grammar it delegates to.
+pub struct State<'a, M: Mode> {
     history: &'a mut History,
-    #[cfg(feature = "trace_one_node")]
-    context: Context<'a>,
-    _marker: PhantomData<&'a ()>,
+    /// The rules entered, when recording.
+    context: M::Context<'a>,
 }
 
-impl<'a> State<'a> {
-    fn new(
-        #[cfg(feature = "trace_pos")] history: &'a mut History,
-        #[cfg(feature = "trace_one_node")] context: Context<'a>,
-    ) -> Self {
-        Self {
-            #[cfg(feature = "trace_pos")]
+impl<'a, M: Mode> State<'a, M> {
+    fn new(history: &'a mut History) -> Self {
+        State {
             history,
-            #[cfg(feature = "trace_one_node")]
-            context,
-            _marker: PhantomData,
+            context: Default::default(),
         }
     }
 
     /// Reborrow for a nested call.
-    pub fn reborrow(&mut self) -> State<'_> {
+    #[inline(always)]
+    pub fn reborrow(&mut self) -> State<'_, M> {
         State {
-            #[cfg(feature = "trace_pos")]
             history: &mut *self.history,
-            #[cfg(feature = "trace_one_node")]
-            context: self.context,
-            _marker: PhantomData,
+            context: M::reborrow(self.context),
         }
     }
 
-    /// Enter rule `node` at `pos`.
-    #[cfg_attr(not(feature = "trace_one_node"), allow(unused_variables))]
-    pub fn node(&mut self, node: &'static str, pos: usize) -> State<'_> {
+    /// Enter rule `node` at `pos`, so that what's recorded inside names it.
+    #[inline(always)]
+    pub fn node(&mut self, node: &'static str, pos: usize) -> State<'_, M> {
         State {
-            #[cfg(feature = "trace_pos")]
             history: &mut *self.history,
-            #[cfg(feature = "trace_one_node")]
-            context: self.context.node(node, pos),
-            _marker: PhantomData,
+            context: M::enter(&self.context, Frame { node, pos }),
         }
     }
 
@@ -62,7 +49,7 @@ impl<'a> State<'a> {
     pub(crate) fn at_end(&mut self, input: &str, pos: usize) -> bool {
         let end = pos == input.len();
         if !end {
-            self.expect(pos, Expectation::End);
+            self.expect(pos, || Recorded::End);
         }
         end
     }
@@ -70,175 +57,290 @@ impl<'a> State<'a> {
     /// Record that a negative lookahead ruled out `excluded`, which matched
     /// the text at `range`.
     pub(crate) fn not_followed_by(&mut self, excluded: fn() -> Expr, range: Range<usize>) {
-        self.expect(
-            range.start,
-            Expectation::NotFollowedBy {
-                excluded: Lazy(excluded),
-                range,
-            },
-        );
+        self.expect(range.start, || Recorded::NotFollowedBy {
+            excluded: Lazy(excluded),
+            range,
+        });
     }
 
-    /// Record what was expected at `pos`; nothing, without `trace_pos`.
-    #[cfg_attr(not(feature = "trace_one_node"), allow(unused_variables))]
-    #[inline]
-    pub(crate) fn expect(&mut self, pos: usize, expectation: Expectation) {
-        #[cfg(feature = "trace_pos")]
-        self.history.expect(
-            #[cfg(feature = "trace_one_node")]
-            self.context,
-            pos,
-            #[cfg(feature = "trace_one_node")]
-            expectation,
-        );
+    /// Note that `pos` was reached; recording, record what was expected
+    /// there if it's the furthest position. The expectation is built only
+    /// then, out of line, so that the parse keeps nothing for it.
+    #[inline(always)]
+    pub(crate) fn expect(&mut self, pos: usize, expectation: impl FnOnce() -> Recorded) {
+        if !M::RECORD {
+            self.history.reach(pos);
+        } else if pos == self.history.pos {
+            record::<M>(self.history, self.context, expectation);
+        }
     }
 
     /// Record that the text at `range` was rejected, as it must
-    /// `requirement`: by validated rule `node`, or by a conversion.
-    #[inline]
+    /// `requirement`: by validated rule `node`, or by a conversion. A
+    /// `String` requirement, built from what was parsed, is kept for the
+    /// error; test [`Mode::RECORD`] first to build it only when it's kept.
+    #[inline(always)]
     pub fn reject(
         &mut self,
         node: Option<&'static str>,
         range: Range<usize>,
-        requirement: &'static str,
+        requirement: impl Into<Cow<'static, str>>,
     ) {
-        self.expect(
-            range.end,
-            Expectation::Rejected {
-                node,
-                range,
-                requirement,
-            },
-        );
+        if !M::RECORD {
+            self.history.reach(range.end);
+        } else if range.end == self.history.pos {
+            record_rejected::<M>(self.history, self.context, node, range, requirement.into());
+        }
+    }
+
+    /// This state in the mode that builds values, for a part whose value is
+    /// needed whatever the mode: [`Parse::build_at`](crate::Parse::build_at)
+    /// parses one.
+    pub fn built(self) -> State<'a, M::Built> {
+        State {
+            history: self.history,
+            context: self.context.into(),
+        }
+    }
+
+    /// This state in the mode that only checks, for a part whose value isn't
+    /// needed: [`Parse::check_at`](crate::Parse::check_at) parses one.
+    pub fn checked(self) -> State<'a, M::Checked> {
+        State {
+            history: self.history,
+            context: self.context.into(),
+        }
     }
 
     /// Run `f` without recording anything.
-    pub(crate) fn probe<R>(&mut self, f: impl FnOnce(State<'_>) -> R) -> R {
-        // Already past every position, so it ignores all records.
-        #[cfg(feature = "trace_pos")]
+    pub(crate) fn probe<R>(&mut self, f: impl FnOnce(State<'_, Check>) -> R) -> R {
+        // Already past every position, so nothing is recorded.
         let mut ignored = History::new(usize::MAX);
-        f(State::new(
-            #[cfg(feature = "trace_pos")]
-            &mut ignored,
-            #[cfg(feature = "trace_one_node")]
-            self.context,
-        ))
+        f(State::new(&mut ignored))
     }
 }
 
-/// Run a parse from a fresh state, turning `None` into the traced `Error`.
-pub(crate) fn run<R>(parse: impl FnOnce(State<'_>) -> Option<R>) -> Result<R, Error> {
-    #[cfg(feature = "trace_pos")]
+/// Record `expectation` at the furthest position, in the rules entered.
+#[cold]
+#[inline(never)]
+fn record<M: Mode>(
+    history: &mut History,
+    context: M::Context<'_>,
+    expectation: impl FnOnce() -> Recorded,
+) {
+    history.record(M::frames(&context), expectation());
+}
+
+#[cold]
+#[inline(never)]
+fn record_rejected<M: Mode>(
+    history: &mut History,
+    context: M::Context<'_>,
+    node: Option<&'static str>,
+    range: Range<usize>,
+    requirement: Cow<'static, str>,
+) {
+    let requirement = match requirement {
+        Cow::Borrowed(text) => Requirement::Static(text),
+        Cow::Owned(text) => Requirement::Owned(history.own(text)),
+    };
+    let expectation = Recorded::Rejected {
+        node,
+        range,
+        requirement,
+    };
+    history.record(M::frames(&context), expectation);
+}
+
+/// Run a parse: `parse` tracks the furthest position it reaches; if it
+/// fails, `record`, the same parse in [`Record`](crate::Record) mode, records
+/// what was expected there, for the `Error`.
+pub(crate) fn run<M: Mode, R>(
+    parse: impl FnOnce(State<'_, M>) -> Option<R>,
+    record: impl FnOnce(State<'_, crate::Record<M>>),
+) -> Result<R, Error> {
     let mut history = History::new(0);
-    let result = parse(State::new(
-        #[cfg(feature = "trace_pos")]
-        &mut history,
-        #[cfg(feature = "trace_one_node")]
-        Context::default(),
-    ));
-    match result {
-        Some(value) => Ok(value),
-        #[cfg(feature = "trace_pos")]
-        None => Err(history.into_error()),
-        #[cfg(not(feature = "trace_pos"))]
-        None => Err(Error {}),
+    if let Some(value) = parse(State::new(&mut history)) {
+        return Ok(value);
+    }
+    record(State::new(&mut history));
+    Err(history.into_error())
+}
+
+/// The rules entered so far, innermost first: a list through the stack, as
+/// [`Record`](crate::Record)'s [`Mode::Context`].
+#[doc(hidden)]
+#[derive(Clone, Copy)]
+pub struct Frames<'a> {
+    frame: Frame,
+    parent: Option<&'a Frames<'a>>,
+}
+
+impl<'a> Frames<'a> {
+    pub(crate) fn enter<'s>(parent: &'s Option<Frames<'a>>, frame: Frame) -> Option<Frames<'s>> {
+        Some(Frames {
+            frame,
+            parent: parent.as_ref(),
+        })
+    }
+
+    pub(crate) fn iter<'s>(
+        context: &'s Option<Frames<'a>>,
+    ) -> impl Iterator<Item = Frame> + Clone + 's {
+        std::iter::successors(context.as_ref(), |frames| frames.parent).map(|frames| frames.frame)
     }
 }
 
-/// What was expected at the furthest position reached.
-#[cfg(feature = "trace_pos")]
+/// The furthest position a parse reached and, in a recording pass, what it
+/// expected there.
 struct History {
-    #[cfg(feature = "trace_one_node")]
-    traces: Vec<Pending>,
+    /// The furthest position reached; fixed in a recording pass, which keeps
+    /// only the records made there.
     pos: usize,
+    traces: Vec<Pending>,
+    /// Requirements built while parsing, which `Pending`s refer to by index.
+    owned: Vec<String>,
 }
 
-/// A recorded trace, with its context kept cheap until the parse fails.
-#[cfg(feature = "trace_one_node")]
-#[derive(PartialEq)]
+/// A recorded trace: the rules it was made in, innermost first, and what was
+/// expected.
 struct Pending {
-    frames: Frames,
-    expectation: Expectation,
+    frames: Vec<Frame>,
+    expectation: Recorded,
 }
 
-/// The nearest rule, or (with `trace_all_nodes`) all of them, innermost first.
-#[cfg(all(feature = "trace_one_node", not(feature = "trace_all_nodes")))]
-type Frames = Option<Frame>;
-#[cfg(feature = "trace_all_nodes")]
-type Frames = Vec<Frame>;
+/// An [`Expectation`] as recorded: a rejection's requirement is a
+/// `&'static str` or an index into [`History::owned`].
+#[derive(PartialEq)]
+pub(crate) enum Recorded {
+    Token {
+        text: &'static str,
+        range: Range<usize>,
+    },
+    CharClass(&'static str),
+    Rejected {
+        node: Option<&'static str>,
+        range: Range<usize>,
+        requirement: Requirement,
+    },
+    NotFollowedBy {
+        excluded: Lazy,
+        range: Range<usize>,
+    },
+    End,
+}
 
-#[cfg(feature = "trace_pos")]
+#[derive(PartialEq)]
+pub(crate) enum Requirement {
+    Static(&'static str),
+    Owned(usize),
+}
+
+impl Requirement {
+    fn text<'a>(&'a self, owned: &'a [String]) -> &'a str {
+        match self {
+            Requirement::Static(text) => text,
+            Requirement::Owned(i) => &owned[*i],
+        }
+    }
+}
+
+impl Recorded {
+    /// The expectation to report, taking an owned requirement out of `owned`.
+    fn into_expectation(self, owned: &mut [String]) -> Expectation {
+        match self {
+            Recorded::Token { text, range } => Expectation::Token { text, range },
+            Recorded::CharClass(name) => Expectation::CharClass(name),
+            Recorded::Rejected {
+                node,
+                range,
+                requirement,
+            } => Expectation::Rejected {
+                node,
+                range,
+                requirement: match requirement {
+                    Requirement::Static(text) => Cow::Borrowed(text),
+                    Requirement::Owned(i) => Cow::Owned(std::mem::take(&mut owned[i])),
+                },
+            },
+            Recorded::NotFollowedBy { excluded, range } => {
+                Expectation::NotFollowedBy { excluded, range }
+            }
+            Recorded::End => Expectation::End,
+        }
+    }
+}
+
 impl History {
     /// Nothing recorded yet, and records before `pos` are ignored.
     fn new(pos: usize) -> Self {
         History {
-            #[cfg(feature = "trace_one_node")]
-            traces: Vec::new(),
             pos,
+            traces: Vec::new(),
+            owned: Vec::new(),
         }
     }
 
+    /// The first pass: only the furthest position matters.
     #[inline]
-    fn expect(
-        &mut self,
-        #[cfg(feature = "trace_one_node")] context: Context<'_>,
-        other_pos: usize,
-        #[cfg(feature = "trace_one_node")] expectation: Expectation,
-    ) {
-        #[cfg(feature = "trace_one_node")]
-        let trace = || Pending {
-            frames: context.frames(),
-            expectation,
-        };
-        match self.pos.cmp(&other_pos) {
-            Ordering::Equal => {
-                #[cfg(feature = "trace_one_node")]
-                self.traces.push(trace());
-            }
-            Ordering::Less => {
-                self.pos = other_pos;
-                #[cfg(feature = "trace_one_node")]
-                {
-                    // Reuse the buffer: superseded traces are dropped in place.
-                    self.traces.clear();
-                    self.traces.push(trace());
-                }
-            }
-            Ordering::Greater => (),
+    fn reach(&mut self, pos: usize) {
+        if pos > self.pos {
+            self.pos = pos;
         }
     }
 
-    /// Drop repeated traces, keeping the first of each in order: a
-    /// backtracking grammar can expect the same few things exponentially
-    /// often. Not on each record: the JSON benchmark makes 1.5 records per
-    /// byte, and one more instruction there costs it 15%.
-    #[cfg(feature = "trace_one_node")]
-    fn dedup(&mut self) {
-        let mut kept = 0;
-        for i in 0..self.traces.len() {
-            if !self.traces[..kept].contains(&self.traces[i]) {
-                self.traces.swap(kept, i);
-                kept += 1;
-            }
+    /// Record `expectation` in `frames` (innermost first), unless it's
+    /// recorded there already: a backtracking grammar can expect the same few
+    /// things exponentially often.
+    fn record(&mut self, frames: impl Iterator<Item = Frame> + Clone, expectation: Recorded) {
+        let recorded = self.traces.iter().any(|t| {
+            self.same(&t.expectation, &expectation) && t.frames.iter().copied().eq(frames.clone())
+        });
+        if !recorded {
+            self.traces.push(Pending {
+                frames: frames.collect(),
+                expectation,
+            });
         }
-        self.traces.truncate(kept);
     }
 
-    #[cfg_attr(not(feature = "trace_one_node"), allow(unused_mut))]
+    /// Keep `text` for the error, returning its index.
+    fn own(&mut self, text: String) -> usize {
+        self.owned.push(text);
+        self.owned.len() - 1
+    }
+
+    /// Would `a` and `b` report the same expectation? Owned requirements
+    /// compare by text.
+    fn same(&self, a: &Recorded, b: &Recorded) -> bool {
+        match (a, b) {
+            (
+                Recorded::Rejected {
+                    node,
+                    range,
+                    requirement,
+                },
+                Recorded::Rejected {
+                    node: n,
+                    range: r,
+                    requirement: q,
+                },
+            ) => node == n && range == r && requirement.text(&self.owned) == q.text(&self.owned),
+            (a, b) => a == b,
+        }
+    }
+
     fn into_error(mut self) -> Error {
-        #[cfg(feature = "trace_one_node")]
-        self.dedup();
-        #[cfg(feature = "trace_one_node")]
+        let mut owned = std::mem::take(&mut self.owned);
         let traces = self
             .traces
             .into_iter()
-            .map(|p| Trace {
-                context: p.frames.into_iter().rev().collect(),
-                expectation: p.expectation,
+            .map(|pending| Trace {
+                context: pending.frames.into_iter().rev().collect(),
+                expectation: pending.expectation.into_expectation(&mut owned),
             })
             .collect();
         Error {
-            #[cfg(feature = "trace_one_node")]
             traces,
             pos: self.pos,
         }
@@ -268,9 +370,10 @@ pub enum Expectation {
         /// The bytes rejected.
         range: Range<usize>,
         /// What they must do: a
-        /// [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT), or
-        /// `"be convertible to T"` for a conversion into `T`.
-        requirement: &'static str,
+        /// [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT),
+        /// `"be convertible to T"` for a conversion into `T`, or what a
+        /// hand-written grammar passed to [`State::reject`].
+        requirement: Cow<'static, str>,
     },
     /// Anything but `excluded`, which a
     /// [`NotFollowedBy`](crate::NotFollowedBy) rules out and which matched
@@ -323,54 +426,10 @@ impl fmt::Display for Expectation {
 /// One thing that would have let the parse continue at [`Error::pos`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Trace {
-    /// Enclosing rules, outermost first: the nearest one, or all of them
-    /// with `trace_all_nodes`.
+    /// The enclosing rules, outermost first.
     pub context: Vec<Frame>,
     /// What was expected at this position.
     pub expectation: Expectation,
-}
-
-/// The rule path to the current position.
-#[cfg(feature = "trace_one_node")]
-#[derive(Clone, Copy, Default)]
-struct Context<'a>(Option<ContextNode<'a>>);
-
-#[cfg(feature = "trace_one_node")]
-#[derive(Clone, Copy)]
-struct ContextNode<'a> {
-    first: Frame,
-    _marker: PhantomData<&'a ()>,
-    #[cfg(feature = "trace_all_nodes")]
-    remaining: &'a Context<'a>,
-}
-
-#[cfg(feature = "trace_one_node")]
-impl<'a> Context<'a> {
-    fn frames(self) -> Frames {
-        #[cfg(feature = "trace_all_nodes")]
-        {
-            let mut result = vec![];
-            let mut cursor = self;
-            while let Some(node) = cursor.0 {
-                result.push(node.first);
-                cursor = *node.remaining;
-            }
-            result
-        }
-        #[cfg(not(feature = "trace_all_nodes"))]
-        {
-            self.0.map(|node| node.first)
-        }
-    }
-
-    fn node(&'a self, node: &'static str, pos: usize) -> Context<'a> {
-        Context(Some(ContextNode {
-            first: Frame { node, pos },
-            _marker: PhantomData,
-            #[cfg(feature = "trace_all_nodes")]
-            remaining: self,
-        }))
-    }
 }
 
 /// One entry in a [`Trace`]'s [`context`](Trace::context).
@@ -382,71 +441,48 @@ pub struct Frame {
     pub pos: usize,
 }
 
-/// A parse failure. Its detail depends on the `trace_*` features; read it
-/// through [`Error::pos`] and [`Error::traces`].
+/// A parse failure: where it got stuck, and what it expected there.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Error {
-    #[cfg(feature = "trace_one_node")]
     traces: Vec<Trace>,
-    #[cfg(feature = "trace_pos")]
     pos: usize,
 }
 
 impl Error {
-    /// What was expected at [`pos`](Self::pos). Empty without
-    /// `trace_one_node`.
+    /// What was expected at [`pos`](Self::pos), without repeats.
     pub fn traces(&self) -> &[Trace] {
-        #[cfg(feature = "trace_one_node")]
-        {
-            &self.traces
-        }
-        #[cfg(not(feature = "trace_one_node"))]
-        {
-            &[]
-        }
+        &self.traces
     }
 
     /// The furthest byte offset reached; [`OLC`](crate::OLC) maps it to a
-    /// `(line, character)`. `0` without `trace_pos`.
+    /// `(line, character)`.
     pub fn pos(&self) -> usize {
-        #[cfg(feature = "trace_pos")]
-        {
-            self.pos
-        }
-        #[cfg(not(feature = "trace_pos"))]
-        {
-            0
-        }
+        self.pos
     }
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "parse error")?;
-        #[cfg(feature = "trace_pos")]
-        write!(f, " at byte {}", self.pos)?;
-        #[cfg(feature = "trace_one_node")]
-        {
-            let mut lines: Vec<String> = self
-                .traces
-                .iter()
-                .map(|trace| match (trace.context.last(), &trace.expectation) {
-                    // A rule that starts here stands for the terminals it expected.
-                    (Some(frame), Expectation::Token { .. } | Expectation::CharClass(_))
-                        if frame.pos == self.pos =>
-                    {
-                        frame.node.to_string()
-                    }
-                    _ => trace.expectation.to_string(),
-                })
-                .collect();
-            lines.sort();
-            lines.dedup();
-            if !lines.is_empty() {
-                write!(f, ", expected:")?;
-                for line in lines {
-                    write!(f, "\n\t- {line}")?;
+        write!(f, "parse error at byte {}", self.pos)?;
+        let mut lines: Vec<String> = self
+            .traces
+            .iter()
+            .map(|trace| match (trace.context.last(), &trace.expectation) {
+                // A rule that starts here stands for the terminals it expected.
+                (Some(frame), Expectation::Token { .. } | Expectation::CharClass(_))
+                    if frame.pos == self.pos =>
+                {
+                    frame.node.to_string()
                 }
+                _ => trace.expectation.to_string(),
+            })
+            .collect();
+        lines.sort();
+        lines.dedup();
+        if !lines.is_empty() {
+            write!(f, ", expected:")?;
+            for line in lines {
+                write!(f, "\n\t- {line}")?;
             }
         }
         Ok(())
@@ -455,26 +491,18 @@ impl fmt::Display for Error {
 
 impl fmt::Debug for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        #[cfg(feature = "trace_one_node")]
-        {
-            write!(f, "parse error at byte {}", self.pos)?;
-            if !self.traces.is_empty() {
-                write!(f, ", expected:")?;
-            }
-            for trace in &self.traces {
-                write!(f, "\n\t- ")?;
-                for Frame { node, pos } in &trace.context {
-                    write!(f, "{node}@{pos}/")?;
-                }
-                write!(f, "{}", trace.expectation)?;
-            }
-            Ok(())
+        write!(f, "parse error at byte {}", self.pos)?;
+        if !self.traces.is_empty() {
+            write!(f, ", expected:")?;
         }
-        // Without traces, that's all there is to say.
-        #[cfg(not(feature = "trace_one_node"))]
-        {
-            fmt::Display::fmt(self, f)
+        for trace in &self.traces {
+            write!(f, "\n\t- ")?;
+            for Frame { node, pos } in &trace.context {
+                write!(f, "{node}@{pos}/")?;
+            }
+            write!(f, "{}", trace.expectation)?;
         }
+        Ok(())
     }
 }
 
