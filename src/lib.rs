@@ -114,12 +114,12 @@
 //! }
 //!
 //! impl FromStr for Answer {
-//!     type Err = ();
-//!     fn from_str(s: &str) -> Result<Answer, ()> {
+//!     type Err = &'static str;
+//!     fn from_str(s: &str) -> Result<Answer, &'static str> {
 //!         match s {
 //!             "yes" | "y" => Ok(Answer::Yes),
 //!             "no" | "n" => Ok(Answer::No),
-//!             _ => Err(()),
+//!             _ => Err("neither yes nor no"),
 //!         }
 //!     }
 //! }
@@ -131,7 +131,10 @@
 //! }
 //!
 //! assert_eq!(Answer::parse("y").unwrap(), Answer::Yes);
-//! assert!(Answer::parse("maybe").is_err());
+//! assert_eq!(
+//!     Answer::parse("maybe").unwrap_err().to_string(),
+//!     "parse error at byte 5, expected:\n\t- 'letter'\n\t- Text at 0..5 must be convertible to Answer: neither yes nor no"
+//! );
 //! assert_eq!(Answer::No.print(), "no");
 //! assert_eq!(
 //!     Answer::bnf_rules()[0].to_string(),

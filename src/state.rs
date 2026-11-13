@@ -179,7 +179,7 @@ pub enum Expectation {
         range: Range<usize>,
         /// What they must do: a
         /// [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT),
-        /// `"be convertible to T"` for a conversion into `T`, or what a
+        /// `"be convertible to T: <why not>"` for a conversion into `T`, or what a
         /// hand-written grammar passed to [`State::reject`].
         requirement: Cow<'static, str>,
     },
