@@ -75,11 +75,10 @@ fn conversion_records_requirement() {
             trace("SmallNumber", Expectation::CharClass("digit")),
             trace(
                 "SmallNumber",
-                Expectation::Rejected {
-                    node: None,
+                Expectation::Convertible {
+                    into: "u8",
                     range: 0..3,
-                    requirement: "be convertible to u8: number too large to fit in target type"
-                        .into(),
+                    error: "number too large to fit in target type".into(),
                 },
             ),
         ],
@@ -135,11 +134,10 @@ fn type_conversion_records_requirement() {
             trace("Byte", Expectation::CharClass("digit")),
             trace(
                 "Byte",
-                Expectation::Rejected {
-                    node: None,
+                Expectation::Convertible {
+                    into: "Byte",
                     range: 0..3,
-                    requirement: "be convertible to Byte: number too large to fit in target type"
-                        .into(),
+                    error: "number too large to fit in target type".into(),
                 },
             ),
         ],
@@ -150,15 +148,15 @@ fn type_conversion_records_requirement() {
     let rejected = err
         .traces()
         .iter()
-        .find(|trace| matches!(trace.expectation, Expectation::Rejected { .. }))
+        .find(|trace| matches!(trace.expectation, Expectation::Convertible { .. }))
         .unwrap();
     assert_eq!(rejected.context.last(), Some(&frame("Byte", 2)));
     assert_eq!(
         rejected.expectation,
-        Expectation::Rejected {
-            node: None,
+        Expectation::Convertible {
+            into: "Byte",
             range: 2..5,
-            requirement: "be convertible to Byte: number too large to fit in target type".into(),
+            error: "number too large to fit in target type".into(),
         }
     );
 }
@@ -184,7 +182,7 @@ fn validated_records_requirement() {
             trace(
                 "NonZero",
                 Expectation::Rejected {
-                    node: Some("NonZero"),
+                    node: "NonZero",
                     range: 0..3,
                     requirement: "be non-zero".into(),
                 },

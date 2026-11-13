@@ -155,7 +155,7 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
             #(let #bindings = <__Mode as ::tygr::Mode>::value(#bindings);)*
             let value = #constructor;
             if !::tygr::Validate::validate(&value) {
-                state.reject(::core::option::Option::Some(#name), start..pos, <Self as ::tygr::Validate>::REQUIREMENT);
+                state.reject(#name, start..pos, <Self as ::tygr::Validate>::REQUIREMENT);
                 return ::core::option::Option::None;
             }
             ::core::option::Option::Some((<__Mode as ::tygr::Mode>::build(|_| value), pos))
@@ -191,9 +191,9 @@ fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
         } => (quote! { #binding }, quote! { #ty }, kind),
         Field::Dropped { kind, .. } => (quote! { _ }, quote! { () }, kind),
     };
-    let (source, helper, requirement) = (field.source(), kind.helper(), field.requirement());
+    let (source, helper, target) = (field.source(), kind.helper(), field.target());
     quote! {
-        let (#binding, pos) = ::tygr::__private::#helper::<#source, #ty, #mode>(input, pos, state.reborrow(), #requirement)?;
+        let (#binding, pos) = ::tygr::__private::#helper::<#source, #ty, #mode>(input, pos, state.reborrow(), #target)?;
     }
 }
 

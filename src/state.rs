@@ -76,15 +76,15 @@ impl<'a, M: Mode> State<'a, M> {
         }
     }
 
-    /// Record that the text at `range` was rejected, as it must
-    /// `requirement`: by validated rule `node`, or by a conversion. Call it
-    /// in every mode: the first pass only notes the position. A `String`
-    /// requirement, built from what was parsed, is kept for the error;
-    /// build it only when [`Mode::RECORD`], passing `String::new()` otherwise.
+    /// Record that rule `node` rejected the text at `range`, which must
+    /// `requirement`. Call it in every mode: the first pass only notes the
+    /// position. A `String` requirement, built from what was parsed, is kept
+    /// for the error; build it only when [`Mode::RECORD`], passing
+    /// `String::new()` otherwise.
     #[inline(always)]
     pub fn reject(
         &mut self,
-        node: Option<&'static str>,
+        node: &'static str,
         range: Range<usize>,
         requirement: impl Into<Cow<'static, str>>,
     ) {
@@ -170,18 +170,29 @@ pub enum Expectation {
     /// A char of the [`CharClass`](crate::CharClass) with this name;
     /// `"any"` for `char`.
     CharClass(&'static str),
-    /// The text at `range` matched but was rejected: a
-    /// `#[tygr(validated)]` check or a conversion failed.
+    /// The text at `range` matched rule `node`, which rejected it: a
+    /// `#[tygr(validated)]` check or a hand-written grammar's
+    /// [`State::reject`].
     Rejected {
-        /// The validated rule's name; `None` for a conversion.
-        node: Option<&'static str>,
+        /// The rule's name.
+        node: &'static str,
         /// The bytes rejected.
         range: Range<usize>,
         /// What they must do: a
-        /// [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT),
-        /// `"be convertible to T: <why not>"` for a conversion into `T`, or what a
-        /// hand-written grammar passed to [`State::reject`].
+        /// [`Validate::REQUIREMENT`](crate::Validate::REQUIREMENT), or what
+        /// the grammar passed to [`State::reject`].
         requirement: Cow<'static, str>,
+    },
+    /// The text at `range` matched, but a `#[tygr(try_from = S)]` or
+    /// `from_str` conversion of it failed.
+    Convertible {
+        /// The type converted into, as written in the attribute's field or
+        /// type.
+        into: &'static str,
+        /// The bytes that didn't convert.
+        range: Range<usize>,
+        /// The conversion error's `Display`.
+        error: Cow<'static, str>,
     },
     /// Anything but `excluded`, which a
     /// [`NotFollowedBy`](crate::NotFollowedBy) rules out and which matched
@@ -211,11 +222,13 @@ impl fmt::Display for Expectation {
                 node,
                 range,
                 requirement,
-            } => write!(
-                f,
-                "{} at {range:?} must {requirement}",
-                node.unwrap_or("Text")
-            ),
+            } => write!(f, "{node} at {range:?} must {requirement}"),
+            Expectation::Convertible { into, range, error } => {
+                write!(
+                    f,
+                    "Text at {range:?} must be convertible to {into}: {error}"
+                )
+            }
             Expectation::NotFollowedBy { excluded, range } => match (excluded.0)() {
                 Expr::Hidden => write!(f, "anything but the text at {range:?}"),
                 excluded => {
