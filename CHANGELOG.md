@@ -2,7 +2,12 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
-## [Unreleased]
+## [0.8.0] - 2026-11-13
+
+Errors are traced in a second pass, so a successful parse pays only for
+tracking the furthest position, and a failed one reports the whole chain of
+rules, in every build. A conversion can be on a type as well as a field, and
+says why it failed. The published crate is a tenth of its former size.
 
 ### Breaking Changes
 
