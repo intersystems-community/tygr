@@ -6,9 +6,9 @@ use crate::first::{First, Optional, byte_set};
 use crate::grammar::{Check, Mode, Parse, Print};
 use crate::{IntoInner, StateTrait};
 use either::Either::{self, Left, Right};
-use std::{fmt, usize};
 use std::marker::PhantomData;
 use std::ops::Deref;
+use std::{fmt, usize};
 use tygr_derive::Grammar;
 
 // `()`: the empty sequence.
@@ -261,17 +261,17 @@ impl<A: Parse, B: Parse> Parse for Either<A, B> {
     fn parse_at<M: Mode, S: StateTrait>(
         input: &str,
         pos: usize,
-        &mut state: S,
+        state: &mut S,
     ) -> Option<(M::Output<Self>, usize)> {
         if let Some((a, end)) = A::parse_at::<M, S>(input, pos, state) {
-            return Some((M::map(a, Left), end));
+            return Some((M::map(a, |a| M::output(Left(a))), end));
         }
         let (b, end) = B::parse_at::<M, S>(input, pos, state)?;
-        Some((M::map(b, Right), end))
+        Some((M::map(b, |b| M::output(Right(b))), end))
     }
 
-    fn fail_at<S: StateTrait>(pos: usize, state: &mut S>) -> bool {
-        let a = A::fail_at(pos, state.reborrow());
+    fn fail_at<S: StateTrait>(pos: usize, state: &mut S) -> bool {
+        let a = A::fail_at(pos, state);
         let b = B::fail_at(pos, state);
         a && b
     }
