@@ -1,10 +1,9 @@
 //! The traits that describe a grammar: [`Parse`] (in a [`Mode`]), [`Print`],
 //! both as [`Grammar`], and [`Validate`].
 
+use crate::Error;
 use crate::bnf::{self, Expr, Rule, Rules};
 use crate::first::First;
-use crate::state::{Frames, run};
-use crate::{Error, Frame, State};
 use std::fmt::{self, Write};
 
 /// Parse and describe (as EBNF) a grammar.
@@ -49,49 +48,26 @@ pub trait Parse: Sized + 'static {
     /// ```
     type First: First;
 
-    /// Parse the entire `input` as `Self`, failing if any input is left unconsumed.
-    fn parse(input: &str) -> Result<Self, Error> {
-        run(
-            |mut state| {
-                let (value, end) = Self::parse_at::<Build>(input, 0, state.reborrow())?;
-                state.at_end(input, end).then_some(value)
-            },
-            |state| rerun::<Self>(input, state),
-        )
-    }
-
     /// Like [`parse`](Self::parse), but may stop early; returns the end
     /// position too.
-    fn parse_prefix(input: &str) -> Result<(Self, usize), Error> {
-        run(
-            |state| Self::parse_at::<Build>(input, 0, state),
-            |state| {
-                Self::parse_at(input, 0, state);
-            },
-        )
+    fn parse<T: TraceLevel>(input: &str) -> Result<(Self, usize), Error> {
+        let state = T::State::new();
+        Self::parse_at::<Build, T::State>(input, 0, &mut state).ok_or_else(unimplemented!())
     }
 
-    /// Like [`parse`](Self::parse), but only checks `input`.
-    fn check(input: &str) -> Result<(), Error> {
-        run(
-            |mut state| {
-                let ((), end) = Self::parse_at::<Check>(input, 0, state.reborrow())?;
-                state.at_end(input, end).then_some(())
-            },
-            |state| rerun::<Self>(input, state),
-        )
-    }
+    /// Parse `Self` at byte offset `pos`, returning its output in mode `M`
+    /// (the value, or nothing when checking) and the end offset, a char
+    /// boundary (see [`Parse`]).
+    fn parse_at<M: Mode, S: StateTrait>(
+        input: &str,
+        pos: usize,
+        state: &mut S,
+    ) -> Option<(M::Output<Self>, usize)>;
 
-    /// Like [`check`](Self::check), but may stop early; returns the end
-    /// position.
-    fn check_prefix(input: &str) -> Result<usize, Error> {
-        run(
-            |state| Some(Self::parse_at::<Check>(input, 0, state)?.1),
-            |state| {
-                Self::parse_at(input, 0, state);
-            },
-        )
-    }
+    /// Record what this grammar expected at `pos`, as `M` does, without
+    /// parsing (e.g. when `First` already ruled it out). Returns whether it's
+    /// required (not nullable), so a sequence can stop after it.
+    fn fail_at<S: StateTrait>(pos: usize, state: &mut S) -> bool;
 
     /// This grammar's rule (unless inline or hidden), then each rule it
     /// refers to, depth first, once per type: to sort or
@@ -110,34 +86,6 @@ pub trait Parse: Sized + 'static {
     /// ```
     fn bnf_rules() -> Vec<Rule> {
         bnf::rules::<Self>()
-    }
-
-    /// Parse `Self` at byte offset `pos`, returning its output in mode `M`
-    /// (the value, or nothing when checking) and the end offset, a char
-    /// boundary (see [`Parse`]).
-    fn parse_at<M: Mode>(
-        input: &str,
-        pos: usize,
-        state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)>;
-
-    /// Record what this grammar expected at `pos`, as `M` does, without
-    /// parsing (e.g. when `First` already ruled it out). Returns whether it's
-    /// required (not nullable), so a sequence can stop after it.
-    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool;
-
-    /// Parse at `pos`, building the value whatever the mode, recording as
-    /// `M` does: for a part whose value is needed, e.g. to convert it.
-    #[inline(always)]
-    fn build_at<M: Mode>(input: &str, pos: usize, state: State<M>) -> Option<(Self, usize)> {
-        let (value, end) = Self::parse_at(input, pos, state.built())?;
-        Some((M::value(value), end))
-    }
-
-    /// Parse at `pos` for the end position alone, recording as `M` does.
-    #[inline(always)]
-    fn check_at<M: Mode>(input: &str, pos: usize, state: State<M>) -> Option<usize> {
-        Some(Self::parse_at(input, pos, state.checked())?.1)
     }
 
     /// This grammar as an EBNF expression, as other rules refer to it.
@@ -188,14 +136,6 @@ pub fn print_display<T: fmt::Display>(value: &T, buf: &mut String) {
 pub trait Grammar: Parse + Print {}
 
 impl<T: Parse + Print> Grammar for T {}
-
-/// The second pass of a failed `parse` or `check`: the same parse, recording.
-/// It only checks, as no value is kept.
-fn rerun<T: Parse>(input: &str, mut state: State<Record<Check>>) {
-    if let Some((_, end)) = T::parse_at(input, 0, state.reborrow()) {
-        state.at_end(input, end);
-    }
-}
 
 /// Whether [`Parse::parse_at`] builds values ([`Build`]) or only matches
 /// ([`Check`]), so one function does both; [`Record`] wraps either to also
@@ -248,63 +188,15 @@ fn rerun<T: Parse>(input: &str, mut state: State<Record<Check>>) {
 /// assert_eq!(Paren::<char>::parse("(x)").unwrap().0, 'x');
 /// assert_eq!(Paren::<char>::bnf_rules()[0].to_string(), r#"Paren = "(" 'any' ")" ."#);
 /// ```
-pub trait Mode: Copy + 'static + private::Sealed {
+pub trait Mode: Copy + 'static {
     /// What parsing a `T` gives: the `T`, or `()`.
     type Output<T>;
 
-    /// Whether what was expected is recorded: only in [`Record`], the second
-    /// pass of a parse that failed.
-    const RECORD: bool;
+    /// Build new output
+    fn map<T, U>(value: Self::Output<T>, f: impl FnOnce(T) -> Self::Output<U>) -> Self::Output<U>;
 
-    /// This mode, building values: what [`build_at`](Parse::build_at) parses
-    /// in; [`value`](Self::value) unwraps its output.
-    type Built: Mode;
-
-    /// This mode, keeping only the end position.
-    type Checked: Mode;
-
-    /// The `T` a [`Built`](Self::Built) output holds.
-    fn value<T>(output: <Self::Built as Mode>::Output<T>) -> T;
-
-    /// The rules entered so far, a list through the stack, when recording;
-    /// otherwise `()`.
-    #[doc(hidden)]
-    type Context<'a>: Copy
-        + Default
-        + Into<<Self::Built as Mode>::Context<'a>>
-        + Into<<Self::Checked as Mode>::Context<'a>>;
-
-    #[doc(hidden)]
-    fn reborrow<'s, 'a: 's>(context: Self::Context<'a>) -> Self::Context<'s>;
-
-    #[doc(hidden)]
-    fn enter<'s, 'a: 's>(parent: &'s Self::Context<'a>, frame: Frame) -> Self::Context<'s>;
-
-    /// The rules entered, innermost first.
-    #[doc(hidden)]
-    fn frames<'s, 'a: 's>(
-        context: &'s Self::Context<'a>,
-    ) -> impl Iterator<Item = Frame> + Clone + 's;
-
-    /// An output built by `f`. Only [`Build`] (or [`Record`] of it) calls it,
-    /// passing itself to [`get`](Self::get) the outputs it combines.
-    fn build<T>(f: impl FnOnce(Self) -> T) -> Self::Output<T>;
-
-    /// `output` with `f` applied to its value.
-    #[inline(always)]
-    fn map<T, U>(output: Self::Output<T>, f: impl FnOnce(T) -> U) -> Self::Output<U> {
-        Self::build(|mode| f(mode.get(output)))
-    }
-
-    /// The mode when building, `None` when checking: for updating an output
-    /// in place, such as pushing to a `Vec` in a loop.
-    fn building() -> Option<Self>;
-
-    /// The value in `output`.
-    fn get<T>(self, output: Self::Output<T>) -> T;
-
-    /// The value in `output`, mutably.
-    fn get_mut<T>(self, output: &mut Self::Output<T>) -> &mut T;
+    /// output
+    fn output<T>(value: T) -> Self::Output<T>;
 }
 
 /// Builds values.
@@ -313,157 +205,38 @@ pub struct Build;
 
 /// Only matches: there are no `Check` values, so nothing is built.
 #[derive(Debug, Clone, Copy)]
-pub enum Check {}
+pub struct Check;
 
 impl Mode for Build {
     type Output<T> = T;
-    const RECORD: bool = false;
-    type Built = Build;
-    type Checked = Check;
-    type Context<'a> = ();
 
-    #[inline(always)]
-    fn reborrow<'s, 'a: 's>(_context: ()) {}
-
-    #[inline(always)]
-    fn enter<'s, 'a: 's>(_parent: &'s (), _frame: Frame) {}
-
-    #[inline(always)]
-    fn frames<'s, 'a: 's>(_context: &'s ()) -> impl Iterator<Item = Frame> + Clone + 's {
-        std::iter::empty()
+    fn map<T, U>(value: Self::Output<T>, f: impl FnOnce(T) -> U) -> Self::Output<U> {
+        f(value)
     }
 
-    #[inline(always)]
-    fn value<T>(output: T) -> T {
-        output
-    }
-
-    #[inline(always)]
-    fn build<T>(f: impl FnOnce(Self) -> T) -> T {
-        f(Build)
-    }
-
-    #[inline(always)]
-    fn building() -> Option<Self> {
-        Some(Build)
-    }
-
-    #[inline(always)]
-    fn get<T>(self, output: T) -> T {
-        output
-    }
-
-    #[inline(always)]
-    fn get_mut<T>(self, output: &mut T) -> &mut T {
-        output
+    fn output<T>(value: T) -> Self::Output<T> {
+        value
     }
 }
 
 impl Mode for Check {
     type Output<T> = ();
-    const RECORD: bool = false;
-    type Built = Build;
-    type Checked = Check;
-    type Context<'a> = ();
 
-    #[inline(always)]
-    fn reborrow<'s, 'a: 's>(_context: ()) {}
-
-    #[inline(always)]
-    fn enter<'s, 'a: 's>(_parent: &'s (), _frame: Frame) {}
-
-    #[inline(always)]
-    fn frames<'s, 'a: 's>(_context: &'s ()) -> impl Iterator<Item = Frame> + Clone + 's {
-        std::iter::empty()
+    fn map<T, U>(_value: Self::Output<T>, _f: impl FnOnce(T) -> U) -> Self::Output<U> {
+        ()
     }
 
-    #[inline(always)]
-    fn value<T>(output: T) -> T {
-        output
-    }
-
-    #[inline(always)]
-    fn build<T>(_f: impl FnOnce(Self) -> T) {}
-
-    #[inline(always)]
-    fn building() -> Option<Self> {
-        None
-    }
-
-    fn get<T>(self, (): ()) -> T {
-        match self {}
-    }
-
-    fn get_mut<T>(self, _output: &mut ()) -> &mut T {
-        match self {}
+    fn output<T>(_value: T) -> Self::Output<T> {
+        ()
     }
 }
 
-/// Mode `M`, also recording what was expected at the furthest position: the
-/// second pass of a parse that failed.
-#[derive(Debug, Clone, Copy)]
-pub struct Record<M: Mode>(M);
-
-impl<M: Mode> Mode for Record<M> {
-    type Output<T> = M::Output<T>;
-    const RECORD: bool = true;
-    type Built = Record<M::Built>;
-    type Checked = Record<M::Checked>;
-    type Context<'a> = Option<Frames<'a>>;
-
-    #[inline(always)]
-    fn reborrow<'s, 'a: 's>(context: Option<Frames<'a>>) -> Option<Frames<'s>> {
-        context
-    }
-
-    #[inline(always)]
-    fn enter<'s, 'a: 's>(parent: &'s Option<Frames<'a>>, frame: Frame) -> Option<Frames<'s>> {
-        Some(Frames {
-            frame,
-            parent: parent.as_ref(),
-        })
-    }
-
-    #[inline(always)]
-    fn frames<'s, 'a: 's>(
-        context: &'s Option<Frames<'a>>,
-    ) -> impl Iterator<Item = Frame> + Clone + 's {
-        std::iter::successors(context.as_ref(), |frames| frames.parent).map(|frames| frames.frame)
-    }
-
-    #[inline(always)]
-    fn value<T>(output: <M::Built as Mode>::Output<T>) -> T {
-        M::value(output)
-    }
-
-    #[inline(always)]
-    fn build<T>(f: impl FnOnce(Self) -> T) -> M::Output<T> {
-        M::build(|mode| f(Record(mode)))
-    }
-
-    #[inline(always)]
-    fn building() -> Option<Self> {
-        M::building().map(Record)
-    }
-
-    #[inline(always)]
-    fn get<T>(self, output: M::Output<T>) -> T {
-        self.0.get(output)
-    }
-
-    #[inline(always)]
-    fn get_mut<T>(self, output: &mut M::Output<T>) -> &mut T {
-        self.0.get_mut(output)
-    }
+pub trait TraceLevel {
+    type State: StateTrait;
 }
 
-mod private {
-    /// Only [`Build`](super::Build), [`Check`](super::Check) and
-    /// [`Record`](super::Record) are modes.
-    pub trait Sealed {}
-    impl Sealed for super::Build {}
-    impl Sealed for super::Check {}
-    impl<M: super::Mode> Sealed for super::Record<M> {}
+pub trait StateTrait {
+    fn new() -> Self;
 }
 
 /// Post-parse validation for `#[tygr(validated)]` types.

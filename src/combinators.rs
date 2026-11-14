@@ -1,14 +1,12 @@
 //! Combinators that change what's matched: sequence, alternation, optional,
 //! repetition and lookahead.
 
-use crate::IntoInner;
-use crate::State;
 use crate::bnf::{Expr, Rules};
 use crate::first::{First, Optional, byte_set};
 use crate::grammar::{Check, Mode, Parse, Print};
-use crate::state::probe;
+use crate::{IntoInner, StateTrait};
 use either::Either::{self, Left, Right};
-use std::fmt;
+use std::{fmt, usize};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use tygr_derive::Grammar;
@@ -18,16 +16,16 @@ impl Parse for () {
     type First = Optional<byte_set::Empty>;
 
     #[inline]
-    fn parse_at<M: Mode>(
+    fn parse_at<M: Mode, S: StateTrait>(
         _input: &str,
         pos: usize,
-        _state: State<M>,
+        _state: &mut S,
     ) -> Option<(M::Output<Self>, usize)> {
-        Some((M::build(|_| ()), pos))
+        Some((M::output(()), pos))
     }
 
-    fn fail_at<M: Mode>(_pos: usize, _state: State<M>) -> bool {
-        false
+    fn fail_at<S: StateTrait>(_pos: usize, _state: &mut S) -> bool {
+        true
     }
 
     fn to_bnf() -> Expr {
@@ -41,62 +39,88 @@ impl Print for () {
     fn print_to(&self, _buf: &mut String) {}
 }
 
-macro_rules! seq_first {
-    ($acc:ty;) => { $acc };
-    ($acc:ty; $T:ident $(, $rest:ident)*) => {
-        seq_first!(<$acc as First>::Seq<$T>; $($rest),*)
-    };
+impl<A: Parse, B: Parse> Parse for (A, B) {
+    type First = <<A as Parse>::First as First>::Seq<B>;
+
+    fn parse_at<M: Mode, S: StateTrait>(
+        input: &str,
+        pos: usize,
+        state: &mut S,
+    ) -> Option<(M::Output<Self>, usize)> {
+        let (a, pos) = A::parse_at::<M, S>(input, pos, state)?;
+        let (b, pos) = B::parse_at::<M, S>(input, pos, state)?;
+        Some((M::map(a, |a| M::map(b, |b| M::output((a, b)))), pos))
+    }
+
+    fn fail_at<S: StateTrait>(pos: usize, state: &mut S) -> bool {
+        A::fail_at(pos, state) || B::fail_at(pos, state)
+    }
+
+    fn to_bnf() -> Expr {
+        todo!()
+    }
+
+    fn visit_rules(rules: &mut Rules) {
+        todo!()
+    }
 }
 
-macro_rules! impl_tuple {
-    ($($idx:tt $T:ident),+) => {
-        impl<$($T: Parse),+> Parse for ($($T,)+) {
-            type First = seq_first!(Optional<byte_set::Empty>; $($T),+);
+// macro_rules! seq_first {
+//     ($acc:ty;) => { $acc };
+//     ($acc:ty; $T:ident $(, $rest:ident)*) => {
+//         seq_first!(<$acc as First>::Seq<$T>; $($rest),*)
+//     };
+// }
 
-            #[inline]
-            fn parse_at<M: Mode>(
-                input: &str,
-                pos: usize,
-                mut state: State<M>,
-            ) -> Option<(M::Output<Self>, usize)> {
-                $(
-                    #[allow(non_snake_case)]
-                    let ($T, pos) = <$T>::parse_at::<M>(input, pos, state.reborrow())?;
-                )+
-                Some((M::build(|mode| ($(mode.get($T),)+)), pos))
-            }
+// macro_rules! impl_tuple {
+//     ($($idx:tt $T:ident),+) => {
+//         impl<$($T: Parse),+> Parse for ($($T,)+) {
+//             type First = seq_first!(Optional<byte_set::Empty>; $($T),+);
 
-            fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
-                $( <$T>::fail_at(pos, state.reborrow()) || )+ false
-            }
+//             #[inline]
+//             fn parse_at<M: Mode>(
+//                 input: &str,
+//                 pos: usize,
+//                 mut state: State<M>,
+//             ) -> Option<(M::Output<Self>, usize)> {
+//                 $(
+//                     #[allow(non_snake_case)]
+//                     let ($T, pos) = <$T>::parse_at::<M>(input, pos, state.reborrow())?;
+//                 )+
+//                 Some((M::build(|mode| ($(mode.get($T),)+)), pos))
+//             }
 
-            fn to_bnf() -> Expr {
-                Expr::sequence(vec![$(<$T>::to_bnf()),+])
-            }
+//             fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
+//                 $( <$T>::fail_at(pos, state.reborrow()) || )+ false
+//             }
 
-            fn visit_rules(rules: &mut Rules) {
-                $( <$T>::visit_rules(rules); )+
-            }
-        }
+//             fn to_bnf() -> Expr {
+//                 Expr::sequence(vec![$(<$T>::to_bnf()),+])
+//             }
 
-        impl<$($T: Print),+> Print for ($($T,)+) {
-            fn print_to(&self, buf: &mut String) {
-                $(self.$idx.print_to(buf);)+
-            }
-        }
-    };
-}
+//             fn visit_rules(rules: &mut Rules) {
+//                 $( <$T>::visit_rules(rules); )+
+//             }
+//         }
 
-impl_tuple!(0 A, 1 B);
-impl_tuple!(0 A, 1 B, 2 C);
-impl_tuple!(0 A, 1 B, 2 C, 3 D);
-impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E);
-impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F);
-impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G);
-impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H);
-impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I);
-impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J);
-impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K);
+//         impl<$($T: Print),+> Print for ($($T,)+) {
+//             fn print_to(&self, buf: &mut String) {
+//                 $(self.$idx.print_to(buf);)+
+//             }
+//         }
+//     };
+// }
+
+// impl_tuple!(0 A, 1 B);
+// impl_tuple!(0 A, 1 B, 2 C);
+// impl_tuple!(0 A, 1 B, 2 C, 3 D);
+// impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E);
+// impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F);
+// impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G);
+// impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H);
+// impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I);
+// impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J);
+// impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K);
 
 /// Sequence of three grammars, [`Deref`]-ing to the middle one.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Grammar)]
@@ -234,19 +258,19 @@ impl<A: Parse, B: Parse> Parse for Either<A, B> {
     type First = <A::First as First>::Alt<B::First>;
 
     #[inline]
-    fn parse_at<M: Mode>(
+    fn parse_at<M: Mode, S: StateTrait>(
         input: &str,
         pos: usize,
-        mut state: State<M>,
+        &mut state: S,
     ) -> Option<(M::Output<Self>, usize)> {
-        if let Some((a, end)) = A::parse_at::<M>(input, pos, state.reborrow()) {
+        if let Some((a, end)) = A::parse_at::<M, S>(input, pos, state) {
             return Some((M::map(a, Left), end));
         }
-        let (b, end) = B::parse_at::<M>(input, pos, state)?;
+        let (b, end) = B::parse_at::<M, S>(input, pos, state)?;
         Some((M::map(b, Right), end))
     }
 
-    fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
+    fn fail_at<S: StateTrait>(pos: usize, state: &mut S>) -> bool {
         let a = A::fail_at(pos, state.reborrow());
         let b = B::fail_at(pos, state);
         a && b
