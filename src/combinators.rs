@@ -5,8 +5,8 @@ use crate::IntoInner;
 use crate::State;
 use crate::bnf::{Expr, Rules};
 use crate::first::{First, Optional, byte_set};
-use crate::grammar::{Check, Mode, Parse, Print};
-use crate::state::probe;
+use crate::grammar::{Parse, Print, Success, Unit};
+use crate::state::{Level, probe};
 use either::Either::{self, Left, Right};
 use std::fmt;
 use std::marker::PhantomData;
@@ -18,16 +18,12 @@ impl Parse for () {
     type First = Optional<byte_set::Empty>;
 
     #[inline]
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         _input: &str,
         pos: usize,
-        _state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
-        Some((M::build(|_| ()), pos))
-    }
-
-    fn fail_at<M: Mode>(_pos: usize, _state: State<M>) -> bool {
-        false
+        _state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
+        Some((S::output(|| ()), pos))
     }
 
     fn to_bnf() -> Expr {
@@ -48,26 +44,29 @@ macro_rules! seq_first {
     };
 }
 
+/// The tuple of the outputs `$done` then `$T…`, each `and_then` reaching its
+/// value only when building.
+macro_rules! seq_output {
+    ($S:ident; ($($done:ident),*);) => { $S::output(|| ($($done,)*)) };
+    ($S:ident; ($($done:ident),*); $T:ident $(, $rest:ident)*) => {
+        $S::and_then($T, |$T| seq_output!($S; ($($done,)* $T); $($rest),*))
+    };
+}
+
 macro_rules! impl_tuple {
     ($($idx:tt $T:ident),+) => {
         impl<$($T: Parse),+> Parse for ($($T,)+) {
             type First = seq_first!(Optional<byte_set::Empty>; $($T),+);
 
             #[inline]
-            fn parse_at<M: Mode>(
+            #[allow(non_snake_case)]
+            fn parse_at<S: Success, L: Level>(
                 input: &str,
                 pos: usize,
-                mut state: State<M>,
-            ) -> Option<(M::Output<Self>, usize)> {
-                $(
-                    #[allow(non_snake_case)]
-                    let ($T, pos) = <$T>::parse_at::<M>(input, pos, state.reborrow())?;
-                )+
-                Some((M::build(|mode| ($(mode.get($T),)+)), pos))
-            }
-
-            fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
-                $( <$T>::fail_at(pos, state.reborrow()) || )+ false
+                mut state: State<L>,
+            ) -> Option<(S::Output<Self>, usize)> {
+                $( let ($T, pos) = <$T>::parse_at::<S, L>(input, pos, state.reborrow())?; )+
+                Some((seq_output!(S; (); $($T),+), pos))
             }
 
             fn to_bnf() -> Expr {
@@ -234,22 +233,16 @@ impl<A: Parse, B: Parse> Parse for Either<A, B> {
     type First = <A::First as First>::Alt<B::First>;
 
     #[inline]
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        mut state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
-        if let Some((a, end)) = A::parse_at::<M>(input, pos, state.reborrow()) {
-            return Some((M::map(a, Left), end));
+        mut state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
+        if let Some((a, end)) = A::parse_at::<S, L>(input, pos, state.reborrow()) {
+            return Some((S::and_then(a, |a| S::output(|| Left(a))), end));
         }
-        let (b, end) = B::parse_at::<M>(input, pos, state)?;
-        Some((M::map(b, Right), end))
-    }
-
-    fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
-        let a = A::fail_at(pos, state.reborrow());
-        let b = B::fail_at(pos, state);
-        a && b
+        let (b, end) = B::parse_at::<S, L>(input, pos, state)?;
+        Some((S::and_then(b, |b| S::output(|| Right(b))), end))
     }
 
     fn to_bnf() -> Expr {
@@ -275,20 +268,15 @@ impl<T: Parse> Parse for Option<T> {
     type First = <T::First as First>::Opt;
 
     #[inline]
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
-        Some(match T::parse_at::<M>(input, pos, state) {
-            Some((value, end)) => (M::map(value, Some), end),
-            None => (M::build(|_| None), pos),
+        state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
+        Some(match T::parse_at::<S, L>(input, pos, state) {
+            Some((value, end)) => (S::and_then(value, |value| S::output(|| Some(value))), end),
+            None => (S::output(|| None), pos),
         })
-    }
-
-    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
-        T::fail_at(pos, state);
-        false
     }
 
     fn to_bnf() -> Expr {
@@ -312,26 +300,24 @@ impl<T: Parse> Parse for Vec<T> {
     type First = <T::First as First>::Opt;
 
     #[inline]
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         mut pos: usize,
-        mut state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
-        let mut items = M::build(|_| Vec::new());
-        while let Some((item, end)) = T::parse_at::<M>(input, pos, state.reborrow())
+        mut state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
+        let mut items = S::output(Vec::new);
+        while let Some((item, end)) = T::parse_at::<S, L>(input, pos, state.reborrow())
             && end != pos
         {
-            if let Some(mode) = M::building() {
-                mode.get_mut(&mut items).push(mode.get(item));
-            }
+            items = S::and_then(items, |mut items| {
+                S::and_then(item, |item| {
+                    items.push(item);
+                    S::output(|| items)
+                })
+            });
             pos = end;
         }
         Some((items, pos))
-    }
-
-    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
-        T::fail_at(pos, state);
-        false
     }
 
     fn to_bnf() -> Expr {
@@ -387,17 +373,13 @@ impl<T: Parse> Parse for Vec1<T> {
     type First = T::First;
 
     #[inline]
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
-        let (items, end) = <Vec<T>>::parse_at::<M>(input, pos, state)?;
-        (end != pos).then(|| (M::map(items, Self), end))
-    }
-
-    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
-        T::fail_at(pos, state)
+        state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
+        let (items, end) = <Vec<T>>::parse_at::<S, L>(input, pos, state)?;
+        (end != pos).then(|| (S::and_then(items, |items| S::output(|| Self(items))), end))
     }
 
     fn to_bnf() -> Expr {
@@ -423,8 +405,8 @@ impl<T: Print> Print for Vec1<T> {
 /// // "/" that is not the start of a "//" line comment.
 /// #[derive(Grammar)]
 /// struct Div(StringEq!("/"), NotFollowedBy<StringEq!("/")>);
-/// assert!(Div::parse("/").is_ok());
-/// assert!(Div::parse("//").is_err());
+/// assert!(Div::parse::<Value, Max>("/").is_ok());
+/// assert!(Div::parse::<Value, Max>("//").is_err());
 /// ```
 pub struct NotFollowedBy<G>(PhantomData<G>);
 
@@ -432,23 +414,19 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
     type First = Optional<byte_set::Empty>;
 
     #[inline]
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        mut state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
+        mut state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
         // Probe, so only what `G` matched is recorded, not what it expected.
-        match probe(|state| G::parse_at::<Check>(input, pos, state)) {
+        match probe(|state| G::parse_at::<Unit, _>(input, pos, state)) {
             Some(((), end)) => {
                 state.not_followed_by(G::to_bnf, pos..end);
                 None
             }
-            None => Some((M::build(|_| NotFollowedBy(PhantomData)), pos)),
+            None => Some((S::output(|| NotFollowedBy(PhantomData)), pos)),
         }
-    }
-
-    fn fail_at<M: Mode>(_pos: usize, _state: State<M>) -> bool {
-        false
     }
 
     fn to_bnf() -> Expr {
@@ -467,8 +445,8 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
 /// // A key that must be followed by ":", without consuming the ":".
 /// #[derive(Grammar)]
 /// struct Key(StringEq!("k"), FollowedBy<StringEq!(":")>);
-/// assert!(Key::parse("k").is_err());
-/// assert_eq!(Key::parse_prefix("k:").unwrap().1, 1);
+/// assert!(Key::parse::<Value, Max>("k").is_err());
+/// assert_eq!(Key::parse_prefix::<Value, Max>("k:").unwrap().1, 1);
 /// ```
 pub struct FollowedBy<G>(PhantomData<G>);
 
@@ -477,22 +455,18 @@ impl<G: Parse> Parse for FollowedBy<G> {
     type First = Optional<byte_set::Empty>;
 
     #[inline]
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
+        state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
         // Probe, so a match records nothing past `pos`; on failure, rerun `G`
         // to record what it expected.
-        let matched = probe(|state| G::parse_at::<Check>(input, pos, state));
+        let matched = probe(|state| G::parse_at::<Unit, _>(input, pos, state));
         if matched.is_none() {
-            G::check_at(input, pos, state);
+            G::parse_at::<Unit, L>(input, pos, state);
         }
-        matched.map(|_| (M::build(|_| FollowedBy(PhantomData)), pos))
-    }
-
-    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
-        G::fail_at(pos, state)
+        matched.map(|_| (S::output(|| FollowedBy(PhantomData)), pos))
     }
 
     // `!!G`: `Expr` has only negative lookahead.

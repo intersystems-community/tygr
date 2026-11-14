@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use std::io::{self, Read};
 use std::process::ExitCode;
 
-use tygr::{Error, Grammar, Parse};
+use tygr::{Error, Grammar, Max, Parse, Unit, Value};
 
 /// Read all of stdin, minus the trailing JSON whitespace (`echo` appends a newline).
 fn read_stdin() -> String {
@@ -32,17 +32,17 @@ fn report(shown: Result<String, Error>) -> ExitCode {
 
 /// `parse`: parse stdin with `R` and print the `Debug` tree.
 pub(crate) fn parse<R: Parse + Debug>() -> ExitCode {
-    report(R::parse(&read_stdin()).map(|value| format!("{value:#?}")))
+    report(R::parse::<Value, Max>(&read_stdin()).map(|value| format!("{value:#?}")))
 }
 
 /// `print`: parse stdin with `R` and print it back.
 pub(crate) fn print<R: Grammar>() -> ExitCode {
-    report(R::parse(&read_stdin()).map(|value| value.print()))
+    report(R::parse::<Value, Max>(&read_stdin()).map(|value| value.print()))
 }
 
 /// `test`: check that stdin is well-formed under `R`; print `ok`, or the error.
 pub(crate) fn test<R: Parse>() -> ExitCode {
-    report(R::check(&read_stdin()).map(|()| "ok".to_string()))
+    report(R::parse::<Unit, Max>(&read_stdin()).map(|()| "ok".to_string()))
 }
 
 /// Print a usage line naming the available verbs and exit with failure.

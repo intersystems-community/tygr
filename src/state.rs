@@ -1,48 +1,28 @@
 //! The state threaded through parsing, and the [`Error`] it builds.
 
 use crate::bnf::{Expr, Lazy, escape};
-use crate::grammar::{Check, Mode, Record};
+use crate::grammar::{Parse, Success, Unit};
 use std::borrow::Cow;
 use std::fmt;
 use std::ops::Range;
 
 /// Parse state threaded through [`Parse::parse_at`](crate::Parse::parse_at),
-/// in mode `M`. A parse runs once, tracking only the furthest position it
-/// reaches; if it fails, it runs again in [`Record`] mode, recording what it
-/// expected there. A hand-written grammar enters its rule with
-/// [`node`](Self::node), in [`fail_at`](crate::Parse::fail_at) too, and
-/// passes a [`reborrow`](Self::reborrow) to each grammar it delegates to.
-pub struct State<'a, M: Mode> {
-    /// The error so far: the furthest position, then what was expected there.
-    error: &'a mut Error,
-    /// The rules entered, when recording.
-    context: M::Context<'a>,
-}
+/// tracing at level `L`. A hand-written grammar enters its rule with
+/// [`node`](Self::node) and passes a [`reborrow`](Self::reborrow) to each
+/// grammar it delegates to.
+pub struct State<'a, L: Level>(L::Store<'a>);
 
-impl<'a, M: Mode> State<'a, M> {
-    fn new(error: &'a mut Error) -> Self {
-        State {
-            error,
-            context: Default::default(),
-        }
-    }
-
+impl<'a, L: Level> State<'a, L> {
     /// Reborrow for a nested call.
     #[inline(always)]
-    pub fn reborrow(&mut self) -> State<'_, M> {
-        State {
-            error: &mut *self.error,
-            context: M::reborrow(self.context),
-        }
+    pub fn reborrow(&mut self) -> State<'_, L> {
+        State(L::reborrow(&mut self.0))
     }
 
     /// Enter rule `node` at `pos`, so that what's recorded inside names it.
     #[inline(always)]
-    pub fn node(&mut self, node: &'static str, pos: usize) -> State<'_, M> {
-        State {
-            error: &mut *self.error,
-            context: M::enter(&self.context, Frame { node, pos }),
-        }
+    pub fn node(&mut self, node: &'static str, pos: usize) -> State<'_, L> {
+        State(L::enter(&mut self.0, Frame { node, pos }))
     }
 
     /// Whether `pos` is the end of `input`; if not, records that it was
@@ -64,23 +44,16 @@ impl<'a, M: Mode> State<'a, M> {
         });
     }
 
-    /// Note that `pos` was reached; when recording, record what was expected
-    /// there if it's the furthest position. The expectation is built only
-    /// then, out of line, so that the parse keeps nothing for it.
+    /// Note that `pos` was reached, and, when recording, what was expected
+    /// there: built only then, so that the parse keeps nothing for it.
     #[inline(always)]
     pub(crate) fn expect(&mut self, pos: usize, expectation: impl FnOnce() -> Expectation) {
-        if !M::RECORD {
-            self.error.reach(pos);
-        } else if pos == self.error.pos {
-            record::<M>(self.error, self.context, expectation);
-        }
+        L::expect(&mut self.0, pos, expectation);
     }
 
     /// Record that rule `node` rejected the text at `range`, which must
-    /// `requirement`. Call it in every mode: the first pass only notes the
-    /// position. A `String` requirement, built from what was parsed, is kept
-    /// for the error; build it only when [`Mode::RECORD`], passing
-    /// `String::new()` otherwise.
+    /// `requirement`: a `&'static str`, or a `String` built from what was
+    /// parsed.
     #[inline(always)]
     pub fn reject(
         &mut self,
@@ -94,60 +67,345 @@ impl<'a, M: Mode> State<'a, M> {
             requirement: requirement.into(),
         });
     }
+}
 
-    /// This state in the mode that builds values, for a part whose value is
-    /// needed whatever the mode: [`Parse::build_at`](crate::Parse::build_at)
-    /// parses one.
-    pub fn built(self) -> State<'a, M::Built> {
-        State {
-            error: self.error,
-            context: self.context.into(),
+/// Note that a dispatch table found no variant starting at `pos`, where the
+/// skipped ones would have failed; the recording pass tries them instead.
+#[doc(hidden)]
+#[inline(always)]
+pub fn miss<L: Level>(state: &mut State<L>, pos: usize) {
+    state.expect(pos, || unreachable!("the recording pass doesn't dispatch"));
+}
+
+/// Run `f` tracing nothing: a lookahead's failure isn't the parse's.
+pub(crate) fn probe<R>(f: impl FnOnce(State<'_, Min>) -> R) -> R {
+    f(State(()))
+}
+
+/// How much a parse traces, and so what its [`Error`] reports: [`Min`],
+/// [`Pos`] or [`Max`]. Orthogonal to [`Success`], which says what it builds.
+pub trait Level: Sized + 'static + private::Sealed {
+    /// Whether what was expected is recorded: only at [`Max`], in the second
+    /// pass of a parse that failed.
+    const RECORD: bool;
+
+    #[doc(hidden)]
+    type Store<'a>;
+
+    #[doc(hidden)]
+    type Pos: Copy + fmt::Debug + PartialEq + Eq;
+
+    #[doc(hidden)]
+    type Traces: Clone + fmt::Debug + PartialEq + Eq;
+
+    #[doc(hidden)]
+    fn reborrow<'s, 'a: 's>(store: &'s mut Self::Store<'a>) -> Self::Store<'s>;
+
+    #[doc(hidden)]
+    fn enter<'s, 'a: 's>(store: &'s mut Self::Store<'a>, frame: Frame) -> Self::Store<'s>;
+
+    #[doc(hidden)]
+    fn expect(store: &mut Self::Store<'_>, pos: usize, expectation: impl FnOnce() -> Expectation);
+
+    /// Parse `T` at the start of `input`, to its end if `whole`: what the
+    /// entry points do.
+    #[doc(hidden)]
+    fn run<T: Parse, S: Success>(
+        input: &str,
+        whole: bool,
+    ) -> Result<(S::Output<T>, usize), Error<Self>>;
+}
+
+/// Traces nothing: the fastest parse, whose [`Error`] says only that it
+/// failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Min;
+
+/// Tracks the furthest position reached, which its [`Error`] reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pos;
+
+/// Tracks the furthest position, then, if the parse failed, runs it again
+/// recording what was expected there, in the chain of rules entered: the
+/// [`Error`] of [`parse`](Parse::parse) and friends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Max;
+
+impl Level for Min {
+    const RECORD: bool = false;
+    type Store<'a> = ();
+    type Pos = ();
+    type Traces = ();
+
+    #[inline(always)]
+    fn reborrow<'s, 'a: 's>(_store: &'s mut ()) {}
+
+    #[inline(always)]
+    fn enter<'s, 'a: 's>(_store: &'s mut (), _frame: Frame) {}
+
+    #[inline(always)]
+    fn expect(_store: &mut (), _pos: usize, _expectation: impl FnOnce() -> Expectation) {}
+
+    fn run<T: Parse, S: Success>(
+        input: &str,
+        whole: bool,
+    ) -> Result<(S::Output<T>, usize), Error<Min>> {
+        pass::<T, S, Min>(input, whole, State(())).ok_or(Error {
+            pos: (),
+            traces: (),
+        })
+    }
+}
+
+impl Level for Pos {
+    const RECORD: bool = false;
+    type Store<'a> = &'a mut usize;
+    type Pos = usize;
+    type Traces = ();
+
+    #[inline(always)]
+    fn reborrow<'s, 'a: 's>(store: &'s mut &'a mut usize) -> &'s mut usize {
+        store
+    }
+
+    #[inline(always)]
+    fn enter<'s, 'a: 's>(store: &'s mut &'a mut usize, _frame: Frame) -> &'s mut usize {
+        store
+    }
+
+    #[inline(always)]
+    fn expect(store: &mut &mut usize, pos: usize, _expectation: impl FnOnce() -> Expectation) {
+        if pos > **store {
+            **store = pos;
         }
     }
 
-    /// This state in the mode that only checks, for a part whose value isn't
-    /// needed: [`Parse::check_at`](crate::Parse::check_at) parses one.
-    pub fn checked(self) -> State<'a, M::Checked> {
-        State {
-            error: self.error,
-            context: self.context.into(),
+    fn run<T: Parse, S: Success>(
+        input: &str,
+        whole: bool,
+    ) -> Result<(S::Output<T>, usize), Error<Pos>> {
+        let mut pos = 0;
+        pass::<T, S, Pos>(input, whole, State(&mut pos)).ok_or(Error { pos, traces: () })
+    }
+}
+
+/// [`Max`]'s store: the error being built and the rules entered so far, a
+/// list through the stack.
+#[doc(hidden)]
+pub struct Recorder<'a> {
+    error: &'a mut Error,
+    frames: Option<Frames<'a>>,
+}
+
+impl Level for Max {
+    const RECORD: bool = true;
+    type Store<'a> = Recorder<'a>;
+    type Pos = usize;
+    type Traces = Vec<Trace>;
+
+    #[inline(always)]
+    fn reborrow<'s, 'a: 's>(store: &'s mut Recorder<'a>) -> Recorder<'s> {
+        Recorder {
+            error: store.error,
+            frames: store.frames,
         }
+    }
+
+    #[inline(always)]
+    fn enter<'s, 'a: 's>(store: &'s mut Recorder<'a>, frame: Frame) -> Recorder<'s> {
+        Recorder {
+            error: store.error,
+            frames: Some(Frames {
+                frame,
+                parent: store.frames.as_ref(),
+            }),
+        }
+    }
+
+    #[inline(always)]
+    fn expect(store: &mut Recorder<'_>, pos: usize, expectation: impl FnOnce() -> Expectation) {
+        if pos == store.error.pos {
+            record(store, expectation);
+        }
+    }
+
+    fn run<T: Parse, S: Success>(input: &str, whole: bool) -> Result<(S::Output<T>, usize), Error> {
+        let mut error = Error {
+            pos: 0,
+            traces: Vec::new(),
+        };
+        if let Some(result) = pass::<T, S, Pos>(input, whole, State(&mut error.pos)) {
+            return Ok(result);
+        }
+        let recorder = Recorder {
+            error: &mut error,
+            frames: None,
+        };
+        pass::<T, Unit, Max>(input, whole, State(recorder));
+        Err(error)
     }
 }
 
 /// Record `expectation` at the furthest position, in the rules entered.
 #[cold]
 #[inline(never)]
-fn record<M: Mode>(
-    error: &mut Error,
-    context: M::Context<'_>,
-    expectation: impl FnOnce() -> Expectation,
-) {
-    error.record(M::frames(&context), expectation());
+fn record(store: &mut Recorder<'_>, expectation: impl FnOnce() -> Expectation) {
+    let frames = std::iter::successors(store.frames.as_ref(), |frames| frames.parent)
+        .map(|frames| frames.frame);
+    store.error.record(frames, expectation());
 }
 
-/// Run a parse: `parse` tracks the furthest position it reaches; if it
-/// fails, `rerun`, the same parse in [`Record`] mode, records what was
-/// expected there.
-pub(crate) fn run<M: Mode, R>(
-    parse: impl FnOnce(State<'_, M>) -> Option<R>,
-    rerun: impl FnOnce(State<'_, Record<Check>>),
-) -> Result<R, Error> {
-    let mut error = Error::new();
-    if let Some(value) = parse(State::new(&mut error)) {
-        return Ok(value);
+/// One pass: `T` at the start of `input` and, if `whole`, its end.
+fn pass<T: Parse, S: Success, L: Level>(
+    input: &str,
+    whole: bool,
+    mut state: State<'_, L>,
+) -> Option<(S::Output<T>, usize)> {
+    let (value, end) = T::parse_at::<S, L>(input, 0, state.reborrow())?;
+    (!whole || state.at_end(input, end)).then_some((value, end))
+}
+
+mod private {
+    /// Only [`Min`](super::Min), [`Pos`](super::Pos) and [`Max`](super::Max)
+    /// are levels.
+    pub trait Sealed {}
+    impl Sealed for super::Min {}
+    impl Sealed for super::Pos {}
+    impl Sealed for super::Max {}
+}
+
+/// A parse failure, traced at level `L`: that it failed ([`Min`]), where
+/// ([`Pos`]), or where and what was expected there ([`Max`], the default).
+pub struct Error<L: Level = Max> {
+    pos: L::Pos,
+    traces: L::Traces,
+}
+
+impl<L: Level<Pos = usize>> Error<L> {
+    /// The furthest byte offset reached; [`OLC`](crate::OLC) maps it to a
+    /// `(line, character)`.
+    pub fn pos(&self) -> usize {
+        self.pos
     }
-    rerun(State::new(&mut error));
-    Err(error)
 }
 
-/// Run `f` without recording anything.
-pub(crate) fn probe<R>(f: impl FnOnce(State<'_, Check>) -> R) -> R {
-    f(State::new(&mut Error::new()))
+impl<L: Level<Traces = Vec<Trace>>> Error<L> {
+    /// What was expected at [`pos`](Self::pos), without repeats.
+    pub fn traces(&self) -> &[Trace] {
+        &self.traces
+    }
+}
+
+impl Error {
+    /// Record `expectation` in `frames` (innermost first), unless it's
+    /// recorded there already: a backtracking grammar can expect the same few
+    /// things exponentially often.
+    fn record(&mut self, frames: impl Iterator<Item = Frame> + Clone, expectation: Expectation) {
+        let recorded = self.traces.iter().any(|trace| {
+            trace.expectation == expectation
+                && trace.context.iter().rev().copied().eq(frames.clone())
+        });
+        if !recorded {
+            let mut context: Vec<Frame> = frames.collect();
+            context.reverse();
+            self.traces.push(Trace {
+                context,
+                expectation,
+            });
+        }
+    }
+}
+
+impl<L: Level> Clone for Error<L> {
+    fn clone(&self) -> Self {
+        Error {
+            pos: self.pos,
+            traces: self.traces.clone(),
+        }
+    }
+}
+
+impl<L: Level> PartialEq for Error<L> {
+    fn eq(&self, other: &Self) -> bool {
+        self.pos == other.pos && self.traces == other.traces
+    }
+}
+
+impl<L: Level> Eq for Error<L> {}
+
+impl<L: Level> std::error::Error for Error<L> where Self: fmt::Debug + fmt::Display {}
+
+impl fmt::Display for Error<Min> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("parse error")
+    }
+}
+
+impl fmt::Debug for Error<Min> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
+impl fmt::Display for Error<Pos> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "parse error at byte {}", self.pos)
+    }
+}
+
+impl fmt::Debug for Error<Pos> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "parse error at byte {}", self.pos)?;
+        let mut lines: Vec<String> = self
+            .traces
+            .iter()
+            .map(|trace| match (trace.context.last(), &trace.expectation) {
+                // A rule that starts here stands for the terminals it expected.
+                (Some(frame), Expectation::Token { .. } | Expectation::CharClass(_))
+                    if frame.pos == self.pos =>
+                {
+                    frame.node.to_string()
+                }
+                _ => trace.expectation.to_string(),
+            })
+            .collect();
+        lines.sort();
+        lines.dedup();
+        if !lines.is_empty() {
+            write!(f, ", expected:")?;
+            for line in lines {
+                write!(f, "\n\t- {line}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "parse error at byte {}", self.pos)?;
+        if !self.traces.is_empty() {
+            write!(f, ", expected:")?;
+        }
+        for trace in &self.traces {
+            write!(f, "\n\t- ")?;
+            for Frame { node, pos } in &trace.context {
+                write!(f, "{node}@{pos}/")?;
+            }
+            write!(f, "{}", trace.expectation)?;
+        }
+        Ok(())
+    }
 }
 
 /// The rules entered so far, innermost first: a list through the stack, as
-/// [`Record`]'s [`Mode::Context`].
+/// [`Max`]'s store.
 #[doc(hidden)]
 #[derive(Clone, Copy)]
 pub struct Frames<'a> {
@@ -261,104 +519,3 @@ pub struct Frame {
     /// Where it was entered.
     pub pos: usize,
 }
-
-/// A parse failure: where it got stuck, and what it expected there.
-#[derive(Clone, PartialEq, Eq)]
-pub struct Error {
-    traces: Vec<Trace>,
-    pos: usize,
-}
-
-impl Error {
-    /// No position reached yet.
-    fn new() -> Self {
-        Error {
-            traces: Vec::new(),
-            pos: 0,
-        }
-    }
-
-    /// The first pass: only the furthest position matters.
-    #[inline]
-    fn reach(&mut self, pos: usize) {
-        if pos > self.pos {
-            self.pos = pos;
-        }
-    }
-
-    /// Record `expectation` in `frames` (innermost first), unless it's
-    /// recorded there already: a backtracking grammar can expect the same few
-    /// things exponentially often.
-    fn record(&mut self, frames: impl Iterator<Item = Frame> + Clone, expectation: Expectation) {
-        let recorded = self.traces.iter().any(|trace| {
-            trace.expectation == expectation
-                && trace.context.iter().rev().copied().eq(frames.clone())
-        });
-        if !recorded {
-            let mut context: Vec<Frame> = frames.collect();
-            context.reverse();
-            self.traces.push(Trace {
-                context,
-                expectation,
-            });
-        }
-    }
-
-    /// What was expected at [`pos`](Self::pos), without repeats.
-    pub fn traces(&self) -> &[Trace] {
-        &self.traces
-    }
-
-    /// The furthest byte offset reached; [`OLC`](crate::OLC) maps it to a
-    /// `(line, character)`.
-    pub fn pos(&self) -> usize {
-        self.pos
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "parse error at byte {}", self.pos)?;
-        let mut lines: Vec<String> = self
-            .traces
-            .iter()
-            .map(|trace| match (trace.context.last(), &trace.expectation) {
-                // A rule that starts here stands for the terminals it expected.
-                (Some(frame), Expectation::Token { .. } | Expectation::CharClass(_))
-                    if frame.pos == self.pos =>
-                {
-                    frame.node.to_string()
-                }
-                _ => trace.expectation.to_string(),
-            })
-            .collect();
-        lines.sort();
-        lines.dedup();
-        if !lines.is_empty() {
-            write!(f, ", expected:")?;
-            for line in lines {
-                write!(f, "\n\t- {line}")?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl fmt::Debug for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "parse error at byte {}", self.pos)?;
-        if !self.traces.is_empty() {
-            write!(f, ", expected:")?;
-        }
-        for trace in &self.traces {
-            write!(f, "\n\t- ")?;
-            for Frame { node, pos } in &trace.context {
-                write!(f, "{node}@{pos}/")?;
-            }
-            write!(f, "{}", trace.expectation)?;
-        }
-        Ok(())
-    }
-}
-
-impl std::error::Error for Error {}

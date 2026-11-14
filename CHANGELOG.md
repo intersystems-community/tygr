@@ -2,6 +2,38 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
+## [Unreleased]
+
+What a parse yields and what it traces are two type parameters, chosen at
+the entry point, so the interface shrinks: `Success` is two methods, `Parse`
+three, and a parse can trace nothing at all.
+
+### Breaking Changes
+
+- `Mode` is `Success`, with two methods: `output(|| value)`, a lazy pure,
+  and `and_then`, a bind; `Build` and `Check` are `Value` and `Unit`.
+  `build`, `building`, `get`, `get_mut`, `map`, `RECORD`, `Built`,
+  `Checked`, `value` and `Record<M>` are gone. A part whose value is needed
+  whatever the success is parsed with `parse_at::<Value, L>`, one whose
+  value isn't with `parse_at::<Unit, L>`; `build_at`, `check_at`,
+  `State::built` and `State::checked` are gone.
+- Tracing is the state's `Level`, orthogonal to the success:
+  `parse_at<S: Success, L: Level>(input, pos, state: State<L>)`. `Min`
+  traces nothing (the state is zero-sized), `Pos` tracks the furthest
+  position, `Max` records what was expected there too, in a second pass.
+  `Level::RECORD` replaces `Mode::RECORD`.
+- `Parse::fail_at` is gone: a dispatch table skips variants only when not
+  recording, and the recording pass tries every variant, so each records
+  what it expected by parsing. A hand-written grammar implements `parse_at`,
+  `to_bnf` and `visit_rules`.
+- The entry points take both parameters: `parse::<S, L>(input)` returns
+  `Result<S::Output<Self>, Error<L>>`, and `parse_prefix::<S, L>` the end
+  position too; `check` and `check_prefix` are `parse::<Unit, L>` and
+  `parse_prefix::<Unit, L>`. `Error<L>`, `Error<Max>` by default, has `pos()`
+  at `Pos` and `Max`, `traces()` at `Max`, and each level prints what it
+  knows.
+- `Success` and `Level` are sealed.
+
 ## [0.8.0] - 2026-11-13
 
 Errors are traced in a second pass, so a successful parse pays only for

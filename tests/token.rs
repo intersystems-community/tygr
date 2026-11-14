@@ -12,9 +12,9 @@ struct Accent(StringEqCI!("é"));
 
 #[test]
 fn string_eq_ci_matches_unicode_case_variants() {
-    assert_eq!(Accent::parse("é").unwrap().print(), "é");
-    assert_eq!(Accent::parse("É").unwrap().print(), "É");
-    assert!(Accent::parse("e").is_err());
+    assert_eq!(Accent::parse::<Value, Max>("é").unwrap().print(), "é");
+    assert_eq!(Accent::parse::<Value, Max>("É").unwrap().print(), "É");
+    assert!(Accent::parse::<Value, Max>("e").is_err());
 }
 
 #[derive(Grammar, Debug)]
@@ -23,9 +23,12 @@ struct Strasse(StringEqCI!("straße"));
 #[test]
 fn string_eq_ci_variant_can_change_length() {
     // 'ß' uppercases to "SS".
-    assert_eq!(Strasse::parse("STRASSE").unwrap().print(), "STRASSE");
-    assert!(Strasse::parse("strasse").is_ok());
-    assert!(Strasse::parse("Straße").is_ok());
+    assert_eq!(
+        Strasse::parse::<Value, Max>("STRASSE").unwrap().print(),
+        "STRASSE"
+    );
+    assert!(Strasse::parse::<Value, Max>("strasse").is_ok());
+    assert!(Strasse::parse::<Value, Max>("Straße").is_ok());
 }
 
 #[derive(Grammar, Debug)]
@@ -38,17 +41,17 @@ struct Long(
 #[test]
 fn string_eq_longer_than_a_flat_tuple() {
     let text = "abcdefghijklmnop".repeat(8);
-    assert!(Long::parse(&text).is_ok());
-    assert!(Long::parse(&text[..127]).is_err());
+    assert!(Long::parse::<Value, Max>(&text).is_ok());
+    assert!(Long::parse::<Value, Max>(&text[..127]).is_err());
 }
 
 #[test]
 fn char_decodes_one_character_of_any_width() {
     for s in ["a", "é", "平", "😀"] {
-        let (ch, end) = char::parse_prefix(s).unwrap();
+        let (ch, end) = char::parse_prefix::<Value, Max>(s).unwrap();
         assert_eq!((ch.to_string().as_str(), end), (s, s.len()));
     }
-    assert!(char::parse("").is_err());
+    assert!(char::parse::<Value, Max>("").is_err());
 }
 
 #[test]
@@ -59,7 +62,7 @@ fn literal_errors_report_the_whole_literal_where_it_diverged() {
 
     #[derive(Grammar, Debug)]
     struct Arrow(StringEq!("->"));
-    let err = Arrow::parse("-x").unwrap_err();
+    let err = Arrow::parse::<Value, Max>("-x").unwrap_err();
     assert_eq!(err.pos(), 1);
     assert_eq!(err.traces()[0].expectation, token("->", 0..1));
 
@@ -67,12 +70,12 @@ fn literal_errors_report_the_whole_literal_where_it_diverged() {
     // ("é" is 0xC3 0xA9, "è" is 0xC3 0xA8).
     #[derive(Grammar, Debug)]
     struct E(StringEq!("aé"));
-    let err = E::parse("aè").unwrap_err();
+    let err = E::parse::<Value, Max>("aè").unwrap_err();
     assert_eq!(err.pos(), 1);
     assert_eq!(err.traces()[0].expectation, token("aé", 0..1));
 
     // The range is the input matched, even where a case variant is longer.
-    let err = Strasse::parse("STRASSX").unwrap_err();
+    let err = Strasse::parse::<Value, Max>("STRASSX").unwrap_err();
     assert_eq!(err.pos(), 6);
     assert_eq!(err.traces()[0].expectation, token("straße", 0..6));
 }
@@ -100,8 +103,8 @@ fn char_class_computes_first_bytes() {
 
     #[derive(Grammar, Debug)]
     struct Word(StringOf1<Lower>);
-    assert_eq!(Word::parse("abc").unwrap().print(), "abc");
-    assert!(Word::parse("aBc").is_err());
+    assert_eq!(Word::parse::<Value, Max>("abc").unwrap().print(), "abc");
+    assert!(Word::parse::<Value, Max>("aBc").is_err());
 }
 
 #[test]

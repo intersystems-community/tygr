@@ -7,8 +7,8 @@ use std::ops::Range;
 
 use crate::bnf::{Expr, Rules};
 use crate::first::{ByteSet, Required, byte_set};
-use crate::grammar::{Grammar, Mode, Parse, Print};
-use crate::state::{Expectation, State};
+use crate::grammar::{Grammar, Parse, Print, Success};
+use crate::state::{Expectation, Level, State};
 use crate::{Raw, Vec1};
 
 /// Matches one literal byte.
@@ -76,7 +76,7 @@ pub trait Literal: Copy + 'static {
     type Start: ByteSet;
 
     /// Match from `pos`: the value and the end.
-    fn match_at<M: Mode>(input: &[u8], pos: usize) -> Option<(M::Output<Self>, usize)>;
+    fn match_at<S: Success>(input: &[u8], pos: usize) -> Option<(S::Output<Self>, usize)>;
 
     /// Write the matched bytes to `out` from `at`, returning the new end.
     fn write(&self, out: &mut [u8], at: usize) -> usize;
@@ -94,8 +94,8 @@ impl<const B: u8> Literal for ByteEq<B> {
     type Start = byte_set::One<B>;
 
     #[inline(always)]
-    fn match_at<M: Mode>(input: &[u8], pos: usize) -> Option<(M::Output<Self>, usize)> {
-        (input.get(pos) == Some(&B)).then(|| (M::build(|_| ByteEq), pos + 1))
+    fn match_at<S: Success>(input: &[u8], pos: usize) -> Option<(S::Output<Self>, usize)> {
+        (input.get(pos) == Some(&B)).then(|| (S::output(|| ByteEq), pos + 1))
     }
 
     fn write(&self, out: &mut [u8], at: usize) -> usize {
@@ -121,10 +121,13 @@ impl<A: Literal, B: Literal> Literal for (A, B) {
     type Start = A::Start;
 
     #[inline(always)]
-    fn match_at<M: Mode>(input: &[u8], pos: usize) -> Option<(M::Output<Self>, usize)> {
-        let (a, pos) = A::match_at::<M>(input, pos)?;
-        let (b, pos) = B::match_at::<M>(input, pos)?;
-        Some((M::build(|mode| (mode.get(a), mode.get(b))), pos))
+    fn match_at<S: Success>(input: &[u8], pos: usize) -> Option<(S::Output<Self>, usize)> {
+        let (a, pos) = A::match_at::<S>(input, pos)?;
+        let (b, pos) = B::match_at::<S>(input, pos)?;
+        Some((
+            S::and_then(a, |a| S::and_then(b, |b| S::output(|| (a, b)))),
+            pos,
+        ))
     }
 
     fn write(&self, out: &mut [u8], at: usize) -> usize {
@@ -154,12 +157,12 @@ impl<A: Literal, B: Literal> Literal for Either<A, B> {
     type Start = byte_set::Union<A::Start, B::Start>;
 
     #[inline(always)]
-    fn match_at<M: Mode>(input: &[u8], pos: usize) -> Option<(M::Output<Self>, usize)> {
-        if let Some((a, end)) = A::match_at::<M>(input, pos) {
-            return Some((M::map(a, Left), end));
+    fn match_at<S: Success>(input: &[u8], pos: usize) -> Option<(S::Output<Self>, usize)> {
+        if let Some((a, end)) = A::match_at::<S>(input, pos) {
+            return Some((S::and_then(a, |a| S::output(|| Left(a))), end));
         }
-        let (b, end) = B::match_at::<M>(input, pos)?;
-        Some((M::map(b, Right), end))
+        let (b, end) = B::match_at::<S>(input, pos)?;
+        Some((S::and_then(b, |b| S::output(|| Right(b))), end))
     }
 
     fn write(&self, out: &mut [u8], at: usize) -> usize {
@@ -207,11 +210,11 @@ impl<G: Literal> Parse for Token<G> {
     type First = Required<G::Start>;
 
     #[inline(always)]
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
+        state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
         const {
             assert!(G::WHOLE_CHARS, "a literal must be whole chars");
             assert!(
@@ -221,16 +224,16 @@ impl<G: Literal> Parse for Token<G> {
             // WHOLE_CHARS checks each case variant; TEXT checks the whole text.
             let _ = Self::TEXT;
         };
-        let result = G::match_at::<M>(input.as_bytes(), pos);
+        let result = G::match_at::<S>(input.as_bytes(), pos);
         if result.is_none() {
             Self::expected(pos..diverged::<G>(input.as_bytes(), pos), state);
         }
-        result.map(|(matched, end)| (M::map(matched, Token), end))
-    }
-
-    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
-        Self::expected(pos..pos, state);
-        true
+        result.map(|(matched, end)| {
+            (
+                S::and_then(matched, |matched| S::output(|| Token(matched))),
+                end,
+            )
+        })
     }
 
     fn to_bnf() -> Expr {
@@ -272,7 +275,7 @@ impl<G: Literal> Token<G> {
 
     /// Record the literal as expected where it diverged, having matched
     /// `range`, like a rejected validation.
-    fn expected<M: Mode>(range: Range<usize>, mut state: State<M>) {
+    fn expected<L: Level>(range: Range<usize>, mut state: State<L>) {
         state.expect(range.end, || Expectation::Token {
             text: Self::TEXT,
             range,
@@ -321,23 +324,18 @@ impl Parse for char {
     type First = Required<CharStart>;
 
     #[inline(always)]
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
+        mut state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
         match decode_char(input, pos) {
-            Some((ch, end)) => Some((M::build(|_| ch), end)),
+            Some((ch, end)) => Some((S::output(|| ch), end)),
             None => {
-                Self::fail_at(pos, state);
+                state.expect(pos, || Expectation::CharClass(ANY_CHAR));
                 None
             }
         }
-    }
-
-    fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
-        state.expect(pos, || Expectation::CharClass(ANY_CHAR));
-        true
     }
 
     fn to_bnf() -> Expr {
@@ -372,8 +370,8 @@ fn decode_char(input: &str, pos: usize) -> Option<(char, usize)> {
 /// # use tygr::*;
 /// char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 ///
-/// assert_eq!(Digit::parse("7").unwrap().value(), '7');
-/// assert!(Digit::parse("x").is_err());
+/// assert_eq!(Digit::parse::<Value, Max>("7").unwrap().value(), '7');
+/// assert!(Digit::parse::<Value, Max>("x").is_err());
 /// ```
 pub trait CharClass: Grammar + ByteSet {
     /// Does `ch` belong to this class?
@@ -419,7 +417,7 @@ pub trait CharClass: Grammar + ByteSet {
 ///     }
 /// }
 ///
-/// assert!(Letter::parse("é").is_ok() && Letter::parse("1").is_err());
+/// assert!(Letter::parse::<Value, Max>("é").is_ok() && Letter::parse::<Value, Max>("1").is_err());
 /// ```
 #[macro_export]
 macro_rules! char_class {
@@ -465,16 +463,12 @@ macro_rules! char_class {
             type First = $crate::first::Required<$class>;
 
             #[inline(always)]
-            fn parse_at<M: $crate::Mode>(
+            fn parse_at<S: $crate::Success, L: $crate::Level>(
                 input: &str,
                 pos: usize,
-                state: $crate::State<M>,
-            ) -> ::core::option::Option<(M::Output<Self>, usize)> {
-                $crate::__private::class_parse_at::<Self, M>(input, pos, state)
-            }
-
-            fn fail_at<M: $crate::Mode>(pos: usize, state: $crate::State<M>) -> bool {
-                $crate::__private::class_fail_at::<Self, M>(pos, state)
+                state: $crate::State<L>,
+            ) -> ::core::option::Option<(S::Output<Self>, usize)> {
+                $crate::__private::class_parse_at::<Self, S, L>(input, pos, state)
             }
 
             fn to_bnf() -> $crate::bnf::Expr {
@@ -495,20 +489,20 @@ macro_rules! char_class {
 /// `Parse::parse_at` for a `char_class!` type.
 #[doc(hidden)]
 #[inline(always)]
-pub fn class_parse_at<C: CharClass, M: Mode>(
+pub fn class_parse_at<C: CharClass, S: Success, L: Level>(
     input: &str,
     pos: usize,
-    state: State<M>,
-) -> Option<(M::Output<C>, usize)> {
+    mut state: State<L>,
+) -> Option<(S::Output<C>, usize)> {
     let matched = match input.as_bytes().get(pos) {
         // The byte set is exact for ASCII: no decoding or predicate needed.
         Some(&b) if b.is_ascii() => C::BYTE_SET.contains(b).then_some((b as char, pos + 1)),
         _ => decode_char(input, pos).filter(|&(ch, _)| C::matches(ch)),
     };
     match matched {
-        Some((ch, end)) => Some((M::build(|_| C::new(ch)), end)),
+        Some((ch, end)) => Some((S::output(|| C::new(ch)), end)),
         None => {
-            class_fail_at::<C, M>(pos, state);
+            state.expect(pos, || Expectation::CharClass(C::name()));
             None
         }
     }
@@ -518,13 +512,6 @@ pub fn class_parse_at<C: CharClass, M: Mode>(
 #[doc(hidden)]
 pub fn class_to_bnf<C: CharClass>() -> Expr {
     Expr::CharClass(C::name().to_string())
-}
-
-/// `Parse::fail_at` for a `char_class!` type.
-#[doc(hidden)]
-pub fn class_fail_at<C: CharClass, M: Mode>(pos: usize, mut state: State<M>) -> bool {
-    state.expect(pos, || Expectation::CharClass(C::name()));
-    true
 }
 
 /// Zero or more chars of class `C`, kept as text.
@@ -549,27 +536,22 @@ pub type StringOf1<C> = Raw<Vec1<C>>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Max, Unit, Value};
     use crate::{StringEq, StringEqCI};
 
     type Bom = Token<(ByteEq<0xEF>, (ByteEq<0xBB>, ByteEq<0xBF>))>;
 
     #[test]
     fn literal_matches_and_prints_its_text() {
-        let bom = Bom::parse("\u{FEFF}").unwrap();
+        let bom = Bom::parse::<Value, Max>("\u{FEFF}").unwrap();
         assert_eq!(bom.print(), "\u{FEFF}");
-        assert!(Bom::parse("x").is_err());
+        assert!(Bom::parse::<Value, Max>("x").is_err());
     }
 
     #[test]
     fn no_char_is_found_mid_char() {
         // 'é' is 0xC3 0xA9: byte 1 is inside it.
-        assert!(
-            crate::state::run(
-                |state| char::parse_at::<crate::Check>("é", 1, state),
-                |_| {}
-            )
-            .is_err()
-        );
+        assert!(crate::state::probe(|state| char::parse_at::<Unit, _>("é", 1, state)).is_none());
     }
 
     #[test]

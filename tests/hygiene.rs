@@ -127,25 +127,47 @@ mod bare {
 #[test]
 fn derives_work_without_a_prelude() {
     use tygr::{CharClass as _, Parse as _, Print as _};
-    assert!(bare::Op::parse("*").is_ok() && bare::Op::parse("x").is_err());
-    assert_eq!(bare::NonZero::parse("42").unwrap().print(), "42");
-    assert!(bare::NonZero::parse("0").is_err());
-    assert_eq!(bare::Port::parse("80").unwrap().print(), "80");
-    assert!(bare::Port::parse("65536").is_err());
+    assert!(
+        bare::Op::parse::<tygr::Value, tygr::Max>("*").is_ok()
+            && bare::Op::parse::<tygr::Value, tygr::Max>("x").is_err()
+    );
+    assert_eq!(
+        bare::NonZero::parse::<tygr::Value, tygr::Max>("42")
+            .unwrap()
+            .print(),
+        "42"
+    );
+    assert!(bare::NonZero::parse::<tygr::Value, tygr::Max>("0").is_err());
+    assert_eq!(
+        bare::Port::parse::<tygr::Value, tygr::Max>("80")
+            .unwrap()
+            .print(),
+        "80"
+    );
+    assert!(bare::Port::parse::<tygr::Value, tygr::Max>("65536").is_err());
     assert_eq!(bare::Digit::name(), "Digit");
 }
 
 #[test]
 fn derives_work_without_imports() {
     use tygr::Parse as _;
-    assert!(Kw::parse("if").is_ok());
-    assert!(Op::parse("*").is_ok() && Op::parse("x").is_err());
-    assert!(NonZero::parse("10").is_ok() && NonZero::parse("00").is_err());
-    let field = Field::parse("42,if").unwrap();
+    assert!(Kw::parse::<tygr::Value, tygr::Max>("if").is_ok());
+    assert!(
+        Op::parse::<tygr::Value, tygr::Max>("*").is_ok()
+            && Op::parse::<tygr::Value, tygr::Max>("x").is_err()
+    );
+    assert!(
+        NonZero::parse::<tygr::Value, tygr::Max>("10").is_ok()
+            && NonZero::parse::<tygr::Value, tygr::Max>("00").is_err()
+    );
+    let field = Field::parse::<tygr::Value, tygr::Max>("42,if").unwrap();
     assert_eq!(field.0, 42);
     assert_eq!(tygr::Print::print(&field), "42,if");
-    let locals = Locals::parse("1,2;.!").unwrap();
+    let locals = Locals::parse::<tygr::Value, tygr::Max>("1,2;.!").unwrap();
     assert_eq!(tygr::Print::print(&locals), "1,2;.!");
     assert_eq!(Locals::bnf_rules().len(), 1);
-    assert!(Generic::<Kw>::parse("if").is_ok() && Generic::<Kw>::check("d").is_ok());
+    assert!(
+        Generic::<Kw>::parse::<tygr::Value, tygr::Max>("if").is_ok()
+            && Generic::<Kw>::parse::<tygr::Unit, tygr::Max>("d").is_ok()
+    );
 }
