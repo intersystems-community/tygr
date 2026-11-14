@@ -22,11 +22,10 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
         param.bounds.push(syn::parse_quote!('static));
     }
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let (first, parse_at, fail_at, def, inherent) = match shape {
+    let (first, parse_at, def, inherent) = match shape {
         Shape::Struct(variant) | Shape::Converted(variant) => (
             first(variant),
             parse(model, variant),
-            fail_at(variant),
             sequence(variant),
             None,
         ),
@@ -36,9 +35,8 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
                 .iter()
                 .map(|variant| parse(model, variant))
                 .collect();
-            let fail_ats: Vec<_> = variants.iter().map(fail_at).collect();
             let sequences = variants.iter().map(sequence);
-            let (parse_at, items) = dispatch(&arms, &firsts, &fail_ats);
+            let (parse_at, items) = dispatch(&arms, &firsts);
             let inherent = (!items.is_empty()).then(
                 || quote! { impl #impl_generics #ident #ty_generics #where_clause { #items } },
             );
@@ -48,9 +46,6 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
                     |first, variant| quote! { <#first as ::tygr::first::First>::Alt<#variant> },
                 ),
                 parse_at,
-                // Every variant reports (`&`, not `&&`); the enum is required only
-                // if all variants are.
-                quote! { #((#fail_ats) &)* true },
                 quote! { ::tygr::bnf::Expr::alternation(::std::vec![#(#sequences),*]) },
                 inherent,
             )
@@ -86,9 +81,10 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
             },
         )
     };
-    let (parse_at, fail_at) = (with_node(model, parse_at), with_node(model, fail_at));
-    // `__Mode`, not `M`, so it can't shadow a type parameter of the user's
-    // (short of one named `__Mode`, a name the derive reserves).
+    let parse_at = with_node(model, parse_at);
+    // `__Success` and `__Level`, not `M` and `L`, so they can't shadow a type
+    // parameter of the user's (short of one so named, names the derive
+    // reserves).
     quote! {
         #inherent
 
@@ -96,12 +92,8 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
             type First = #first;
 
             #[inline(always)]
-            fn parse_at<__Mode: ::tygr::Mode>(input: &str, pos: usize, mut state: ::tygr::State<__Mode>) -> ::core::option::Option<(<__Mode as ::tygr::Mode>::Output<Self>, usize)> {
+            fn parse_at<__Success: ::tygr::Success, __Level: ::tygr::Level>(input: &str, pos: usize, mut state: ::tygr::State<__Level>) -> ::core::option::Option<(<__Success as ::tygr::Success>::Output<Self>, usize)> {
                 #parse_at
-            }
-
-            fn fail_at<__Mode: ::tygr::Mode>(pos: usize, mut state: ::tygr::State<__Mode>) -> bool {
-                #fail_at
             }
 
             fn to_bnf() -> ::tygr::bnf::Expr {
@@ -139,9 +131,9 @@ fn first(variant: &Variant) -> TokenStream {
 /// whatever the mode and check it.
 fn parse(model: &Model, variant: &Variant) -> TokenStream {
     let mode = if model.validated {
-        quote! { <__Mode as ::tygr::Mode>::Built }
+        quote! { ::tygr::Value }
     } else {
-        quote! { __Mode }
+        quote! { __Success }
     };
     let name = &model.name;
     let steps = variant.fields.iter().map(|field| parse_field(field, &mode));
@@ -150,23 +142,24 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
     if model.validated {
         return quote! {
             let start = pos;
-            let mut state = state.reborrow().built();
             #(#steps)*
-            #(let #bindings = <__Mode as ::tygr::Mode>::value(#bindings);)*
             let value = #constructor;
             if !::tygr::Validate::validate(&value) {
                 state.reject(#name, start..pos, <Self as ::tygr::Validate>::REQUIREMENT);
                 return ::core::option::Option::None;
             }
-            ::core::option::Option::Some((<__Mode as ::tygr::Mode>::build(|_| value), pos))
+            ::core::option::Option::Some((<__Success as ::tygr::Success>::output(|| value), pos))
         };
     }
+    // The fields' outputs combined, each `and_then` reaching its value only
+    // when building.
+    let output = bindings.iter().rev().fold(
+        quote! { <__Success as ::tygr::Success>::output(|| #constructor) },
+        |output, binding| quote! { <__Success as ::tygr::Success>::and_then(#binding, |#binding| #output) },
+    );
     quote! {
         #(#steps)*
-        ::core::option::Option::Some((<__Mode as ::tygr::Mode>::build(|mode| {
-            #(let #bindings = <__Mode as ::tygr::Mode>::get(mode, #bindings);)*
-            #constructor
-        }), pos))
+        ::core::option::Option::Some((#output, pos))
     }
 }
 
@@ -180,7 +173,7 @@ fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
             ..
         } => {
             return quote! {
-                let (#binding, pos) = <#ty as ::tygr::Parse>::parse_at::<#mode>(input, pos, state.reborrow())?;
+                let (#binding, pos) = <#ty as ::tygr::Parse>::parse_at::<#mode, __Level>(input, pos, state.reborrow())?;
             };
         }
         Field::Kept {
@@ -193,15 +186,7 @@ fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
     };
     let (source, helper, target) = (field.source(), kind.helper(), field.target());
     quote! {
-        let (#binding, pos) = ::tygr::__private::#helper::<#source, #ty, #mode>(input, pos, state.reborrow(), #target)?;
-    }
-}
-
-/// `fail_at` for `variant`'s fields, stopping after the first required one.
-fn fail_at(variant: &Variant) -> TokenStream {
-    let sources = variant.fields.iter().map(Field::source);
-    quote! {
-        #(<#sources as ::tygr::Parse>::fail_at(pos, state.reborrow()) ||)* false
+        let (#binding, pos) = ::tygr::__private::#helper::<#source, #ty, #mode, __Level>(input, pos, state.reborrow(), #target)?;
     }
 }
 

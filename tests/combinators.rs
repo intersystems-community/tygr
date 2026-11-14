@@ -22,12 +22,12 @@ struct Shorthands(
 
 #[test]
 fn either_prefix_suffix_and_hidden_parse_print_and_render() {
-    let s = Shorthands::parse("a-12!;").unwrap();
+    let s = Shorthands::parse::<Value, Max>("a-12!;").unwrap();
     assert!(s.0.is_left());
     assert_eq!(s.1.0.as_str(), "12");
     assert_eq!(s.print(), "a-12!;");
     assert_eq!(
-        Shorthands::parse("7-12!;")
+        Shorthands::parse::<Value, Max>("7-12!;")
             .unwrap()
             .0
             .right()
@@ -36,7 +36,7 @@ fn either_prefix_suffix_and_hidden_parse_print_and_render() {
             .as_str(),
         "7"
     );
-    assert!(Shorthands::parse("a-12!").is_err());
+    assert!(Shorthands::parse::<Value, Max>("a-12!").is_err());
     assert_eq!(
         rule::<Shorthands>(),
         r#"Shorthands = ( "a" | Digits ) "-" Digits "!" ."#

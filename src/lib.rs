@@ -41,10 +41,12 @@
 //! they matched, so `[ "a" ] "ab"` fails on `ab`. A left-recursive grammar
 //! doesn't compile, as its [`Parse::First`] would be cyclic.
 //!
-//! A parse that fails runs a second time, in [`Record`] mode, to record what
-//! it expected at the furthest position it reached ([`Error::traces`]): a
-//! success costs only tracking the furthest position, a failure about one
-//! and a half parses.
+//! What a parse yields and what it traces are chosen at the entry point:
+//! `T::parse::<Value, Max>(input)` builds the value and, if the parse fails,
+//! runs it a second time at level [`Max`] to record what it expected at the
+//! furthest position it reached ([`Error::traces`]); [`Unit`] only checks,
+//! [`Pos`] reports only the position, and [`Min`] only that it failed, with a
+//! zero-sized state. A successful parse is always one pass.
 //!
 //! Parsing recurses as the grammar nests, so input nested deeply enough
 //! overflows the stack, which aborts the process. For untrusted input,
@@ -89,8 +91,8 @@
 //! # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 //! #[derive(Grammar)]
 //! struct Port(#[tygr(from_str = StringOf1<Digit>, print_to = print_display)] u16);
-//! assert_eq!(Port::parse("8080").unwrap().0, 8080);
-//! assert!(Port::parse("99999").is_err());
+//! assert_eq!(Port::parse::<Value, Max>("8080").unwrap().0, 8080);
+//! assert!(Port::parse::<Value, Max>("99999").is_err());
 //! assert_eq!(Port(443).print(), "443");
 //! ```
 //!
@@ -130,9 +132,9 @@
 //!     }
 //! }
 //!
-//! assert_eq!(Answer::parse("y").unwrap(), Answer::Yes);
+//! assert_eq!(Answer::parse::<Value, Max>("y").unwrap(), Answer::Yes);
 //! assert_eq!(
-//!     Answer::parse("maybe").unwrap_err().to_string(),
+//!     Answer::parse::<Value, Max>("maybe").unwrap_err().to_string(),
 //!     "parse error at byte 5, expected:\n\t- 'letter'\n\t- Text at 0..5 must be convertible to Answer: neither yes nor no"
 //! );
 //! assert_eq!(Answer::No.print(), "no");
@@ -182,7 +184,7 @@
 //! #[tygr(hidden)]
 //! pub struct Ws(pub StringOf<Space>);
 //!
-//! let e = Expr::parse("1 + 2 * 3").unwrap();
+//! let e = Expr::parse::<Value, Max>("1 + 2 * 3").unwrap();
 //! assert_eq!(e.print(), "1 + 2 * 3");
 //!
 //! let bnf: Vec<String> = Expr::bnf_rules().iter().map(ToString::to_string).collect();
@@ -220,9 +222,8 @@ pub use wrappers::*;
 pub mod __private {
     pub use crate::bnf::{inline_bnf, visit_inline};
     pub use crate::convert::{from_str, from_str_infallible, try_from, try_from_infallible};
-    pub use crate::token::{
-        ByteEq, NonAsciiStart, Token, class_fail_at, class_parse_at, class_to_bnf,
-    };
+    pub use crate::state::miss;
+    pub use crate::token::{ByteEq, NonAsciiStart, Token, class_parse_at, class_to_bnf};
     pub use either::Either;
 }
 

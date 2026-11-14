@@ -5,7 +5,7 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use tygr::Parse;
+use tygr::{Max, Parse, Value};
 
 #[path = "../examples/common/json.rs"]
 mod json;
@@ -20,7 +20,7 @@ fn bench(label: &str, input: &str) {
     let mut best = f64::MAX;
     for _ in 0..30 {
         let start = Instant::now();
-        let v = Json::parse(input).unwrap();
+        let v = Json::parse::<Value, Max>(input).unwrap();
         best = best.min(start.elapsed().as_secs_f64());
         black_box(&v);
     }

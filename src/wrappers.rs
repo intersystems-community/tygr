@@ -1,12 +1,14 @@
 //! Wrappers that keep the match but change the value or the EBNF.
 
-use crate::State;
 use crate::bnf::{Expr, Rules};
-use crate::grammar::{Mode, Parse, Print};
+use crate::grammar::{Parse, Print, Success, Unit};
+use crate::{Level, State};
+use std::convert::Infallible;
 use std::fmt;
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut, Range};
-use tygr_derive::Grammar;
+use std::str::FromStr;
+use tygr_derive::{Grammar, Parse};
 
 /// Unwrap a wrapper grammar to the value it holds.
 pub trait IntoInner<T> {
@@ -61,9 +63,18 @@ impl<T> IntoInner<T> for Hidden<T> {
 /// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 /// #[derive(Grammar)]
 /// struct Integer(Raw<(Option<StringEq!("-")>, StringOf1<Digit>)>);
-/// assert_eq!(Integer::parse("-42").unwrap().0.as_str(), "-42");
+/// assert_eq!(Integer::parse::<Value, Max>("-42").unwrap().0.as_str(), "-42");
 /// ```
+#[derive(Parse)]
+#[tygr(inline, from_str_infallible = PhantomData<T>)]
 pub struct Raw<T>(pub String, PhantomData<T>);
+
+impl<T> FromStr for Raw<T> {
+    type Err = Infallible;
+    fn from_str(text: &str) -> Result<Self, Infallible> {
+        Ok(Raw::new(text))
+    }
+}
 
 impl<T> Raw<T> {
     /// Construct a `Raw` from an already-known string.
@@ -74,32 +85,6 @@ impl<T> Raw<T> {
     /// The matched text.
     pub fn as_str(&self) -> &str {
         &self.0
-    }
-}
-
-impl<T: Parse> Parse for Raw<T> {
-    type First = T::First;
-
-    #[inline]
-    fn parse_at<M: Mode>(
-        input: &str,
-        pos: usize,
-        state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
-        let end = T::check_at(input, pos, state)?;
-        Some((M::build(|_| Raw::from(text(input, pos, end))), end))
-    }
-
-    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
-        T::fail_at(pos, state)
-    }
-
-    fn to_bnf() -> Expr {
-        T::to_bnf()
-    }
-
-    fn visit_rules(rules: &mut Rules) {
-        T::visit_rules(rules);
     }
 }
 
@@ -189,7 +174,7 @@ impl<T> From<String> for Raw<T> {
 /// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 /// #[derive(Grammar)]
 /// struct Assign(StringEq!("x="), Ranged<StringOf1<Digit>>);
-/// let v = Assign::parse("x=42").unwrap();
+/// let v = Assign::parse::<Value, Max>("x=42").unwrap();
 /// assert_eq!((v.1.range(), v.1.as_str()), (2..4, "42"));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -255,17 +240,16 @@ impl<T: Parse> Parse for Ranged<T> {
     type First = T::First;
 
     #[inline]
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
-        let (ranged, end) = T::parse_at::<M>(input, pos, state)?;
-        Some((M::map(ranged, |ranged| Ranged::new(pos, ranged, end)), end))
-    }
-
-    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
-        T::fail_at(pos, state)
+        state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
+        let (ranged, end) = T::parse_at::<S, L>(input, pos, state)?;
+        Some((
+            S::and_then(ranged, |ranged| S::output(|| Ranged::new(pos, ranged, end))),
+            end,
+        ))
     }
 
     fn to_bnf() -> Expr {
@@ -287,17 +271,16 @@ impl<T: Parse> Parse for Box<T> {
     type First = T::First;
 
     #[inline]
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
-        let (value, end) = T::parse_at::<M>(input, pos, state)?;
-        Some((M::map(value, Box::new), end))
-    }
-
-    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
-        T::fail_at(pos, state)
+        state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
+        let (value, end) = T::parse_at::<S, L>(input, pos, state)?;
+        Some((
+            S::and_then(value, |value| S::output(|| Box::new(value))),
+            end,
+        ))
     }
 
     fn to_bnf() -> Expr {
@@ -321,17 +304,13 @@ impl<T: Parse> Parse for PhantomData<T> {
     type First = T::First;
 
     #[inline]
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
-        let end = T::check_at(input, pos, state)?;
-        Some((M::build(|_| PhantomData), end))
-    }
-
-    fn fail_at<M: Mode>(pos: usize, state: State<M>) -> bool {
-        T::fail_at(pos, state)
+        state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
+        let ((), end) = T::parse_at::<Unit, L>(input, pos, state)?;
+        Some((S::output(|| PhantomData), end))
     }
 
     fn to_bnf() -> Expr {

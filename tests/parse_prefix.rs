@@ -9,7 +9,7 @@ struct Digits(StringOf1<Digit>);
 
 #[test]
 fn parse_prefix_stops_at_the_match_without_consuming_the_rest() {
-    let (value, pos) = Digits::parse_prefix("123abc").unwrap();
+    let (value, pos) = Digits::parse_prefix::<Value, Max>("123abc").unwrap();
     assert_eq!(value.print(), "123");
     assert_eq!(pos, 3);
 }
@@ -17,26 +17,30 @@ fn parse_prefix_stops_at_the_match_without_consuming_the_rest() {
 #[test]
 fn parse_prefix_fails_when_nothing_matches() {
     assert_eq!(
-        Digits::parse_prefix("abc").unwrap_err().to_string(),
+        Digits::parse_prefix::<Value, Max>("abc")
+            .unwrap_err()
+            .to_string(),
         "parse error at byte 0, expected:\n\t- Digits"
     );
 }
 
 #[test]
 fn check_prefix_stops_at_the_match_without_consuming_the_rest() {
-    assert_eq!(Digits::check_prefix("123abc").unwrap(), 3);
+    assert_eq!(Digits::parse_prefix::<Unit, Max>("123abc").unwrap().1, 3);
 }
 
 #[test]
 fn check_prefix_fails_when_nothing_matches() {
     assert_eq!(
-        Digits::check_prefix("abc").unwrap_err().to_string(),
+        Digits::parse_prefix::<Unit, Max>("abc")
+            .unwrap_err()
+            .to_string(),
         "parse error at byte 0, expected:\n\t- Digits"
     );
 }
 
 #[test]
 fn error_is_a_std_error() {
-    let err = Digits::parse("abc").unwrap_err();
+    let err = Digits::parse::<Value, Max>("abc").unwrap_err();
     let _: Box<dyn std::error::Error> = Box::new(err);
 }

@@ -10,22 +10,18 @@ struct Letter(char);
 impl Parse for Letter {
     type First = <char as Parse>::First;
 
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        mut state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
+        mut state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
         let mut state = state.node("Letter", pos);
-        let (ch, end) = char::build_at(input, pos, state.reborrow())?;
+        let (ch, end) = char::parse_at::<Value, L>(input, pos, state.reborrow())?;
         if !ch.is_alphabetic() {
             state.reject("Letter", pos..end, "be a letter");
             return None;
         }
-        Some((M::build(|_| Letter(ch)), end))
-    }
-
-    fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
-        char::fail_at(pos, state.node("Letter", pos))
+        Some((S::output(|| Letter(ch)), end))
     }
 
     fn to_bnf() -> Expr {
@@ -52,7 +48,7 @@ struct Word(Vec1<Letter>);
 
 char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 
-/// Four variants dispatch on a table, which reports skipped ones with `fail_at`.
+/// Four variants dispatch on a table.
 #[derive(Parse, Debug)]
 enum Item {
     Letter(Letter),
@@ -63,10 +59,10 @@ enum Item {
 
 #[test]
 fn a_hand_written_leaf_parses_checks_traces_and_prints() {
-    assert_eq!(Word::parse("héllo").unwrap().print(), "héllo");
-    assert_eq!(Word::check_prefix("ab1").unwrap(), 2);
+    assert_eq!(Word::parse::<Value, Max>("héllo").unwrap().print(), "héllo");
+    assert_eq!(Word::parse_prefix::<Unit, Max>("ab1").unwrap().1, 2);
     assert_eq!(
-        Word::parse("a1").unwrap_err().to_string(),
+        Word::parse::<Value, Max>("a1").unwrap_err().to_string(),
         "parse error at byte 2, expected:\n\t- Letter at 1..2 must be a letter"
     );
     let rules: Vec<String> = Word::bnf_rules().iter().map(ToString::to_string).collect();
@@ -82,7 +78,7 @@ fn a_hand_written_leaf_parses_checks_traces_and_prints() {
 #[test]
 fn a_hand_written_leaf_reports_itself_when_skipped() {
     assert_eq!(
-        Item::parse("").unwrap_err().to_string(),
+        Item::parse::<Value, Max>("").unwrap_err().to_string(),
         "parse error at byte 0, expected:\n\t- Item\n\t- Letter"
     );
 }
@@ -97,17 +93,17 @@ static BUILT: AtomicUsize = AtomicUsize::new(0);
 impl Parse for Small {
     type First = <char as Parse>::First;
 
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        mut state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
+        mut state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
         let mut state = state.node("Small", pos);
-        let (ch, end) = char::build_at(input, pos, state.reborrow())?;
+        let (ch, end) = char::parse_at::<Value, L>(input, pos, state.reborrow())?;
         match ch.to_digit(10) {
-            Some(digit) if digit < 5 => Some((M::build(|_| Small(digit as u8)), end)),
+            Some(digit) if digit < 5 => Some((S::output(|| Small(digit as u8)), end)),
             _ => {
-                let requirement = if M::RECORD {
+                let requirement = if L::RECORD {
                     BUILT.fetch_add(1, Relaxed);
                     format!("be a digit below 5, not {ch:?}")
                 } else {
@@ -117,10 +113,6 @@ impl Parse for Small {
                 None
             }
         }
-    }
-
-    fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
-        char::fail_at(pos, state.node("Small", pos))
     }
 
     fn to_bnf() -> Expr {
@@ -143,8 +135,8 @@ enum Twice {
 
 #[test]
 fn a_rejection_carries_a_message_built_while_parsing() {
-    assert_eq!(Small::parse("3").unwrap().0, 3);
-    let err = Twice::parse("7").unwrap_err();
+    assert_eq!(Small::parse::<Value, Max>("3").unwrap().0, 3);
+    let err = Twice::parse::<Value, Max>("7").unwrap_err();
     assert_eq!(
         err.to_string(),
         "parse error at byte 1, expected:\n\t- Small at 0..1 must be a digit below 5, not '7'"
