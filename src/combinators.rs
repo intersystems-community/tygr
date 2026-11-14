@@ -305,6 +305,12 @@ impl<T: Parse> Parse for Vec<T> {
         mut pos: usize,
         mut state: State<L>,
     ) -> Option<(S::Output<Self>, usize)> {
+        const {
+            assert!(
+                !<T::First as First>::NULLABLE,
+                "a repeated grammar must not match empty"
+            )
+        };
         let mut items = S::output(Vec::new);
         while let Some((item, end)) = T::parse_at::<S, L>(input, pos, state.reborrow())
             && end != pos
@@ -337,9 +343,8 @@ impl<T: Print> Print for Vec<T> {
     }
 }
 
-/// Like `Vec<T>`, but one or more items: `T { T }`. Both stop at an item
-/// that matches empty, so with a nullable `T` the first item must consume
-/// input.
+/// Like `Vec<T>`, but one or more items: `T { T }`. Neither accepts a `T`
+/// that can match empty, as repeating it would never progress.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Vec1<T>(Vec<T>);
 

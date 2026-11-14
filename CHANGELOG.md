@@ -32,6 +32,9 @@ three, and a parse can trace nothing at all.
   `parse_prefix::<Unit, L>`. `Error<L>`, `Error<Max>` by default, has `pos()`
   at `Pos` and `Max`, `traces()` at `Max`, and each level prints what it
   knows.
+- `Vec<T>` and `Vec1<T>` reject, at compile time, a `T` that can match
+  empty, as repeating it would never progress; they used to stop at the
+  first item that matched empty.
 - `Success` and `Level` are sealed.
 
 ## [0.8.0] - 2026-11-13

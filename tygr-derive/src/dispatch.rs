@@ -35,11 +35,6 @@ pub(crate) fn dispatch(arms: &[TokenStream], firsts: &[TokenStream]) -> (TokenSt
             #[inline]
             fn #cases<__Success: ::tygr::Success, __Level: ::tygr::Level>(input: &str, pos: usize, mut state: ::tygr::State<__Level>) -> #output {
                 if let ::core::option::Option::Some(result) = (|| { #arms })() {
-                    // Matching empty, it rules out none of the variants skipped,
-                    // which would have failed here.
-                    if const { ::tygr::first::contains::<#firsts>(::core::option::Option::None) } && result.1 == pos {
-                        ::tygr::__private::miss(&mut state, pos);
-                    }
                     return ::core::option::Option::Some(result);
                 }
                 #nexts
