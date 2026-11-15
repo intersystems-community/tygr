@@ -131,17 +131,14 @@
 //!
 //! `#[tygr(...)]` on a derived type:
 //! - `name = "..."` — override the EBNF rule name (defaults to the type's
-//!   name, which a generic type's instantiations share, so mark such a type
-//!   `inline`).
+//!   name).
 //! - `hidden` — same effect as wrapping in [`Hidden<T>`], but on a whole struct/enum.
 //! - `inline` — splice this type's own definition wherever it's
 //!   referenced, instead of a rule reference (a recursive one keeps its rule).
 //! - `validated` — after a successful parse, run [`Validate::validate`] on the
 //!   value; a rejection backtracks as if the grammar hadn't matched.
 //! - `unbounded(T, …)` — the derive bounds every type parameter with
-//!   [`Parse`] (and [`Print`]); these keep only the bounds you wrote, as a
-//!   type parameter must when it's a conversion target, or only names the
-//!   grammar through an associated type.
+//!   [`Parse`] (and [`Print`]); these keep only the bounds you wrote.
 //! - `try_from = S` or another conversion below — convert the whole value
 //!   from `S`, instead of parsing the fields or variants.
 //!
@@ -151,17 +148,14 @@
 //! parses another grammar `S` and converts it to `T`, e.g. digits into a
 //! `u32`, naming how:
 //! - `try_from = S`: `S: TryInto<T>`, on the parsed value.
-//! - `try_from_infallible = S`: the same with `Error = Infallible`, as for
-//!   every `From` conversion.
+//! - `try_from_infallible = S`: the same with `Error = Infallible`.
 //! - `from_str = S`: `T: FromStr`, on the matched text.
 //! - `from_str_infallible = S`: the same with `Err = Infallible`.
 //!
 //! A failed conversion backtracks, recorded and footnoted in EBNF like a
-//! failed [`Validate`] check; an infallible one is skipped when only checking (`Unit`).
-//! Converting loses the text, so to print, the field or type needs
-//! `print_to = f`, an `fn(&T, &mut String)` of yours (for a field whose `T` is
-//! a grammar, [`Print::print_to`]): `Display` needn't invert the parse, so
-//! tygr supplies none.
+//! failed [`Validate`] check. Converting loses the text, so to print, the
+//! field or type needs `print_to = f`, an `fn(&T, &mut String)` of yours (for
+//! a field whose `T` is a grammar, [`Print::print_to`]).
 //!
 //! A unit variant is a field of type `()`, converted from `S` with:
 //! - `try_from_infallible = S`: `S` is a literal with one text (`StringEq!`,
