@@ -30,9 +30,10 @@ fn two_conversions() {}
 fn unit_variant_from_str() {}
 
 /// ```compile_fail
+/// fn show(_: &(), _: &mut String) {}
 /// #[derive(tygr::Grammar)]
 /// enum E {
-///     #[tygr(print_to = tygr::print_display)]
+///     #[tygr(print_to = show)]
 ///     Unit,
 /// }
 /// ```
@@ -71,8 +72,9 @@ fn field_attribute_on_converted_type() {}
 fn variant_attribute_on_converted_enum() {}
 
 /// ```compile_fail
+/// fn show(_: &S, _: &mut String) {}
 /// #[derive(tygr::Grammar)]
-/// #[tygr(print_to = tygr::print_display)]
+/// #[tygr(print_to = show)]
 /// struct S(());
 /// ```
 fn type_print_to_without_source() {}
@@ -111,3 +113,19 @@ fn union() {}
 /// struct Port(u16);
 /// ```
 fn field_that_is_no_grammar() {}
+
+/// ```compile_fail
+/// use tygr::*;
+/// #[derive(Parse)]
+/// struct S(Vec<Option<StringEq!("a")>>);
+/// S::parse::<success::Value, level::Max>("a");
+/// ```
+fn repeated_nullable() {}
+
+/// ```compile_fail
+/// use tygr::*;
+/// #[derive(Parse)]
+/// struct S(Vec1<Option<StringEq!("a")>>);
+/// S::parse::<success::Value, level::Max>("a");
+/// ```
+fn repeated_nullable_once_or_more() {}

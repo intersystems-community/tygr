@@ -28,32 +28,27 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static ALLOCATOR: Counting = Counting;
 
-/// Rejects every char with a message built from it, only in the pass that
-/// records it.
+/// Rejects every char with a message built from it, only at `Max`.
 #[derive(Debug)]
 struct Never;
 
 impl Parse for Never {
     type First = <char as Parse>::First;
 
-    fn parse_at<M: Mode>(
+    fn parse_at<S: Success, L: Level>(
         input: &str,
         pos: usize,
-        mut state: State<M>,
-    ) -> Option<(M::Output<Self>, usize)> {
+        mut state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
         let mut state = state.node("Never", pos);
-        let (ch, end) = char::build_at(input, pos, state.reborrow())?;
-        let requirement = if M::RECORD {
+        let (ch, end) = char::parse_at::<success::Value, L>(input, pos, state.reborrow())?;
+        let requirement = if L::IS_MAX {
             format!("not be {ch:?}")
         } else {
             String::new()
         };
         state.reject("Never", pos..end, requirement);
         None
-    }
-
-    fn fail_at<M: Mode>(pos: usize, mut state: State<M>) -> bool {
-        char::fail_at(pos, state.node("Never", pos))
     }
 
     fn to_bnf() -> Expr {
@@ -79,7 +74,7 @@ fn a_repeated_owned_requirement_is_kept_once() {
     let input = format!("{}7", "a".repeat(16));
     let before = LIVE.load(Relaxed);
     PEAK.store(before, Relaxed);
-    let err = Exponential::parse(&input).unwrap_err();
+    let err = Exponential::parse::<success::Value, level::Max>(&input).unwrap_err();
     let peak = PEAK.load(Relaxed) - before;
     assert_eq!(
         err.to_string(),

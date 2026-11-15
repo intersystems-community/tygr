@@ -15,10 +15,6 @@ include = ["src/**", "tests/**", "examples/**", "README.md", "CHANGELOG.md", "LI
 either = "1.15.0"
 tygr-derive = { path = "tygr-derive", version = "=0.8.0" }
 
-[[bench]]
-name = "json"
-harness = false
-
 [lints.clippy]
 # Grammars are written as nested generic types by design; complexity here
 # isn't a code smell.

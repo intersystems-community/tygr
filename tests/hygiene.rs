@@ -28,7 +28,7 @@ impl tygr::Validate for NonZero {
 
 #[derive(tygr::Grammar)]
 struct Field(
-    #[tygr(from_str = tygr::StringOf1<Digit>, print_to = tygr::print_display)] u32,
+    #[tygr(from_str = tygr::StringOf1<Digit>, print_to = print_display)] u32,
     tygr::StringEq!(","),
     #[tygr(try_from = Kw, print_to = print_kw)] Keyword,
 );
@@ -96,7 +96,7 @@ mod bare {
     #[derive(::tygr::Grammar)]
     #[tygr(validated)]
     pub(super) struct NonZero(
-        #[tygr(from_str = ::tygr::StringOf1<Digit>, print_to = ::tygr::print_display)] u32,
+        #[tygr(from_str = ::tygr::StringOf1<Digit>, print_to = crate::print_display)] u32,
     );
 
     impl ::tygr::Validate for NonZero {
@@ -107,7 +107,7 @@ mod bare {
     }
 
     #[derive(::tygr::Grammar)]
-    #[tygr(from_str = ::tygr::StringOf1<Digit>, print_to = ::tygr::print_display)]
+    #[tygr(from_str = ::tygr::StringOf1<Digit>, print_to = crate::print_display)]
     pub(super) struct Port(u16);
 
     impl ::core::str::FromStr for Port {
@@ -127,25 +127,51 @@ mod bare {
 #[test]
 fn derives_work_without_a_prelude() {
     use tygr::{CharClass as _, Parse as _, Print as _};
-    assert!(bare::Op::parse("*").is_ok() && bare::Op::parse("x").is_err());
-    assert_eq!(bare::NonZero::parse("42").unwrap().print(), "42");
-    assert!(bare::NonZero::parse("0").is_err());
-    assert_eq!(bare::Port::parse("80").unwrap().print(), "80");
-    assert!(bare::Port::parse("65536").is_err());
-    assert_eq!(bare::Digit::name(), "Digit");
+    assert!(
+        bare::Op::parse::<tygr::success::Value, tygr::level::Max>("*").is_ok()
+            && bare::Op::parse::<tygr::success::Value, tygr::level::Max>("x").is_err()
+    );
+    assert_eq!(
+        bare::NonZero::parse::<tygr::success::Value, tygr::level::Max>("42")
+            .unwrap()
+            .print(),
+        "42"
+    );
+    assert!(bare::NonZero::parse::<tygr::success::Value, tygr::level::Max>("0").is_err());
+    assert_eq!(
+        bare::Port::parse::<tygr::success::Value, tygr::level::Max>("80")
+            .unwrap()
+            .print(),
+        "80"
+    );
+    assert!(bare::Port::parse::<tygr::success::Value, tygr::level::Max>("65536").is_err());
+    assert_eq!(bare::Digit::NAME, "Digit");
 }
 
 #[test]
 fn derives_work_without_imports() {
     use tygr::Parse as _;
-    assert!(Kw::parse("if").is_ok());
-    assert!(Op::parse("*").is_ok() && Op::parse("x").is_err());
-    assert!(NonZero::parse("10").is_ok() && NonZero::parse("00").is_err());
-    let field = Field::parse("42,if").unwrap();
+    assert!(Kw::parse::<tygr::success::Value, tygr::level::Max>("if").is_ok());
+    assert!(
+        Op::parse::<tygr::success::Value, tygr::level::Max>("*").is_ok()
+            && Op::parse::<tygr::success::Value, tygr::level::Max>("x").is_err()
+    );
+    assert!(
+        NonZero::parse::<tygr::success::Value, tygr::level::Max>("10").is_ok()
+            && NonZero::parse::<tygr::success::Value, tygr::level::Max>("00").is_err()
+    );
+    let field = Field::parse::<tygr::success::Value, tygr::level::Max>("42,if").unwrap();
     assert_eq!(field.0, 42);
     assert_eq!(tygr::Print::print(&field), "42,if");
-    let locals = Locals::parse("1,2;.!").unwrap();
+    let locals = Locals::parse::<tygr::success::Value, tygr::level::Max>("1,2;.!").unwrap();
     assert_eq!(tygr::Print::print(&locals), "1,2;.!");
     assert_eq!(Locals::bnf_rules().len(), 1);
-    assert!(Generic::<Kw>::parse("if").is_ok() && Generic::<Kw>::check("d").is_ok());
+    assert!(
+        Generic::<Kw>::parse::<tygr::success::Value, tygr::level::Max>("if").is_ok()
+            && Generic::<Kw>::parse::<tygr::success::Unit, tygr::level::Max>("d").is_ok()
+    );
+}
+
+fn print_display<T: std::fmt::Display>(value: &T, buf: &mut String) {
+    buf.push_str(&value.to_string());
 }

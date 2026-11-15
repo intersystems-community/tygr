@@ -11,14 +11,8 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 
-/// Derive `Parse` and `Print` for a `struct` or `enum`: a `struct` is a
-/// sequence of its fields, an `enum` an alternation of its variants, unless
-/// a conversion on the type converts another grammar into the whole value.
-///
-/// `#[tygr(name = "…", hidden, inline, validated, unbounded(T))]` on the
-/// type, and `#[tygr(try_from/try_from_infallible/from_str/from_str_infallible
-/// = S, print_to = f)]` on a field or on the type, are optional, except that
-/// a conversion prints only with `print_to` (see `tygr`'s crate docs).
+// `Parse` and `Print` together. Not doc comments, these three: `tygr`'s
+// re-exports have their own, and rustdoc would show both.
 #[proc_macro_derive(Grammar, attributes(tygr))]
 pub fn derive_grammar(input: TokenStream) -> TokenStream {
     derive(input, |model| {
@@ -27,7 +21,7 @@ pub fn derive_grammar(input: TokenStream) -> TokenStream {
     })
 }
 
-/// Derive `Parse` alone, as `Grammar` derives it.
+// `Parse` alone.
 #[proc_macro_derive(Parse, attributes(tygr))]
 pub fn derive_parse(input: TokenStream) -> TokenStream {
     derive(input, |model| {
@@ -36,7 +30,7 @@ pub fn derive_parse(input: TokenStream) -> TokenStream {
     })
 }
 
-/// Derive `Print` alone, as `Grammar` derives it.
+// `Print` alone.
 #[proc_macro_derive(Print, attributes(tygr))]
 pub fn derive_print(input: TokenStream) -> TokenStream {
     derive(input, print::expand)

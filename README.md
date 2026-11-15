@@ -8,48 +8,61 @@ Start with the crate documentation on [docs.rs](https://docs.rs/tygr): the API
 and grammar concepts, plus a complete arithmetic grammar with parsing,
 printing, and EBNF generation.
 
-For a runnable example, see [`json`](examples/json.rs), a small CLI around a
-[full JSON grammar](examples/common/json.rs) following json.org:
+For a runnable example, see [`examples/json.rs`](examples/json.rs): the full
+JSON grammar of json.org, with a small CLI around it. It parses input into a
+syntax tree, a value of the grammar's types, or says where the input went
+wrong and what could have come next:
 
-```sh
-cargo run --example json -- bnf              # print the grammar as EBNF
-echo '{"a": [1, true]}' | cargo run --example json -- parse   # parse, print the AST
-echo '{"a": [1, true]}' | cargo run --example json -- print   # parse, print it back
-echo '{"a": 1}'         | cargo run --example json -- test    # check well-formed (exit 0/1)
+```console
+$ echo '{"a": [1, true]}' | cargo run --example json -- parse
+Json(
+    Wrap {
+        prefix: Ws(
+            [],
+        ),
+        wrapped: Object(
+            ...
+$ echo '{"a" [1, true]}' | cargo run --example json -- parse
+parse error at byte 5, expected:
+	- " "
+	- ":"
+	- "\n"
+	- "\r"
+	- "\t"
 ```
 
-The same grammar is benchmarked (`cargo bench`) against the inputs in
-[`data/`](data/).
+The grammar also prints itself as EBNF:
 
-## See Also
+```console
+$ cargo run --example json -- bnf
+Json = Ws Value Ws .
+Ws = { " " | "\n" | "\r" | "\t" } .
+Value = Object | Array | String | Number | "true" | "false" | "null" .
+Object = "{" Ws [ Members ] "}" .
+Members = Member Ws { "," Ws Member Ws } .
+Member = String Ws ":" Ws Value .
+String = "\"" Characters "\"" .
+Characters = { Character } .
+Character = '0x20-0x10FFFF except for " and \\' | "\\" Escape .
+Escape = "\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t" | "u" Hex Hex Hex Hex .
+Hex = Digit | 'A-F' | 'a-f' .
+Digit = "0" | OneNine .
+OneNine = '1-9' .
+Array = "[" Ws [ Elements ] "]" .
+Elements = Value Ws { "," Ws Value Ws } .
+Number = Integer [ Fraction ] [ Exponent ] .
+Integer = [ "-" ] ( OneNine Digits | Digit ) .
+Digits = Digit { Digit } .
+Fraction = "." Digits .
+Exponent = ( "E" | "e" ) [ Sign ] Digits .
+Sign = "+" | "-" .
+```
 
-**Deriving many routines from one spec.** Writing a grammar once and deriving several
-routines from it is an old idea: [BNFC](https://bnfc.digitalgrammars.com/), for example,
-turns a single labelled-BNF file into a parser, a pretty-printer, and a LaTeX document
-of the grammar. tygr follows this spirit — one Rust type yields a parser, a printer, and
-an EBNF presentation.
+## Related Work
 
-**Deriving parsers from grammars.** There are far too many parser libraries to list; a
-few available to the Rust ecosystem, grouped by how the grammar is written:
-
-| Project                                                                                                                                                  | Grammar is written as…         |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| **tygr**                                                                                                                                                 | types                          |
-| [gramma](https://github.com/youngspe/gramma)                                                                                                             | annotated types in a macro DSL |
-| [nom](https://crates.io/crates/nom), [chumsky](https://crates.io/crates/chumsky), [combine](https://crates.io/crates/combine)                            | expressions                    |
-| [pest](https://crates.io/crates/pest), [tree-sitter](https://tree-sitter.github.io/tree-sitter/) ([Rust bindings](https://crates.io/crates/tree-sitter)) | DSL                            |
-
-Writing the grammar as types is what tygr trades on. A DSL lives outside the language,
-so it misses the tooling — go-to-definition, refactoring, type checking — and composes
-poorly with the rest of Rust (traits, generics, `#[derive]`, functions). Expression-based
-combinators keep all of that, but you write the parsing expressions _and_ the types you
-want the result in — two descriptions of the same structure to keep in sync. With tygr
-the type _is_ the grammar, so there is nothing to keep in sync.
-
-**PEG and parser combinators.** tygr reads a grammar as a backtracking recursive-descent
-parser, in the manner of Parsing Expression Grammars
-([PEG](https://en.wikipedia.org/wiki/Parsing_expression_grammar)) and parser combinators
-([Parsec](https://hackage.haskell.org/package/parsec)).
+[RELATED_WORK.md](RELATED_WORK.md) places tygr among the tools that derive several
+routines from one grammar, and among Rust parser libraries by how their grammars
+are written.
 
 ## Contributing
 
