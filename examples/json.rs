@@ -1,7 +1,9 @@
-//! JSON parser/printer/EBNF (grammar per json.org), driven from the command line.
+//! JSON (grammar per json.org): parse it, or print the grammar as EBNF, from
+//! the command line.
 //!
+//!   echo '{"a": [1, true]}' | cargo run --example json -- parse
 //!   cargo run --example json -- bnf
-//!   echo '{"a": [1, true, null]}' | cargo run --example json -- parse
+| cargo run --example json -- parse
 //!   echo '{"a": [1, true, null]}' | cargo run --example json -- print
 //!   echo '{"a": 1}' | cargo run --example json -- test
 
@@ -158,8 +160,6 @@ fn main() -> ExitCode {
         Some("parse") => {
             report(Json::parse::<Value, Max>(&read_stdin()).map(|json| format!("{json:#?}")))
         }
-        Some("print") => report(Json::parse::<Value, Max>(&read_stdin()).map(|json| json.print())),
-        Some("test") => report(Json::parse::<Unit, Max>(&read_stdin()).map(|()| "ok".to_string())),
         _ => usage(),
     }
 }
@@ -189,10 +189,8 @@ fn report(shown: Result<String, Error>) -> ExitCode {
 
 /// Print a usage line naming the available verbs and exit with failure.
 fn usage() -> ExitCode {
-    eprintln!("usage: json <bnf|parse|print|test>");
+    eprintln!("usage: json <bnf|parse>");
     eprintln!("  bnf          print the grammar as EBNF");
     eprintln!("  parse        parse stdin, print the AST");
-    eprintln!("  print        parse stdin, print it back");
-    eprintln!("  test         check stdin is well-formed (exit 0/1)");
     ExitCode::FAILURE
 }
