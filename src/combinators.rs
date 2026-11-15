@@ -440,8 +440,8 @@ impl<T: Print> Print for Vec1<T> {
 /// // "/" that is not the start of a "//" line comment.
 /// #[derive(Grammar)]
 /// struct Div(StringEq!("/"), NotFollowedBy<StringEq!("/")>);
-/// assert!(Div::parse::<success::Value, level::Max>("/").is_ok());
-/// assert!(Div::parse::<success::Value, level::Max>("//").is_err());
+/// assert!(Div::parse("/").is_ok());
+/// assert!(Div::parse("//").is_err());
 /// ```
 pub struct NotFollowedBy<G>(PhantomData<G>);
 
@@ -480,8 +480,8 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
 /// // A key that must be followed by ":", without consuming the ":".
 /// #[derive(Grammar)]
 /// struct Key(StringEq!("k"), FollowedBy<StringEq!(":")>);
-/// assert!(Key::parse::<success::Value, level::Max>("k").is_err());
-/// assert_eq!(Key::parse_prefix::<success::Value, level::Max>("k:").unwrap().1, 1);
+/// assert!(Key::parse("k").is_err());
+/// assert_eq!(Key::parse_prefix("k:").unwrap().1, 1);
 /// ```
 pub struct FollowedBy<G>(PhantomData<G>);
 

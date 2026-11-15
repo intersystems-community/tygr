@@ -113,7 +113,7 @@ pub trait Level: Sized + 'static + private::Sealed {
 }
 
 /// The tracing levels, least to most: [`Min`], [`Pos`], [`Max`]. With
-/// `use tygr::*`, a call reads `parse::<success::Value, level::Max>`.
+/// `use tygr::*`, a call reads `parse_with::<success::Value, level::Max>`.
 pub mod level {
     /// The [`Level`](crate::Level) tracing nothing: the fastest parse, whose
     /// [`Error`](crate::Error) says only that it failed.

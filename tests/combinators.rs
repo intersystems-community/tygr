@@ -23,12 +23,12 @@ struct Shorthands(
 
 #[test]
 fn either_prefix_suffix_and_hidden_parse_print_and_render() {
-    let s = Shorthands::parse::<success::Value, level::Max>("a-12!;").unwrap();
+    let s = Shorthands::parse("a-12!;").unwrap();
     assert!(s.0.is_left());
     assert_eq!(s.1.0.as_str(), "12");
     assert_eq!(s.print(), "a-12!;");
     assert_eq!(
-        Shorthands::parse::<success::Value, level::Max>("7-12!;")
+        Shorthands::parse("7-12!;")
             .unwrap()
             .0
             .right()
@@ -37,7 +37,7 @@ fn either_prefix_suffix_and_hidden_parse_print_and_render() {
             .as_str(),
         "7"
     );
-    assert!(Shorthands::parse::<success::Value, level::Max>("a-12!").is_err());
+    assert!(Shorthands::parse("a-12!").is_err());
     assert_eq!(
         rule::<Shorthands>(),
         r#"Shorthands = ( "a" | Digits ) "-" Digits "!" ."#
@@ -57,13 +57,13 @@ struct DigitThenNothing(Digit, Never);
 
 #[test]
 fn never_never_matches() {
-    assert!(Never::parse::<success::Unit, level::Max>("").is_err());
-    assert!(std::convert::Infallible::parse::<success::Unit, level::Max>("").is_err());
+    assert!(Never::parse_with::<success::Unit, level::Max>("").is_err());
+    assert!(std::convert::Infallible::parse_with::<success::Unit, level::Max>("").is_err());
     assert_eq!(
-        Quoted::<Never>::parse::<success::Unit, level::Max>("\"\""),
+        Quoted::<Never>::parse_with::<success::Unit, level::Max>("\"\""),
         Ok(())
     );
-    let err = Quoted::<Never>::parse::<success::Unit, level::Max>("\"a\"").unwrap_err();
+    let err = Quoted::<Never>::parse_with::<success::Unit, level::Max>("\"a\"").unwrap_err();
     assert_eq!((err.pos(), err.traces().len()), (1, 1));
     assert_eq!(
         rule::<Quoted<Digit>>(),
@@ -75,11 +75,11 @@ fn never_never_matches() {
         rule::<Quoted<Never>>()
     );
     assert_eq!(
-        DigitOrNothing::parse::<success::Unit, level::Max>("7"),
+        DigitOrNothing::parse_with::<success::Unit, level::Max>("7"),
         Ok(())
     );
     assert_eq!(rule::<DigitOrNothing>(), "DigitOrNothing = 'digit' .");
-    assert!(DigitThenNothing::parse::<success::Unit, level::Max>("7").is_err());
+    assert!(DigitThenNothing::parse_with::<success::Unit, level::Max>("7").is_err());
     assert_eq!(rule::<DigitThenNothing>(), "DigitThenNothing = 'digit' ∅ .");
 }
 

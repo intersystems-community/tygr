@@ -44,12 +44,12 @@
 //! pub struct Ws(pub StringOf<Space>);
 //!
 //! // Parse, or only check, and print back.
-//! let e = Expr::parse::<success::Value, level::Max>("1 + 2 * 3").unwrap();
+//! let e = Expr::parse("1 + 2 * 3").unwrap();
 //! assert_eq!(e.print(), "1 + 2 * 3");
-//! assert!(Expr::parse::<success::Unit, level::Max>("(1 + 2) * 3").is_ok());
+//! assert!(Expr::parse_with::<success::Unit, level::Max>("(1 + 2) * 3").is_ok());
 //!
 //! // A failure says where, and what could have come next.
-//! let err = Expr::parse::<success::Unit, level::Max>("(1 + 2").unwrap_err();
+//! let err = Expr::parse_with::<success::Unit, level::Max>("(1 + 2").unwrap_err();
 //! assert_eq!(err.pos(), 6);
 //! assert_eq!(
 //!     err.to_string(),
@@ -112,8 +112,11 @@
 //!
 //! ## Parsing
 //!
-//! `T::parse::<S, L>(input)` parses the whole `input`;
-//! [`parse_prefix`](Parse::parse_prefix) parses as much as `T` matches.
+//! `T::parse(input)` parses the whole `input` into a `T`, or an [`Error`]
+//! saying where it failed and what was expected there;
+//! [`parse_prefix`](Parse::parse_prefix) parses as much as `T` matches and
+//! returns the end too. [`parse_with`](Parse::parse_with)`::<S, L>` and
+//! [`parse_prefix_with`](Parse::parse_prefix_with) choose instead:
 //!
 //! `S`, the [`Success`], is what comes back:
 //! - [`success::Value`]: the value parsed.
@@ -175,8 +178,8 @@
 //!     buf.push_str(&port.to_string());
 //! }
 //!
-//! assert_eq!(Port::parse::<success::Value, level::Max>("8080").unwrap().0, 8080);
-//! assert!(Port::parse::<success::Value, level::Max>("99999").is_err());
+//! assert_eq!(Port::parse("8080").unwrap().0, 8080);
+//! assert!(Port::parse("99999").is_err());
 //! assert_eq!(Port(443).print(), "443");
 //! ```
 //!
@@ -214,9 +217,9 @@
 //!     buf.push_str(if *answer == Answer::Yes { "yes" } else { "no" });
 //! }
 //!
-//! assert_eq!(Answer::parse::<success::Value, level::Max>("y").unwrap(), Answer::Yes);
+//! assert_eq!(Answer::parse("y").unwrap(), Answer::Yes);
 //! assert_eq!(
-//!     Answer::parse::<success::Value, level::Max>("maybe").unwrap_err().to_string(),
+//!     Answer::parse("maybe").unwrap_err().to_string(),
 //!     "parse error at byte 5, expected:\n\t- 'letter'\n\t- Text at 0..5 must be convertible to Answer: neither yes nor no"
 //! );
 //! assert_eq!(Answer::No.print(), "no");

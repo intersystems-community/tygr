@@ -74,7 +74,7 @@ fn a_repeated_owned_requirement_is_kept_once() {
     let input = format!("{}7", "a".repeat(16));
     let before = LIVE.load(Relaxed);
     PEAK.store(before, Relaxed);
-    let err = Exponential::parse::<success::Value, level::Max>(&input).unwrap_err();
+    let err = Exponential::parse(&input).unwrap_err();
     let peak = PEAK.load(Relaxed) - before;
     assert_eq!(
         err.to_string(),

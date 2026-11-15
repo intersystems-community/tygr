@@ -128,47 +128,47 @@ mod bare {
 fn derives_work_without_a_prelude() {
     use tygr::{CharClass as _, Parse as _, Print as _};
     assert!(
-        bare::Op::parse::<tygr::success::Value, tygr::level::Max>("*").is_ok()
-            && bare::Op::parse::<tygr::success::Value, tygr::level::Max>("x").is_err()
+        bare::Op::parse_with::<tygr::success::Value, tygr::level::Max>("*").is_ok()
+            && bare::Op::parse_with::<tygr::success::Value, tygr::level::Max>("x").is_err()
     );
     assert_eq!(
-        bare::NonZero::parse::<tygr::success::Value, tygr::level::Max>("42")
+        bare::NonZero::parse_with::<tygr::success::Value, tygr::level::Max>("42")
             .unwrap()
             .print(),
         "42"
     );
-    assert!(bare::NonZero::parse::<tygr::success::Value, tygr::level::Max>("0").is_err());
+    assert!(bare::NonZero::parse_with::<tygr::success::Value, tygr::level::Max>("0").is_err());
     assert_eq!(
-        bare::Port::parse::<tygr::success::Value, tygr::level::Max>("80")
+        bare::Port::parse_with::<tygr::success::Value, tygr::level::Max>("80")
             .unwrap()
             .print(),
         "80"
     );
-    assert!(bare::Port::parse::<tygr::success::Value, tygr::level::Max>("65536").is_err());
+    assert!(bare::Port::parse_with::<tygr::success::Value, tygr::level::Max>("65536").is_err());
     assert_eq!(bare::Digit::NAME, "Digit");
 }
 
 #[test]
 fn derives_work_without_imports() {
     use tygr::Parse as _;
-    assert!(Kw::parse::<tygr::success::Value, tygr::level::Max>("if").is_ok());
+    assert!(Kw::parse_with::<tygr::success::Value, tygr::level::Max>("if").is_ok());
     assert!(
-        Op::parse::<tygr::success::Value, tygr::level::Max>("*").is_ok()
-            && Op::parse::<tygr::success::Value, tygr::level::Max>("x").is_err()
+        Op::parse_with::<tygr::success::Value, tygr::level::Max>("*").is_ok()
+            && Op::parse_with::<tygr::success::Value, tygr::level::Max>("x").is_err()
     );
     assert!(
-        NonZero::parse::<tygr::success::Value, tygr::level::Max>("10").is_ok()
-            && NonZero::parse::<tygr::success::Value, tygr::level::Max>("00").is_err()
+        NonZero::parse_with::<tygr::success::Value, tygr::level::Max>("10").is_ok()
+            && NonZero::parse_with::<tygr::success::Value, tygr::level::Max>("00").is_err()
     );
-    let field = Field::parse::<tygr::success::Value, tygr::level::Max>("42,if").unwrap();
+    let field = Field::parse_with::<tygr::success::Value, tygr::level::Max>("42,if").unwrap();
     assert_eq!(field.0, 42);
     assert_eq!(tygr::Print::print(&field), "42,if");
-    let locals = Locals::parse::<tygr::success::Value, tygr::level::Max>("1,2;.!").unwrap();
+    let locals = Locals::parse_with::<tygr::success::Value, tygr::level::Max>("1,2;.!").unwrap();
     assert_eq!(tygr::Print::print(&locals), "1,2;.!");
     assert_eq!(Locals::bnf_rules().len(), 1);
     assert!(
-        Generic::<Kw>::parse::<tygr::success::Value, tygr::level::Max>("if").is_ok()
-            && Generic::<Kw>::parse::<tygr::success::Unit, tygr::level::Max>("d").is_ok()
+        Generic::<Kw>::parse_with::<tygr::success::Value, tygr::level::Max>("if").is_ok()
+            && Generic::<Kw>::parse_with::<tygr::success::Unit, tygr::level::Max>("d").is_ok()
     );
 }
 

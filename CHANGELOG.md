@@ -30,12 +30,13 @@ three, and a parse can trace nothing at all.
   hand-written grammar implements `parse_at`, `to_bnf` and `visit_rules`,
   and `State::expect` is public for it to say what it expected where it
   fails on its own.
-- The entry points take both parameters: `parse::<S, L>(input)` returns
-  `Result<S::Output<Self>, Error<L>>`, and `parse_prefix::<S, L>` the end
-  position too; `check` and `check_prefix` are `parse::<success::Unit, L>`
-  and `parse_prefix::<success::Unit, L>`. `Error<L>`, `Error<Max>` by
-  default, has `pos()` at `Pos` and `Max`, `traces()` at `Max`, and each
-  level prints what it knows.
+- `parse(input)` and `parse_prefix(input)` build the value and trace at
+  `Max`; `parse_with::<S, L>(input)` returns
+  `Result<S::Output<Self>, Error<L>>`, and `parse_prefix_with::<S, L>` the
+  end position too; `check` and `check_prefix` are
+  `parse_with::<success::Unit, L>` and `parse_prefix_with::<success::Unit, L>`.
+  `Error<L>`, `Error<Max>` by default, has `pos()` at `Pos` and `Max`,
+  `traces()` at `Max`, and each level prints what it knows.
 - `Vec<T>` and `Vec1<T>` no longer end at an item that matches empty:
   repeating one never progresses, a bug in the grammar, which now loops as
   a `while` would rather than being papered over.
