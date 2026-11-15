@@ -9,8 +9,29 @@ and grammar concepts, plus a complete arithmetic grammar with parsing,
 printing, and EBNF generation.
 
 For a runnable example, see [`examples/json.rs`](examples/json.rs): the full
-JSON grammar of json.org, with a small CLI around it. The grammar prints
-itself as EBNF:
+JSON grammar of json.org, with a small CLI around it. It parses input into a
+syntax tree, a value of the grammar's types, or says where the input went
+wrong and what could have come next:
+
+```console
+$ echo '{"a": [1, true]}' | cargo run --example json -- parse
+Json(
+    Wrap {
+        before: Ws(
+            [],
+        ),
+        wrapped: Object(
+            ...
+$ echo '{"a" [1, true]}' | cargo run --example json -- parse
+parse error at byte 5, expected:
+	- " "
+	- ":"
+	- "\n"
+	- "\r"
+	- "\t"
+```
+
+The grammar also prints itself as EBNF:
 
 ```console
 $ cargo run --example json -- bnf
@@ -35,35 +56,6 @@ Digits = Digit { Digit } .
 Fraction = "." Digits .
 Exponent = ( "E" | "e" ) [ Sign ] Digits .
 Sign = "+" | "-" .
-```
-
-It parses input into a syntax tree, a value of the grammar's types:
-
-```console
-$ echo '{"a": [1, true]}' | cargo run --example json -- parse
-Json(
-    Wrap {
-        before: Ws(
-            [],
-        ),
-        wrapped: Object(
-            ...
-```
-
-It prints a tree back, and checks an input, exiting 0 or 1:
-
-```console
-$ echo '{"a": [1, true]}' | cargo run --example json -- print
-{"a": [1, true]}
-$ echo '{"a": [1, true]}' | cargo run --example json -- test
-ok
-$ echo '{"a" [1, true]}' | cargo run --example json -- test
-parse error at byte 5, expected:
-	- " "
-	- ":"
-	- "\n"
-	- "\r"
-	- "\t"
 ```
 
 ## Related Work
