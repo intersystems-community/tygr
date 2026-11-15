@@ -114,11 +114,11 @@
 //! `T::parse::<S, L>(input)` parses the whole `input`;
 //! [`parse_prefix`](Parse::parse_prefix) parses as much as `T` matches.
 //!
-//! `S` is what comes back:
+//! `S`, the [`Success`], is what comes back:
 //! - [`Value`]: the value parsed.
 //! - [`Unit`]: only whether it parsed.
 //!
-//! `L` is how much a failure tells:
+//! `L`, the [`Level`], is how much a failure tells:
 //! - [`Max`]: where it failed and what was expected there, each in the rules
 //!   enclosing it ([`Error::traces`]). The default [`Error`], as tracing
 //!   costs little until a parse fails.
