@@ -97,15 +97,17 @@
 //! [`Parse::bnf_rules`] lists a grammar's rules, each once, to sort,
 //! [rename](bnf::Rule::rename) and print.
 //!
-//! Parsing is ordered choice with backtracking, as in PEG: the first
-//! alternative that matches wins, so list a literal before its prefixes
-//! (`"<="` before `"<"`); likewise `[ T ]` and `{ T }` never give back what
-//! they matched, so `[ "a" ] "ab"` fails on `ab`. A left-recursive grammar
-//! doesn't compile, as its [`Parse::First`] would be cyclic.
-//!
-//! Parsing recurses as the grammar nests, so input nested deeply enough
-//! overflows the stack, which aborts the process. For untrusted input,
-//! limit its size first or parse it on a thread with a bigger stack.
+//! Parsing is ordered choice with backtracking by recursive descent, as in
+//! PEG:
+//! - The first alternative that matches wins: list a literal before its
+//!   prefixes (`"<="` before `"<"`).
+//! - `[ T ]` and `{ T }` never give back what they matched: `[ "a" ] "ab"`
+//!   fails on `ab`.
+//! - A left-recursive grammar doesn't compile, as its [`Parse::First`] would
+//!   be cyclic.
+//! - Input nested deeply enough overflows the stack, which aborts the
+//!   process. For untrusted input, limit its size first or parse it on a
+//!   thread with a bigger stack.
 //!
 //! ## Parsing
 //!
@@ -158,11 +160,15 @@
 //! failed [`Validate`] check; an infallible one is skipped when only checking (`Unit`).
 //! Converting loses the text, so to print, the field or type needs
 //! `print_to = f`, an `fn(&T, &mut String)` such as [`print_display`] (or,
-//! for a field whose `T` is a grammar, [`Print::print_to`]). A unit variant
-//! is a field of type `()`: `try_from_infallible = S` converts `S` into `()`,
-//! which a literal with one text does (`StringEq!`, or `StringEqCI!` without
-//! cased chars), as does a grammar of yours with `impl From<S> for ()`;
-//! `try_from` if the conversion can fail. Its `print_to` takes `&()`.
+//! for a field whose `T` is a grammar, [`Print::print_to`]).
+//!
+//! A unit variant is a field of type `()`, converted from `S` with:
+//! - `try_from_infallible = S`: `S` is a literal with one text (`StringEq!`,
+//!   or `StringEqCI!` without cased chars), or a grammar of yours with
+//!   `impl From<S> for ()`.
+//! - `try_from = S`: the conversion can fail.
+//!
+//! Its `print_to` takes `&()`.
 //!
 //! ```
 //! # use tygr::*;
@@ -267,11 +273,13 @@ extern crate self as tygr;
 pub use tygr_derive::Grammar;
 
 /// Derive [`Parse`](trait@Parse) for a `struct`, a sequence of its fields, or
-/// an `enum`, an alternation of its variants; or, with `#[tygr(try_from = S)]`
-/// or another conversion on the type, parse `S` and convert it into the whole
-/// value. Optional on the type: `#[tygr(name = "…", hidden, inline, validated,
-/// unbounded(T))]`; on a field: `#[tygr(try_from = S)]`, `try_from_infallible`,
-/// `from_str` or `from_str_infallible` (see the [crate docs](crate)).
+/// an `enum`, an alternation of its variants; or, with a conversion on the
+/// type, parse `S` and convert it into the whole value. Optional (see the
+/// [crate docs](crate)):
+/// - on the type: `#[tygr(name = "…", hidden, inline, validated,
+///   unbounded(T))]`, or a conversion;
+/// - on a field: `#[tygr(try_from = S)]`, `try_from_infallible`, `from_str`
+///   or `from_str_infallible`.
 pub use tygr_derive::Parse;
 
 /// Derive [`Print`](trait@Print) for a `struct` or `enum`, printing its
