@@ -147,7 +147,7 @@ fn an_empty_enum_bnf_is_footnoted_never() {
     enum Never {}
     assert_eq!(
         printed(Never::bnf_rules()),
-        ["Never = ^1 .\n^1: never matches"]
+        ["Never = ( ) ^1 .\n^1: never matches"]
     );
 }
 

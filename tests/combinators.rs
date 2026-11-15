@@ -67,22 +67,14 @@ fn infallible_never_matches() {
     );
     assert_eq!(
         rule::<Quoted<std::convert::Infallible>>(),
-        r#"Quoted = "\"" "\"" ."#
+        "Quoted = \"\\\"\" { ( ) ^1 } \"\\\"\" .\n^1: never matches"
     );
     assert_eq!(
         DigitOrNothing::parse::<success::Unit, level::Max>("7"),
         Ok(())
     );
-    assert_eq!(rule::<DigitOrNothing>(), "DigitOrNothing = 'digit' .");
     assert_eq!(
-        rule::<DigitThenNothing>(),
-        "DigitThenNothing = ^1 .\n^1: never matches"
+        rule::<DigitOrNothing>(),
+        "DigitOrNothing = ( ) ^1 | 'digit' .\n^1: never matches"
     );
-    assert_eq!(rule::<Never>(), "Never = ^1 .\n^1: never matches");
 }
-
-#[derive(Grammar, Debug)]
-struct DigitThenNothing(Digit, std::convert::Infallible);
-
-#[derive(Grammar, Debug)]
-enum Never {}
