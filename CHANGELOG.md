@@ -42,8 +42,6 @@ three, and a parse can trace nothing at all.
   other wrappers.
 - `CharClass::name()` is the const `CharClass::NAME`, like
   `Validate::REQUIREMENT`.
-- `print_display` is `Print::display`, written `print_to = Self::display`, as
-  the derive's `impl` makes `Self` the grammar.
 
 ### Non-breaking Changes
 

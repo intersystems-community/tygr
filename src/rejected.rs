@@ -32,7 +32,7 @@ fn unit_variant_from_str() {}
 /// ```compile_fail
 /// #[derive(tygr::Grammar)]
 /// enum E {
-///     #[tygr(print_to = Self::display)]
+///     #[tygr(print_to = tygr::print_display)]
 ///     Unit,
 /// }
 /// ```
@@ -72,7 +72,7 @@ fn variant_attribute_on_converted_enum() {}
 
 /// ```compile_fail
 /// #[derive(tygr::Grammar)]
-/// #[tygr(print_to = Self::display)]
+/// #[tygr(print_to = tygr::print_display)]
 /// struct S(());
 /// ```
 fn type_print_to_without_source() {}

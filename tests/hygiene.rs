@@ -28,7 +28,7 @@ impl tygr::Validate for NonZero {
 
 #[derive(tygr::Grammar)]
 struct Field(
-    #[tygr(from_str = tygr::StringOf1<Digit>, print_to = Self::display)] u32,
+    #[tygr(from_str = tygr::StringOf1<Digit>, print_to = tygr::print_display)] u32,
     tygr::StringEq!(","),
     #[tygr(try_from = Kw, print_to = print_kw)] Keyword,
 );
@@ -96,7 +96,7 @@ mod bare {
     #[derive(::tygr::Grammar)]
     #[tygr(validated)]
     pub(super) struct NonZero(
-        #[tygr(from_str = ::tygr::StringOf1<Digit>, print_to = Self::display)] u32,
+        #[tygr(from_str = ::tygr::StringOf1<Digit>, print_to = ::tygr::print_display)] u32,
     );
 
     impl ::tygr::Validate for NonZero {
@@ -107,7 +107,7 @@ mod bare {
     }
 
     #[derive(::tygr::Grammar)]
-    #[tygr(from_str = ::tygr::StringOf1<Digit>, print_to = Self::display)]
+    #[tygr(from_str = ::tygr::StringOf1<Digit>, print_to = ::tygr::print_display)]
     pub(super) struct Port(u16);
 
     impl ::core::str::FromStr for Port {

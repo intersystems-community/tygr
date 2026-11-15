@@ -272,11 +272,11 @@ enum Converted {
     #[tygr(try_from_infallible = StringEq!("null"), print_to = print_null)]
     Null,
     Fields(
-        #[tygr(from_str = StringOf1<Digit>, print_to = Self::display)] u32,
+        #[tygr(from_str = StringOf1<Digit>, print_to = print_display)] u32,
         StringEq!(","),
-        #[tygr(from_str_infallible = StringOf1<Digit>, print_to = Self::display)] String,
+        #[tygr(from_str_infallible = StringOf1<Digit>, print_to = print_display)] String,
         StringEq!(";"),
-        #[tygr(try_from_infallible = Digit, print_to = Self::display)] u8,
+        #[tygr(try_from_infallible = Digit, print_to = print_display)] u8,
         #[tygr(try_from = Digit, print_to = print_flag)] bool,
     ),
 }
@@ -537,7 +537,7 @@ fn an_empty_enum_never_parses() {
 #[derive(Grammar)]
 #[tygr(unbounded(T))]
 struct Num<T: FromStr<Err: std::fmt::Display> + std::fmt::Display>(
-    #[tygr(from_str = StringOf1<Digit>, print_to = Self::display)] T,
+    #[tygr(from_str = StringOf1<Digit>, print_to = print_display)] T,
 );
 
 #[test]
@@ -618,7 +618,7 @@ fn an_enum_converts_its_source_into_the_whole_value() {
 }
 
 #[derive(Debug, PartialEq, Grammar)]
-#[tygr(from_str = Digits, print_to = Self::display)]
+#[tygr(from_str = Digits, print_to = print_display)]
 struct Port(u16);
 
 impl FromStr for Port {
@@ -729,7 +729,7 @@ fn a_converted_type_is_validated_after_converting() {
 
 /// A converted type's generic parameter is no grammar either.
 #[derive(Debug, Grammar)]
-#[tygr(unbounded(T), from_str = StringOf1<Digit>, print_to = Self::display)]
+#[tygr(unbounded(T), from_str = StringOf1<Digit>, print_to = print_display)]
 struct Parsed<T: FromStr<Err: fmt::Display> + fmt::Display>(T);
 
 impl<T: FromStr<Err: fmt::Display> + fmt::Display> FromStr for Parsed<T> {
