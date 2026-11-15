@@ -37,6 +37,8 @@ three, and a parse can trace nothing at all.
   empty, as repeating it would never progress; they used to stop at the
   first item that matched empty.
 - `Success` and `Level` are sealed.
+- `Wrap`'s fields are `prefix`, `wrapped` and `suffix` (were `before` and
+  `after`), as `Prefix` and `Suffix` name theirs.
 
 ### Non-breaking Changes
 

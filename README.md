@@ -17,7 +17,7 @@ wrong and what could have come next:
 $ echo '{"a": [1, true]}' | cargo run --example json -- parse
 Json(
     Wrap {
-        before: Ws(
+        prefix: Ws(
             [],
         ),
         wrapped: Object(

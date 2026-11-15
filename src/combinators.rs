@@ -100,46 +100,46 @@ impl_tuple!(0 A, 1 B, 2 C, 3 D, 4 E, 5 F, 6 G, 7 H, 8 I, 9 J, 10 K);
 /// Sequence of three grammars, [`Deref`]-ing to the middle one.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Grammar)]
 #[tygr(inline)]
-pub struct Wrap<L, T, R> {
+pub struct Wrap<P, T, S> {
     /// The leading element.
-    pub before: L,
+    pub prefix: P,
     /// The wrapped value.
     pub wrapped: T,
     /// The trailing element.
-    pub after: R,
+    pub suffix: S,
 }
 
-impl<L, T, R> Wrap<L, T, R> {
+impl<P, T, S> Wrap<P, T, S> {
     /// Construct a `Wrap` from its three parts.
-    pub fn new(before: L, wrapped: T, after: R) -> Self {
+    pub fn new(prefix: P, wrapped: T, suffix: S) -> Self {
         Self {
-            before,
+            prefix,
             wrapped,
-            after,
+            suffix,
         }
     }
 
-    /// Apply `f` to the wrapped value, keeping `before` and `after`.
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Wrap<L, U, R> {
-        Wrap::new(self.before, f(self.wrapped), self.after)
+    /// Apply `f` to the wrapped value, keeping `prefix` and `suffix`.
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Wrap<P, U, S> {
+        Wrap::new(self.prefix, f(self.wrapped), self.suffix)
     }
 }
 
-impl<L, T, E, R> Wrap<L, Result<T, E>, R> {
-    /// Swap `Wrap<L, Result<T, E>, R>` for `Result<Wrap<L, T, R>, E>`.
-    pub fn transpose(self) -> Result<Wrap<L, T, R>, E> {
-        Ok(Wrap::new(self.before, self.wrapped?, self.after))
+impl<P, T, E, S> Wrap<P, Result<T, E>, S> {
+    /// Swap `Wrap<P, Result<T, E>, S>` for `Result<Wrap<P, T, S>, E>`.
+    pub fn transpose(self) -> Result<Wrap<P, T, S>, E> {
+        Ok(Wrap::new(self.prefix, self.wrapped?, self.suffix))
     }
 }
 
-impl<L, T, R> Deref for Wrap<L, T, R> {
+impl<P, T, S> Deref for Wrap<P, T, S> {
     type Target = T;
     fn deref(&self) -> &T {
         &self.wrapped
     }
 }
 
-impl<L, T, R> IntoInner<T> for Wrap<L, T, R> {
+impl<P, T, S> IntoInner<T> for Wrap<P, T, S> {
     fn into_inner(self) -> T {
         self.wrapped
     }

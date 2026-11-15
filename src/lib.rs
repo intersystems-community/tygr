@@ -14,11 +14,10 @@
 //! | `struct`       | sequence (`A B C`)           |
 //! | `enum`         | alternation (`A B \| C D`) |
 //! | `(A, B, …)`    | inline sequence              |
-//! | `()`           | the empty sequence           |
 //! | [`StringEq!`] / [`StringEqCI!`] | a literal (`"if"` / `"if"i`) |
 //! | `char`         | any one char (`'any'`)       |
-//! | a [`char_class!`] type | one char of the class (`'digit'`) |
-//! | [`StringOf<C>`] / [`StringOf1<C>`] | chars of class `C`, kept as text (`{ 'digit' }` / `'digit' { 'digit' }`) |
+//! | a [`char_class!`] type | one char of the class |
+//! | [`StringOf<C>`] / [`StringOf1<C>`] | chars of class `C`, kept as text (`{ C }` / `C { C }`) |
 //! | [`Either<A, B>`](either::Either), from the `either` crate | inline alternation (`A \| B`) |
 //! | [`Vec<T>`]     | repetition (`{ T }`)         |
 //! | [`Vec1<T>`]    | one-or-more repetition (`T { T }`)      |
@@ -30,7 +29,7 @@
 //! | [`Raw<T>`] | parsed via `T`, kept as the raw matched text |
 //! | [`Ranged<T>`] | parsed via `T`, kept alongside its `start..end` byte range |
 //! | [`PhantomData<T>`](std::marker::PhantomData) | parsed via `T`, kept as nothing; doesn't print |
-//! | [`Wrap<L, T, R>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | sequence shorthands, [`Deref`](std::ops::Deref)-ing to `T` |
+//! | [`Wrap<P, T, S>`] / [`Prefix<P, T>`] / [`Suffix<T, S>`] | sequence shorthands, [`Deref`](std::ops::Deref)-ing to `T` |
 //!
 //! [`Parse::bnf_rules`] lists a grammar's rules, each once, to sort,
 //! [rename](bnf::Rule::rename) and print.
