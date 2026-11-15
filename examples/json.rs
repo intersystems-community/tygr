@@ -3,8 +3,6 @@
 //!
 //!   echo '{"a": [1, true]}' | cargo run --example json -- parse
 //!   cargo run --example json -- bnf
-//!   echo '{"a": [1, true, null]}' | cargo run --example json -- print
-//!   echo '{"a": 1}' | cargo run --example json -- test
 
 use either::Either;
 use std::io::{self, Read};
