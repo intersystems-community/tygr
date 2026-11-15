@@ -132,7 +132,7 @@ pub trait Parse: Sized + 'static {
 /// [`print_display`].
 #[diagnostic::on_unimplemented(
     message = "`{Self}` doesn't print as a grammar",
-    note = "derive `Print` for it, or print the field or its converted type with `#[tygr(print_to = f)]`, e.g. `tygr::print_display`"
+    note = "derive `Print` for it, or print the field or its converted type with `#[tygr(print_to = f)]`, e.g. `print_to = tygr::print_display`"
 )]
 pub trait Print {
     /// Append `self`'s text to `buf`.
