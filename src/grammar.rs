@@ -129,10 +129,10 @@ pub trait Parse: Sized + 'static {
 /// [`#[derive(Print)]`](derive@crate::Print) or
 /// [`#[derive(Grammar)]`](derive@crate::Grammar) generates it. A converted
 /// field or type prints with `#[tygr(print_to = f)]` instead, such as
-/// [`print_display`].
+/// [`Self::display`](Print::display).
 #[diagnostic::on_unimplemented(
     message = "`{Self}` doesn't print as a grammar",
-    note = "derive `Print` for it, or print the field or its converted type with `#[tygr(print_to = f)]`, e.g. `tygr::print_display`"
+    note = "derive `Print` for it, or print the field or its converted type with `#[tygr(print_to = f)]`, e.g. `Self::display`"
 )]
 pub trait Print {
     /// Append `self`'s text to `buf`.
@@ -144,19 +144,23 @@ pub trait Print {
         self.print_to(&mut buf);
         buf
     }
-}
 
-/// Print `value` with its `Display`, for `#[tygr(print_to = print_display)]`.
-///
-/// ```
-/// # use tygr::*;
-/// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
-/// #[derive(Grammar)]
-/// struct Port(#[tygr(from_str = StringOf1<Digit>, print_to = print_display)] u16);
-/// assert_eq!(Port(8080).print(), "8080");
-/// ```
-pub fn print_display<T: fmt::Display>(value: &T, buf: &mut String) {
-    write!(buf, "{value}").expect("a Display implementation returned an error");
+    /// Print `value` with its `Display`: `#[tygr(print_to = Self::display)]`
+    /// on a converted field or type, `Self` being the grammar derived.
+    ///
+    /// ```
+    /// # use tygr::*;
+    /// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
+    /// #[derive(Grammar)]
+    /// struct Port(#[tygr(from_str = StringOf1<Digit>, print_to = Self::display)] u16);
+    /// assert_eq!(Port(8080).print(), "8080");
+    /// ```
+    fn display<T: fmt::Display>(value: &T, buf: &mut String)
+    where
+        Self: Sized,
+    {
+        write!(buf, "{value}").expect("a Display implementation returned an error");
+    }
 }
 
 /// A grammar that both parses and prints, as

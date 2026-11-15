@@ -15,11 +15,11 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     let message = match model.shape {
         Shape::Converted(_) => {
             "a converted type needs `print_to = f` to print (`f: fn(&Self, &mut String)`, e.g. \
-             `print_display`), or derive only `Parse`"
+             `Self::display`), or derive only `Parse`"
         }
         _ => {
             "a converted field needs `print_to = f` to print (`f: fn(&T, &mut String)`, e.g. \
-             `print_display`; `&()` for a unit variant), or derive only `Parse`"
+             `Self::display`; `&()` for a unit variant), or derive only `Parse`"
         }
     };
     let mut unprintable = model

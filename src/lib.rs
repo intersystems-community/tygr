@@ -159,8 +159,8 @@
 //! A failed conversion backtracks, recorded and footnoted in EBNF like a
 //! failed [`Validate`] check; an infallible one is skipped when only checking (`Unit`).
 //! Converting loses the text, so to print, the field or type needs
-//! `print_to = f`, an `fn(&T, &mut String)` such as [`print_display`] (or,
-//! for a field whose `T` is a grammar, [`Print::print_to`]).
+//! `print_to = f`, an `fn(&T, &mut String)` such as [`Self::display`](Print::display)
+//! (or, for a field whose `T` is a grammar, [`Print::print_to`]).
 //!
 //! A unit variant is a field of type `()`, converted from `S` with:
 //! - `try_from_infallible = S`: `S` is a literal with one text (`StringEq!`,
@@ -174,7 +174,7 @@
 //! # use tygr::*;
 //! # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 //! #[derive(Grammar)]
-//! struct Port(#[tygr(from_str = StringOf1<Digit>, print_to = print_display)] u16);
+//! struct Port(#[tygr(from_str = StringOf1<Digit>, print_to = Self::display)] u16);
 //! assert_eq!(Port::parse::<Value, Max>("8080").unwrap().0, 8080);
 //! assert!(Port::parse::<Value, Max>("99999").is_err());
 //! assert_eq!(Port(443).print(), "443");
@@ -193,7 +193,7 @@
 //! # #[derive(Grammar)]
 //! # struct Word(StringOf1<Letter>);
 //! #[derive(Grammar, Debug, PartialEq)]
-//! #[tygr(from_str = Word, print_to = print_display)]
+//! #[tygr(from_str = Word, print_to = Self::display)]
 //! enum Answer {
 //!     Yes,
 //!     No,
@@ -286,7 +286,7 @@ pub use tygr_derive::Parse;
 /// fields, or the variant's, in turn. A field or type converted with
 /// `#[tygr(try_from = S)]` or another conversion has no grammar to print with,
 /// so it needs `#[tygr(print_to = f)]`, an `fn(&T, &mut String)` such as
-/// [`print_display`]; `#[tygr(unbounded(T))]` keeps only the bounds you wrote
+/// [`Self::display`](Print::display); `#[tygr(unbounded(T))]` keeps only the bounds you wrote
 /// (see the [crate docs](crate)).
 pub use tygr_derive::Print;
 
