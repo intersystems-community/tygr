@@ -55,7 +55,7 @@ It prints a tree back, and checks an input, exiting 0 or 1:
 ```console
 $ echo '{"a": [1, true]}' | cargo run --example json -- print
 {"a": [1, true]}
-$ echo '{"a": 1}' | cargo run --example json -- test
+$ echo '{"a": [1, true]}' |$ echo '{"a" [1, true]}' | cargo run --example json -- test| cargo run --example json -- test
 ok
 $ echo '{"a" 1}' | cargo run --example json -- test
 parse error at byte 5, expected:
