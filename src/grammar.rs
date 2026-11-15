@@ -21,30 +21,51 @@ use std::fmt::{self, Write};
     note = "derive `Parse` for it, or convert the field or its type from a grammar `S` with `#[tygr(from_str = S)]` or `#[tygr(try_from = S)]`"
 )]
 pub trait Parse: Sized + 'static {
-    /// The bytes (and whether empty input) this grammar can start with, used
-    /// to skip alternatives that can't match: leaving one out skips a match,
-    /// extra ones only cost attempts. A manual impl delegates
-    /// (`T::First`), combines ([`Seq`](crate::first::First::Seq) /
-    /// [`Alt`](crate::first::First::Alt) / [`Opt`](crate::first::First::Opt)),
-    /// or names a set ([`Required`](crate::first::Required) /
-    /// [`Optional`](crate::first::Optional)).
+    /// The bytes this grammar can start with, and whether it can match empty
+    /// input. A dispatch table skips the alternatives whose `First` rules the
+    /// next byte out, and `Vec<T>` and `Vec1<T>` require a `T` that can't
+    /// match empty. A byte left out, or empty input denied, skips a match;
+    /// extra bytes only cost attempts.
+    ///
+    /// A hand-written grammar builds it from its parts', as the derive does:
+    /// - the part it starts with: `<StringEq!("(") as Parse>::First`;
+    /// - a sequence: the first part's, then
+    ///   [`Seq`](crate::first::First::Seq) each later part, which counts only
+    ///   while every part before it can match empty;
+    /// - alternatives: [`Alt`](crate::first::First::Alt); an optional part:
+    ///   [`Opt`](crate::first::First::Opt);
+    /// - or a named set, [`Required`](crate::first::Required) or
+    ///   [`Optional`](crate::first::Optional) of a
+    ///   [`byte_set`](crate::first::byte_set): `Optional<byte_set::All>` is
+    ///   always right, and only forgoes the skip.
+    ///
+    /// As `Seq` looks past a part only if it can match empty, a grammar may
+    /// contain itself after a required part, but not start with itself (left
+    /// recursion), which doesn't compile.
     ///
     /// ```
+    /// # use tygr::*;
     /// # use tygr::first::*;
-    /// type Digits = byte_set::Between<b'0', b'9'>;
-    /// type Digit = Required<Digits>;
-    /// assert!(contains::<Digit>(Some(b'7')) && !contains::<Digit>(None));
+    /// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
+    /// // What a part starts with.
+    /// type Digits = <Vec1<Digit> as Parse>::First;
+    /// assert!(contains::<Digits>(Some(b'7')) && !contains::<Digits>(None));
     ///
-    /// type MaybeDigit = Optional<Digits>;
-    /// assert!(contains::<MaybeDigit>(None));
+    /// // A sequence: `-`, or a digit, as the sign can be left out.
+    /// type Signed = <<Option<StringEq!("-")> as Parse>::First as First>::Seq<Vec1<Digit>>;
+    /// assert!(contains::<Signed>(Some(b'-')) && contains::<Signed>(Some(b'7')));
+    /// assert!(!contains::<Signed>(None));
     ///
-    /// // A digit or 'a'.
-    /// type DigitOrA = <Digit as First>::Alt<Required<byte_set::One<b'a'>>>;
-    /// assert!(contains::<DigitOrA>(Some(b'a')) && !contains::<DigitOrA>(None));
+    /// // Alternatives, and an optional one.
+    /// type Word = <Digits as First>::Alt<<StringEq!("x") as Parse>::First>;
+    /// type MaybeWord = <Word as First>::Opt;
+    /// assert!(contains::<Word>(Some(b'x')) && !contains::<Word>(None));
+    /// assert!(contains::<MaybeWord>(None));
     ///
-    /// // An optional digit, then any char (`Seq` takes the grammar itself).
-    /// type DigitThenChar = <MaybeDigit as First>::Seq<char>;
-    /// assert!(contains::<DigitThenChar>(Some(b'x')) && !contains::<DigitThenChar>(None));
+    /// // Named sets: a digit by its bytes, and anything at all.
+    /// type ADigit = Required<byte_set::Between<b'0', b'9'>>;
+    /// type Anything = Optional<byte_set::All>;
+    /// assert!(contains::<ADigit>(Some(b'0')) && contains::<Anything>(None));
     /// ```
     type First: First;
 
@@ -153,6 +174,7 @@ impl<T: Parse + Print> Grammar for T {}
 /// struct Paren<T>(T);
 ///
 /// impl<T: Parse> Parse for Paren<T> {
+/// // Starts with `(`, whatever `T` is.
 ///     type First = <StringEq!("(") as Parse>::First;
 ///
 ///     fn parse_at<S: Success, L: Level>(
