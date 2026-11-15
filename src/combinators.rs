@@ -39,7 +39,7 @@ impl Print for () {
     fn print_to(&self, _buf: &mut String) {}
 }
 
-/// The empty alternation: never matches, expecting nothing, as no value
+/// The empty alternation, `∅`: never matches, expecting nothing, as no value
 /// exists to parse. Switches an alternative off by type parameter:
 /// `Either<Infallible, T>` is `T`, and `Vec<Infallible>` is empty.
 impl Parse for Infallible {

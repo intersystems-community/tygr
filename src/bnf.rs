@@ -23,7 +23,7 @@ pub enum Expr {
     CharClass(String),
     /// Concatenation: `A B C`.
     Sequence(Vec<Expr>),
-    /// Alternation: `A | B | C`.
+    /// Alternation: `A | B | C`; empty, `∅`, it never matches.
     Alternation(Vec<Expr>),
     /// Zero or more repetitions: `{ A }`.
     Repetition(Box<Expr>),
@@ -83,13 +83,13 @@ impl Expr {
 
     /// A flattened alternation without its hidden alternatives (hidden if
     /// all are); an empty alternative makes the rest optional, and none at
-    /// all (an empty enum) is footnoted `never matches`.
+    /// all (an empty enum) is `∅`, which never matches.
     pub fn alternation(exprs: Vec<Expr>) -> Expr {
         let (mut hidden, mut empty) = (false, false);
         let mut alternatives = Vec::new();
         for expr in exprs {
             match expr {
-                Expr::Alternation(inner) => alternatives.extend(inner),
+                Expr::Alternation(inner) if !inner.is_empty() => alternatives.extend(inner),
                 Expr::Hidden => hidden = true,
                 _ if expr.is_empty() => empty = true,
                 _ => alternatives.push(expr),
@@ -98,7 +98,7 @@ impl Expr {
         let alternation = match alternatives.len() {
             0 if empty => Expr::empty(),
             0 if hidden => Expr::Hidden,
-            0 => Expr::side_condition(Expr::empty(), "never matches"),
+            0 => Expr::Alternation(alternatives),
             1 => alternatives.pop().unwrap(),
             _ => Expr::Alternation(alternatives),
         };
@@ -192,7 +192,7 @@ impl Expr {
 
     fn prec(&self) -> Prec {
         match self {
-            Expr::Alternation(_) => Prec::Alternation,
+            Expr::Alternation(exprs) if !exprs.is_empty() => Prec::Alternation,
             Expr::Sequence(exprs) if !exprs.is_empty() => Prec::Sequence,
             Expr::SideCondition(..) => Prec::SideCondition,
             _ => Prec::Atom,
@@ -226,6 +226,7 @@ impl Expr {
                 write!(f, "( )")
             }
             Expr::Sequence(exprs) => Self::format_list(exprs, " ", Prec::Sequence, f, notes),
+            Expr::Alternation(exprs) if exprs.is_empty() => write!(f, "∅"),
             Expr::Alternation(exprs) => {
                 Self::format_list(exprs, " | ", Prec::Alternation, f, notes)
             }
