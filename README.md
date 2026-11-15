@@ -40,13 +40,13 @@ Sign = "+" | "-" .
 It parses input into a syntax tree, a value of the grammar's types:
 
 ```console
-$ echo '[1]' | cargo run --example json -- parse
+$ echo '{"a": [1, true]}' | cargo run --example json -- parse
 Json(
     Wrap {
         before: Ws(
             [],
         ),
-        wrapped: Array(
+        wrapped: Object(
             ...
 ```
 
