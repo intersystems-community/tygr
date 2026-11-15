@@ -13,7 +13,7 @@ few available to the Rust ecosystem, grouped by how the grammar is written:
 | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | **tygr**                                                                                                                                                 | types                          |
 | [gramma](https://github.com/youngspe/gramma)                                                                                                             | annotated types in a macro DSL |
-| [nom](https://crates.io/crates/nom), [chumsky](https://crates.io/crates/chumsky), [combine](https://crates.io/crates/combine)                            | expressions                    |
+| [nom](https://crates.io/crates/nom), [winnow](https://crates.io/crates/winnow), [chumsky](https://crates.io/crates/chumsky), [combine](https://crates.io/crates/combine) | expressions                    |
 | [pest](https://crates.io/crates/pest), [tree-sitter](https://tree-sitter.github.io/tree-sitter/) ([Rust bindings](https://crates.io/crates/tree-sitter)) | DSL                            |
 
 Writing the grammar as types is what tygr trades on. A DSL lives outside the language,
