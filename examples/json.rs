@@ -11,13 +11,14 @@ use std::process::ExitCode;
 use tygr::*;
 
 #[derive(Grammar, Debug)]
-struct Json(Wrap<Ws, Value, Ws>);
+struct Json(Wrap<Ws, JsonValue, Ws>);
 
 #[derive(Grammar, Debug)]
-enum Value {
+#[tygr(name = "Value")]
+enum JsonValue {
     Object(Box<Object>),
     Array(Box<Array>),
-    String(String),
+    String(JsonString),
     Number(Number),
     True(StringEq!("true")),
     False(StringEq!("false")),
@@ -35,9 +36,9 @@ struct Members(
 
 #[derive(Grammar, Debug)]
 struct Member {
-    string: String,
+    string: JsonString,
     colon: Wrap<Ws, StringEq!(":"), Ws>,
-    value: Value,
+    value: JsonValue,
 }
 
 #[derive(Grammar, Debug)]
@@ -45,12 +46,13 @@ struct Array(Wrap<(StringEq!("["), Ws), Option<Elements>, StringEq!("]")>);
 
 #[derive(Grammar, Debug)]
 struct Elements(
-    Suffix<Value, Ws>,
-    Vec<(Suffix<StringEq!(","), Ws>, Suffix<Value, Ws>)>,
+    Suffix<JsonValue, Ws>,
+    Vec<(Suffix<StringEq!(","), Ws>, Suffix<JsonValue, Ws>)>,
 );
 
 #[derive(Grammar, Debug)]
-struct String(Wrap<StringEq!("\""), Characters, StringEq!("\"")>);
+#[tygr(name = "String")]
+struct JsonString(Wrap<StringEq!("\""), Characters, StringEq!("\"")>);
 
 #[derive(Grammar, Debug)]
 struct Characters(Vec<Character>);
@@ -145,7 +147,6 @@ enum W {
     C0009(StringEq!("\u{0009}")),
 }
 
-// The grammar's `String` and `Value` shadow `std`'s and tygr's below.
 fn main() -> ExitCode {
     match std::env::args().nth(1).as_deref() {
         Some("bnf") => {
@@ -155,19 +156,17 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("parse") => {
-            report(Json::parse::<tygr::Value, Max>(&read_stdin()).map(|json| format!("{json:#?}")))
+            report(Json::parse::<Value, Max>(&read_stdin()).map(|json| format!("{json:#?}")))
         }
-        Some("print") => {
-            report(Json::parse::<tygr::Value, Max>(&read_stdin()).map(|json| json.print()))
-        }
+        Some("print") => report(Json::parse::<Value, Max>(&read_stdin()).map(|json| json.print())),
         Some("test") => report(Json::parse::<Unit, Max>(&read_stdin()).map(|()| "ok".to_string())),
         _ => usage(),
     }
 }
 
 /// Read all of stdin, minus the trailing JSON whitespace (`echo` appends a newline).
-fn read_stdin() -> std::string::String {
-    let mut input = std::string::String::new();
+fn read_stdin() -> String {
+    let mut input = String::new();
     io::stdin()
         .read_to_string(&mut input)
         .expect("failed to read stdin");
@@ -175,7 +174,7 @@ fn read_stdin() -> std::string::String {
 }
 
 /// Print `shown`, or the error, and exit accordingly.
-fn report(shown: Result<std::string::String, Error>) -> ExitCode {
+fn report(shown: Result<String, Error>) -> ExitCode {
     match shown {
         Ok(text) => {
             println!("{text}");
