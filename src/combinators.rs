@@ -4,7 +4,7 @@
 use crate::IntoInner;
 use crate::State;
 use crate::bnf::{Expr, Rules};
-use crate::first::{First, Optional, Required, byte_set};
+use crate::first::{First, Optional, byte_set};
 use crate::grammar::{Parse, Print, Success};
 use crate::state::{Level, probe};
 use crate::success::Unit;
@@ -39,11 +39,17 @@ impl Print for () {
     fn print_to(&self, _buf: &mut String) {}
 }
 
-/// The empty alternation, `∅`: never matches, expecting nothing, as no value
-/// exists to parse. Switches an alternative off by type parameter:
-/// `Either<Infallible, T>` is `T`, and `Vec<Infallible>` is empty.
+/// The grammar that never matches: the empty alternation, `∅`, expecting
+/// nothing, as no value exists to parse. Switches an alternative off by type
+/// parameter: `Either<Never, T>` is `T`, and `Vec<Never>` is empty.
+/// [`Infallible`] parses the same.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Grammar)]
+#[tygr(inline)]
+pub enum Never {}
+
+/// Parses as [`Never`].
 impl Parse for Infallible {
-    type First = Required<byte_set::Empty>;
+    type First = <Never as Parse>::First;
 
     #[inline]
     fn parse_at<S: Success, L: Level>(
@@ -55,10 +61,12 @@ impl Parse for Infallible {
     }
 
     fn to_bnf() -> Expr {
-        Expr::alternation(Vec::new())
+        Never::to_bnf()
     }
 
-    fn visit_rules(_rules: &mut Rules) {}
+    fn visit_rules(rules: &mut Rules) {
+        Never::visit_rules(rules);
+    }
 }
 
 impl Print for Infallible {

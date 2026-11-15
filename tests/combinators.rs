@@ -49,29 +49,35 @@ type Quote = StringEq!("\"");
 struct Quoted<T>(Quote, Vec<T>, Quote);
 
 #[derive(Grammar, Debug)]
-struct DigitOrNothing(Either<std::convert::Infallible, Digit>);
+struct DigitOrNothing(Either<Never, Digit>);
+
+#[derive(Grammar, Debug)]
+struct DigitThenNothing(Digit, Never);
 
 #[test]
-fn infallible_never_matches() {
+fn never_never_matches() {
+    assert!(Never::parse::<success::Unit, level::Max>("").is_err());
     assert!(std::convert::Infallible::parse::<success::Unit, level::Max>("").is_err());
     assert_eq!(
-        Quoted::<std::convert::Infallible>::parse::<success::Unit, level::Max>("\"\""),
+        Quoted::<Never>::parse::<success::Unit, level::Max>("\"\""),
         Ok(())
     );
-    let err = Quoted::<std::convert::Infallible>::parse::<success::Unit, level::Max>("\"a\"")
-        .unwrap_err();
+    let err = Quoted::<Never>::parse::<success::Unit, level::Max>("\"a\"").unwrap_err();
     assert_eq!((err.pos(), err.traces().len()), (1, 1));
     assert_eq!(
         rule::<Quoted<Digit>>(),
         r#"Quoted = "\"" { 'digit' } "\"" ."#
     );
+    assert_eq!(rule::<Quoted<Never>>(), r#"Quoted = "\"" { ∅ } "\"" ."#);
     assert_eq!(
         rule::<Quoted<std::convert::Infallible>>(),
-        r#"Quoted = "\"" { ∅ } "\"" ."#
+        rule::<Quoted<Never>>()
     );
     assert_eq!(
         DigitOrNothing::parse::<success::Unit, level::Max>("7"),
         Ok(())
     );
     assert_eq!(rule::<DigitOrNothing>(), "DigitOrNothing = 'digit' .");
+    assert!(DigitThenNothing::parse::<success::Unit, level::Max>("7").is_err());
+    assert_eq!(rule::<DigitThenNothing>(), "DigitThenNothing = 'digit' ∅ .");
 }
