@@ -1,11 +1,35 @@
-//! The CLI verbs of `examples/json.rs`.
-//! Included as `mod common;`; not a standalone target.
+//! JSON parser/printer/EBNF (grammar per json.org), driven from the command line.
+//!
+//!   cargo run --example json -- bnf
+//!   echo '{"a": [1, true, null]}' | cargo run --example json -- parse
+//!   echo '{"a": [1, true, null]}' | cargo run --example json -- print
+//!   echo '{"a": 1}' | cargo run --example json -- test
 
-use std::fmt::Debug;
 use std::io::{self, Read};
 use std::process::ExitCode;
 
-use tygr::{Error, Grammar, Max, Parse, Unit, Value};
+use tygr::{Error, Max, Parse, Print, Unit, Value};
+
+mod grammar;
+
+use grammar::Json;
+
+fn main() -> ExitCode {
+    match std::env::args().nth(1).as_deref() {
+        Some("bnf") => {
+            for rule in Json::bnf_rules() {
+                println!("{rule}");
+            }
+            ExitCode::SUCCESS
+        }
+        Some("parse") => {
+            report(Json::parse::<Value, Max>(&read_stdin()).map(|json| format!("{json:#?}")))
+        }
+        Some("print") => report(Json::parse::<Value, Max>(&read_stdin()).map(|json| json.print())),
+        Some("test") => report(Json::parse::<Unit, Max>(&read_stdin()).map(|()| "ok".to_string())),
+        _ => usage(),
+    }
+}
 
 /// Read all of stdin, minus the trailing JSON whitespace (`echo` appends a newline).
 fn read_stdin() -> String {
@@ -30,23 +54,8 @@ fn report(shown: Result<String, Error>) -> ExitCode {
     }
 }
 
-/// `parse`: parse stdin with `R` and print the `Debug` tree.
-pub(crate) fn parse<R: Parse + Debug>() -> ExitCode {
-    report(R::parse::<Value, Max>(&read_stdin()).map(|value| format!("{value:#?}")))
-}
-
-/// `print`: parse stdin with `R` and print it back.
-pub(crate) fn print<R: Grammar>() -> ExitCode {
-    report(R::parse::<Value, Max>(&read_stdin()).map(|value| value.print()))
-}
-
-/// `test`: check that stdin is well-formed under `R`; print `ok`, or the error.
-pub(crate) fn test<R: Parse>() -> ExitCode {
-    report(R::parse::<Unit, Max>(&read_stdin()).map(|()| "ok".to_string()))
-}
-
 /// Print a usage line naming the available verbs and exit with failure.
-pub(crate) fn usage() -> ExitCode {
+fn usage() -> ExitCode {
     eprintln!("usage: json <bnf|parse|print|test>");
     eprintln!("  bnf          print the grammar as EBNF");
     eprintln!("  parse        parse stdin, print the AST");

@@ -8,8 +8,8 @@ Start with the crate documentation on [docs.rs](https://docs.rs/tygr): the API
 and grammar concepts, plus a complete arithmetic grammar with parsing,
 printing, and EBNF generation.
 
-For a runnable example, see [`json`](examples/json.rs), a small CLI around a
-[full JSON grammar](examples/common/json.rs) following json.org:
+For a runnable example, see [`json`](examples/json/main.rs), a small CLI around a
+[full JSON grammar](examples/json/grammar.rs) following json.org:
 
 ```sh
 cargo run --example json -- bnf              # print the grammar as EBNF
@@ -18,38 +18,10 @@ echo '{"a": [1, true]}' | cargo run --example json -- print   # parse, print it 
 echo '{"a": 1}'         | cargo run --example json -- test    # check well-formed (exit 0/1)
 ```
 
-The same grammar is benchmarked (`cargo bench`) against the inputs in
-[`data/`](data/).
-
 ## See Also
 
-**Deriving many routines from one spec.** Writing a grammar once and deriving several
-routines from it is an old idea: [BNFC](https://bnfc.digitalgrammars.com/), for example,
-turns a single labelled-BNF file into a parser, a pretty-printer, and a LaTeX document
-of the grammar. tygr follows this spirit — one Rust type yields a parser, a printer, and
-an EBNF presentation.
-
-**Deriving parsers from grammars.** There are far too many parser libraries to list; a
-few available to the Rust ecosystem, grouped by how the grammar is written:
-
-| Project                                                                                                                                                  | Grammar is written as…         |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| **tygr**                                                                                                                                                 | types                          |
-| [gramma](https://github.com/youngspe/gramma)                                                                                                             | annotated types in a macro DSL |
-| [nom](https://crates.io/crates/nom), [chumsky](https://crates.io/crates/chumsky), [combine](https://crates.io/crates/combine)                            | expressions                    |
-| [pest](https://crates.io/crates/pest), [tree-sitter](https://tree-sitter.github.io/tree-sitter/) ([Rust bindings](https://crates.io/crates/tree-sitter)) | DSL                            |
-
-Writing the grammar as types is what tygr trades on. A DSL lives outside the language,
-so it misses the tooling — go-to-definition, refactoring, type checking — and composes
-poorly with the rest of Rust (traits, generics, `#[derive]`, functions). Expression-based
-combinators keep all of that, but you write the parsing expressions _and_ the types you
-want the result in — two descriptions of the same structure to keep in sync. With tygr
-the type _is_ the grammar, so there is nothing to keep in sync.
-
-**PEG and parser combinators.** tygr reads a grammar as a backtracking recursive-descent
-parser, in the manner of Parsing Expression Grammars
-([PEG](https://en.wikipedia.org/wiki/Parsing_expression_grammar)) and parser combinators
-([Parsec](https://hackage.haskell.org/package/parsec)).
+[Related work](RELATED_WORK.md): how tygr compares with other tools that derive
+routines from a grammar, and with other Rust parser libraries.
 
 ## Contributing
 

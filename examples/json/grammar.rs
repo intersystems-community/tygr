@@ -1,5 +1,4 @@
-//! The JSON grammar (per json.org), shared by `examples/json.rs` and
-//! `benches/json.rs`. `#[path]`-included; not a standalone target.
+//! The JSON grammar, per json.org.
 
 use either::Either;
 use tygr::*;

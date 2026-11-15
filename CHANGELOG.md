@@ -38,6 +38,12 @@ three, and a parse can trace nothing at all.
   first item that matched empty.
 - `Success` and `Level` are sealed.
 
+### Non-breaking Changes
+
+- The JSON benchmark and its 2.2 MB of data left the repository for a
+  standalone benchmark against other Rust JSON parsers; the `json` example
+  is `examples/json/`, a `main.rs` and the grammar, with no shared code.
+
 ## [0.8.0] - 2026-11-13
 
 Errors are traced in a second pass, so a successful parse pays only for
