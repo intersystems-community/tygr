@@ -2,7 +2,7 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
-## [Unreleased]
+## [0.9.0] - 2026-11-15
 
 What a parse yields and what it traces are two type parameters, chosen at
 the entry point, so the interface shrinks: `Success` is two methods, `Parse`
