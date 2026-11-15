@@ -53,7 +53,9 @@ three, and a parse can trace nothing at all.
 
 - `Infallible` is a grammar that never matches, to switch an alternative off
   by type parameter: `Either<Infallible, T>` is `T`, and `Vec<Infallible>`
-  is empty.
+  is empty. In EBNF (`bnf::Expr::Never`, an empty `enum`'s too) it is dropped
+  from an alternation, `{ }` and `[ ]` of it are empty, and a sequence with
+  it is footnoted `never matches`.
 - The JSON benchmark and its 2.2 MB of data left the repository for a
   standalone benchmark against other Rust JSON parsers; the `json` example
   is the single file `examples/json.rs`.

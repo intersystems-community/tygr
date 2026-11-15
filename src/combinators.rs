@@ -39,9 +39,9 @@ impl Print for () {
     fn print_to(&self, _buf: &mut String) {}
 }
 
-/// The empty alternation: never matches, expecting nothing, as no value
-/// exists to parse. Switches an alternative off by type parameter:
-/// `Either<Infallible, T>` is `T`, and `Vec<Infallible>` is empty.
+/// Never matches, expecting nothing, as no value exists to parse: the
+/// empty alternation, [`Expr::Never`]. Switches an alternative off by type
+/// parameter: `Either<Infallible, T>` is `T`, and `Vec<Infallible>` is empty.
 impl Parse for Infallible {
     type First = Required<byte_set::Empty>;
 
@@ -55,7 +55,7 @@ impl Parse for Infallible {
     }
 
     fn to_bnf() -> Expr {
-        Expr::alternation(Vec::new())
+        Expr::Never
     }
 
     fn visit_rules(_rules: &mut Rules) {}

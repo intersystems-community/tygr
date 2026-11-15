@@ -37,7 +37,14 @@ pub enum Expr {
     /// Left out ([`Hidden`](crate::Hidden), `#[tygr(hidden)]`): dropped
     /// from sequences and alternations.
     Hidden,
+    /// Never matches ([`Infallible`](std::convert::Infallible), an empty
+    /// `enum`): dropped from alternations, while a sequence with it never
+    /// matches either. On its own, footnoted `never matches`.
+    Never,
 }
+
+/// [`Expr::Never`]'s footnote.
+const NEVER: &str = "never matches";
 
 /// Binding tightness, from loosest to tightest.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -63,7 +70,8 @@ impl Expr {
         self.is_empty() || *self == Expr::Hidden
     }
 
-    /// A flattened sequence without its hidden parts (hidden if all are).
+    /// A flattened sequence without its hidden parts (hidden if all are);
+    /// with a part that never matches, it never matches.
     pub fn sequence(exprs: Vec<Expr>) -> Expr {
         let mut hidden = false;
         let mut parts = Vec::new();
@@ -71,6 +79,7 @@ impl Expr {
             match expr {
                 Expr::Sequence(inner) => parts.extend(inner),
                 Expr::Hidden => hidden = true,
+                Expr::Never => return Expr::Never,
                 _ => parts.push(expr),
             }
         }
@@ -82,8 +91,8 @@ impl Expr {
     }
 
     /// A flattened alternation without its hidden alternatives (hidden if
-    /// all are); an empty alternative makes the rest optional, and none at
-    /// all (an empty enum) is footnoted `never matches`.
+    /// all are) or those that never match; an empty alternative makes the
+    /// rest optional, and none at all (an empty enum) never matches.
     pub fn alternation(exprs: Vec<Expr>) -> Expr {
         let (mut hidden, mut empty) = (false, false);
         let mut alternatives = Vec::new();
@@ -91,6 +100,7 @@ impl Expr {
             match expr {
                 Expr::Alternation(inner) => alternatives.extend(inner),
                 Expr::Hidden => hidden = true,
+                Expr::Never => {}
                 _ if expr.is_empty() => empty = true,
                 _ => alternatives.push(expr),
             }
@@ -98,7 +108,7 @@ impl Expr {
         let alternation = match alternatives.len() {
             0 if empty => Expr::empty(),
             0 if hidden => Expr::Hidden,
-            0 => Expr::side_condition(Expr::empty(), "never matches"),
+            0 => Expr::Never,
             1 => alternatives.pop().unwrap(),
             _ => Expr::Alternation(alternatives),
         };
@@ -109,36 +119,45 @@ impl Expr {
         }
     }
 
-    /// `{ expr }`, or `expr` if it's empty or hidden.
+    /// `{ expr }`, or `expr` if it's empty or hidden; empty if it never
+    /// matches.
     pub fn repetition(expr: Expr) -> Expr {
-        if expr.is_blank() {
+        if expr == Expr::Never {
+            Expr::empty()
+        } else if expr.is_blank() {
             expr
         } else {
             Expr::Repetition(Box::new(expr))
         }
     }
 
-    /// `[ expr ]`, or `expr` if it's empty or hidden.
+    /// `[ expr ]`, or `expr` if it's empty or hidden; empty if it never
+    /// matches.
     pub fn optional(expr: Expr) -> Expr {
-        if expr.is_blank() {
+        if expr == Expr::Never {
+            Expr::empty()
+        } else if expr.is_blank() {
             expr
         } else {
             Expr::Optional(Box::new(expr))
         }
     }
 
-    /// `!expr`, or `expr` if it's hidden.
+    /// `!expr`, or `expr` if it's hidden; empty if it never matches.
     pub fn not_followed_by(expr: Expr) -> Expr {
-        if expr == Expr::Hidden {
+        if expr == Expr::Never {
+            Expr::empty()
+        } else if expr == Expr::Hidden {
             expr
         } else {
             Expr::NotFollowedBy(Box::new(expr))
         }
     }
 
-    /// `expr` with a footnoted side-condition, or `expr` if it's hidden.
+    /// `expr` with a footnoted side-condition, or `expr` if it's hidden or
+    /// never matches.
     pub fn side_condition(expr: Expr, text: &'static str) -> Expr {
-        if expr == Expr::Hidden {
+        if matches!(expr, Expr::Hidden | Expr::Never) {
             expr
         } else {
             Expr::SideCondition(Box::new(expr), text)
@@ -169,6 +188,11 @@ impl Expr {
             Expr::Repetition(inner) | Expr::Optional(inner) | Expr::NotFollowedBy(inner) => {
                 inner.collect_side_conditions(notes);
             }
+            Expr::Never => {
+                if !notes.contains(&NEVER) {
+                    notes.push(NEVER);
+                }
+            }
             Expr::Token { .. } | Expr::RuleRef(_) | Expr::CharClass(_) | Expr::Hidden => {}
         }
     }
@@ -186,7 +210,7 @@ impl Expr {
             | Expr::Optional(inner)
             | Expr::NotFollowedBy(inner)
             | Expr::SideCondition(inner, _) => inner.rename(f),
-            Expr::Token { .. } | Expr::CharClass(_) | Expr::Hidden => {}
+            Expr::Token { .. } | Expr::CharClass(_) | Expr::Hidden | Expr::Never => {}
         }
     }
 
@@ -250,6 +274,10 @@ impl Expr {
                 write!(f, "^{index}")
             }
             Expr::Hidden => Ok(()),
+            Expr::Never => {
+                let index = notes.iter().position(|note| *note == NEVER).unwrap() + 1;
+                write!(f, "^{index}")
+            }
         }?;
         if paren {
             write!(f, " )")?;
