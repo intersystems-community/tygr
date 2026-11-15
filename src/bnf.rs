@@ -89,7 +89,7 @@ impl Expr {
         let mut alternatives = Vec::new();
         for expr in exprs {
             match expr {
-                Expr::Alternation(inner) if !inner.is_empty() => alternatives.extend(inner),
+                Expr::Alternation(inner) => alternatives.extend(inner),
                 Expr::Hidden => hidden = true,
                 _ if expr.is_empty() => empty = true,
                 _ => alternatives.push(expr),

@@ -73,5 +73,5 @@ fn infallible_never_matches() {
         DigitOrNothing::parse::<success::Unit, level::Max>("7"),
         Ok(())
     );
-    assert_eq!(rule::<DigitOrNothing>(), "DigitOrNothing = ∅ | 'digit' .");
+    assert_eq!(rule::<DigitOrNothing>(), "DigitOrNothing = 'digit' .");
 }
