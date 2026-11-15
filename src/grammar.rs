@@ -216,11 +216,11 @@ pub trait Success: 'static + private::Sealed {
     ) -> Self::Output<U>;
 }
 
-/// Yields the value parsed.
+/// The [`Success`] yielding the value parsed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Value;
 
-/// Yields nothing but that it parsed: `()`.
+/// The [`Success`] yielding nothing but that it parsed: `()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unit;
 

@@ -109,17 +109,19 @@ pub trait Level: Sized + 'static + private::Sealed {
     ) -> Result<(S::Output<T>, usize), Error<Self>>;
 }
 
-/// Traces nothing: the fastest parse, whose [`Error`] says only that it
-/// failed.
+/// The [`Level`] tracing nothing: the fastest parse, whose [`Error`] says
+/// only that it failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Min;
 
-/// Tracks the furthest position reached, which its [`Error`] reports.
+/// The [`Level`] tracking the furthest position reached, which its
+/// [`Error`] reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pos;
 
-/// Reports where the parse failed and what was expected there, in the chain
-/// of rules entered: the default [`Error`]. A failure costs a second parse.
+/// The [`Level`] reporting where the parse failed and what was expected
+/// there, in the chain of rules entered: the default [`Error`]. A failure
+/// costs a second parse.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Max;
 
