@@ -170,7 +170,7 @@ impl<T: Parse + Print> Grammar for T {}
 /// # use tygr::*;
 /// # use tygr::bnf::{Expr, Rules};
 /// // A `T` in parentheses, as a hand-written grammar: the parentheses are
-/// // only checked, and the value is built only when building.
+/// // parsed with `Unit`, and the value built only for `Value`.
 /// struct Paren<T>(T);
 ///
 /// impl<T: Parse> Parse for Paren<T> {
@@ -215,7 +215,7 @@ pub trait Success: 'static + private::Sealed {
     type Output<T>;
 
     /// The output of `f`'s value, which only [`Value`] calls for: what it
-    /// builds (a `String`, a conversion) costs nothing when checking.
+    /// builds (a `String`, a conversion) costs nothing with [`Unit`].
     fn output<T>(f: impl FnOnce() -> T) -> Self::Output<T>;
 
     /// The output `f` makes of `output`'s value, which only [`Value`] has:
@@ -272,6 +272,6 @@ pub trait Validate {
     /// What a value must satisfy: "must …" in errors, a footnote in EBNF.
     const REQUIREMENT: &'static str;
 
-    /// Unit the just-parsed value; return `false` to reject it.
+    /// Check the just-parsed value; return `false` to reject it.
     fn validate(&self) -> bool;
 }

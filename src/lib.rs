@@ -3,11 +3,74 @@
 //! Define grammars as Rust types and derive the routine work of grammar
 //! handling: a **parser**, a **printer**, and a **presentation** (in EBNF).
 //!
-//! ## Design
+//! ## Quick Example
 //!
-//! Derive [`Grammar`] on a `struct` or `enum` for all three, or only
+//! ```rust
+//! use tygr::*;
+//!
+//! #[derive(Grammar)]
+//! pub struct Expr(pub Expr1, pub Vec<(Wrap<Ws, Op1, Ws>, Expr1)>);
+//!
+//! #[derive(Grammar)]
+//! pub enum Op1 {
+//!     Add(StringEq!("+")),
+//!     Sub(StringEq!("-")),
+//! }
+//!
+//! #[derive(Grammar)]
+//! pub struct Expr1(pub Expr2, pub Vec<(Wrap<Ws, Op2, Ws>, Expr2)>);
+//!
+//! #[derive(Grammar)]
+//! pub enum Op2 {
+//!     Mul(StringEq!("*")),
+//!     Div(StringEq!("/")),
+//! }
+//!
+//! #[derive(Grammar)]
+//! pub enum Expr2 {
+//!     Paren(Wrap<(StringEq!("("), Ws), Box<Expr>, (Ws, StringEq!(")"))>),
+//!     Number(Int),
+//! }
+//!
+//! char_class!(pub Digit, "digit", |ch| ch.is_ascii_digit());
+//!
+//! #[derive(Grammar)]
+//! pub struct Int(pub StringOf1<Digit>);
+//!
+//! char_class!(pub Space, "space", |ch| ch.is_ascii_whitespace());
+//!
+//! #[derive(Grammar)]
+//! #[tygr(hidden)]
+//! pub struct Ws(pub StringOf<Space>);
+//!
+//! // Parse, or only check, and print back.
+//! let e = Expr::parse::<Value, Max>("1 + 2 * 3").unwrap();
+//! assert_eq!(e.print(), "1 + 2 * 3");
+//! assert!(Expr::parse::<Unit, Max>("(1 + 2) * 3").is_ok());
+//!
+//! // A failure says where, and what could have come next.
+//! let err = Expr::parse::<Unit, Max>("(1 + 2").unwrap_err();
+//! assert_eq!(err.pos(), 6);
+//! assert_eq!(
+//!     err.to_string(),
+//!     "parse error at byte 6, expected:\n\t- \")\"\n\t- 'digit'\n\t- 'space'\n\t- Op1\n\t- Op2"
+//! );
+//!
+//! // The grammar, as EBNF.
+//! let bnf: Vec<String> = Expr::bnf_rules().iter().map(ToString::to_string).collect();
+//! assert_eq!(bnf.join("\n"), r#"Expr = Expr1 { Op1 Expr1 } .
+//! Expr1 = Expr2 { Op2 Expr2 } .
+//! Expr2 = "(" Expr ")" | Int .
+//! Int = 'digit' { 'digit' } .
+//! Op2 = "*" | "/" .
+//! Op1 = "+" | "-" ."#);
+//! ```
+//!
+//! ## Grammars as Types
+//!
+//! Derive [`Grammar`] on a `struct` or `enum` for all three routines, or only
 //! [`Parse`] (the parser and EBNF) or [`Print`]. Each supported Rust
-//! construct maps to an EBNF concept.
+//! construct maps to an EBNF concept:
 //!
 //! | Rust construct | EBNF ([Wirth 1977](https://doi.org/10.1145/359863.359883)) |
 //! |----------------|-------------------------------|
@@ -40,16 +103,23 @@
 //! they matched, so `[ "a" ] "ab"` fails on `ab`. A left-recursive grammar
 //! doesn't compile, as its [`Parse::First`] would be cyclic.
 //!
-//! What a parse yields and what it traces are chosen at the entry point:
-//! `T::parse::<Value, Max>(input)` builds the value and, if the parse fails,
-//! runs it a second time at level [`Max`] to record what it expected at the
-//! furthest position it reached ([`Error::traces`]); [`Unit`] only checks,
-//! [`Pos`] reports only the position, and [`Min`] only that it failed, with a
-//! zero-sized state. A successful parse is always one pass.
-//!
 //! Parsing recurses as the grammar nests, so input nested deeply enough
 //! overflows the stack, which aborts the process. For untrusted input,
 //! limit its size first or parse it on a thread with a bigger stack.
+//!
+//! ## Parsing
+//!
+//! `T::parse::<S, L>(input)` parses the whole `input`;
+//! [`parse_prefix`](Parse::parse_prefix) parses as much as `T` matches. `S`
+//! is what comes back: the [`Value`] parsed, or [`Unit`], only whether it
+//! parsed. `L` is how much a failure tells: at [`Max`], where it failed and
+//! what was expected there, each in the rules enclosing it
+//! ([`Error::traces`]); at [`Pos`], only where ([`Error::pos`]); at [`Min`],
+//! only that it failed. Tracing costs little until a parse fails, so `Max`
+//! is the default [`Error`]; [`OLC`] turns its byte offset into a line and
+//! character.
+//!
+//! ## Attributes
 //!
 //! `#[tygr(...)]` on a derived type:
 //! - `name = "..."` — override the EBNF rule name (defaults to the type's
@@ -62,9 +132,12 @@
 //!   value; a rejection backtracks as if the grammar hadn't matched.
 //! - `unbounded(T, …)` — the derive bounds every type parameter with
 //!   [`Parse`] (and [`Print`]); these keep only the bounds you wrote, as a
-//!   conversion target or a `D` whose `D::Kw` is the grammar must.
+//!   type parameter must when it's a conversion target, or only names the
+//!   grammar through an associated type.
 //! - `try_from = S` or another conversion below — convert the whole value
 //!   from `S`, instead of parsing the fields or variants.
+//!
+//! ## Conversions
 //!
 //! `#[tygr(...)]` on a field of type `T`, or on a struct or enum `T` itself,
 //! parses another grammar `S` and converts it to `T`, e.g. digits into a
@@ -76,7 +149,7 @@
 //! - `from_str_infallible = S`: the same with `Err = Infallible`.
 //!
 //! A failed conversion backtracks, recorded and footnoted in EBNF like a
-//! failed [`Validate`] check; an infallible one is skipped when checking.
+//! failed [`Validate`] check; an infallible one is skipped when only checking (`Unit`).
 //! Converting loses the text, so to print, the field or type needs
 //! `print_to = f`, an `fn(&T, &mut String)` such as [`print_display`] (or,
 //! for a field whose `T` is a grammar, [`Print::print_to`]). A unit variant
@@ -143,57 +216,12 @@
 //! );
 //! ```
 //!
-//! ## Quick Example
+//! ## Hand-Written Grammars
 //!
-//! ```rust
-//! use tygr::*;
-//!
-//! #[derive(Grammar)]
-//! pub struct Expr(pub Expr1, pub Vec<(Wrap<Ws, Op1, Ws>, Expr1)>);
-//!
-//! #[derive(Grammar)]
-//! pub enum Op1 {
-//!     Add(StringEq!("+")),
-//!     Sub(StringEq!("-")),
-//! }
-//!
-//! #[derive(Grammar)]
-//! pub struct Expr1(pub Expr2, pub Vec<(Wrap<Ws, Op2, Ws>, Expr2)>);
-//!
-//! #[derive(Grammar)]
-//! pub enum Op2 {
-//!     Mul(StringEq!("*")),
-//!     Div(StringEq!("/")),
-//! }
-//!
-//! #[derive(Grammar)]
-//! pub enum Expr2 {
-//!     Paren(Wrap<(StringEq!("("), Ws), Box<Expr>, (Ws, StringEq!(")"))>),
-//!     Number(Int),
-//! }
-//!
-//! char_class!(pub Digit, "digit", |ch| ch.is_ascii_digit());
-//!
-//! #[derive(Grammar)]
-//! pub struct Int(pub StringOf1<Digit>);
-//!
-//! char_class!(pub Space, "space", |ch| ch.is_ascii_whitespace());
-//!
-//! #[derive(Grammar)]
-//! #[tygr(hidden)]
-//! pub struct Ws(pub StringOf<Space>);
-//!
-//! let e = Expr::parse::<Value, Max>("1 + 2 * 3").unwrap();
-//! assert_eq!(e.print(), "1 + 2 * 3");
-//!
-//! let bnf: Vec<String> = Expr::bnf_rules().iter().map(ToString::to_string).collect();
-//! assert_eq!(bnf.join("\n"), r#"Expr = Expr1 { Op1 Expr1 } .
-//! Expr1 = Expr2 { Op2 Expr2 } .
-//! Expr2 = "(" Expr ")" | Int .
-//! Int = 'digit' { 'digit' } .
-//! Op2 = "*" | "/" .
-//! Op1 = "+" | "-" ."#);
-//! ```
+//! A leaf or wrapper the derive can't express implements [`Parse`] itself:
+//! [`parse_at`](Parse::parse_at), threading a [`State`] and yielding what its
+//! [`Success`] asks for, with [`First`](Parse::First) and the two EBNF
+//! methods. [`Success`] shows one.
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 

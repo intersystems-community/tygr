@@ -45,7 +45,7 @@ macro_rules! seq_first {
 }
 
 /// The tuple of the outputs `$done` then `$T…`, each `and_then` reaching its
-/// value only when building.
+/// value only for `Value`.
 macro_rules! seq_output {
     ($S:ident; ($($done:ident),*);) => { $S::output(|| ($($done,)*)) };
     ($S:ident; ($($done:ident),*); $T:ident $(, $rest:ident)*) => {

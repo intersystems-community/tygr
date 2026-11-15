@@ -9,7 +9,7 @@ use std::fmt::Display;
 use std::ops::Range;
 use std::str::FromStr;
 
-/// `try_from = S`: parse `S`, then convert it, even when checking, as the
+/// `try_from = S`: parse `S`, then convert it, even with `Unit`, as the
 /// conversion can fail. A failure records the text as not convertible
 /// `into` the type, with the error.
 #[inline(always)]
@@ -46,7 +46,7 @@ pub fn try_from_infallible<Src: Parse + TryInto<T, Error = Infallible>, T, S: Su
     ))
 }
 
-/// `from_str = S`: check `S`, then convert its text, even when checking, as
+/// `from_str = S`: check `S`, then convert its text, even with `Unit`, as
 /// the conversion can fail. A failure records the text as not convertible
 /// `into` the type, with the error.
 #[inline(always)]

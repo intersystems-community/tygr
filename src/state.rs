@@ -119,9 +119,9 @@ pub struct Min;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pos;
 
-/// Tracks the furthest position, then, if the parse failed, runs it again
-/// recording what was expected there, in the chain of rules entered: the
-/// [`Error`] of [`parse`](Parse::parse) and friends.
+/// Reports where the parse failed and what was expected there, in the chain
+/// of rules entered: the default [`Error`]. A failure costs a second parse,
+/// which records.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Max;
 
