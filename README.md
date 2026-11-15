@@ -18,7 +18,7 @@ echo '{"a": [1, true]}' | cargo run --example json -- print   # parse, print it 
 echo '{"a": 1}'         | cargo run --example json -- test    # check well-formed (exit 0/1)
 ```
 
-## See Also
+## Related Work
 
 [RELATED_WORK.md](RELATED_WORK.md) places tygr among the tools that derive several
 routines from one grammar, and among Rust parser libraries by how their grammars
