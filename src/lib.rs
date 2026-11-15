@@ -120,9 +120,8 @@
 //! - [`success::Unit`]: only whether it parsed.
 //!
 //! `L`, the [`Level`], is how much a failure tells:
-//! - [`level::Max`]: where it failed and what was expected there, each in the rules
-//!   enclosing it ([`Error::traces`]). The default [`Error`], as tracing
-//!   costs little until a parse fails.
+//! - [`level::Max`] (the default): where it failed and what was expected
+//!   there, each in the rules enclosing it ([`Error::traces`]).
 //! - [`level::Pos`]: only where ([`Error::pos`]).
 //! - [`level::Min`]: only that it failed.
 //!
