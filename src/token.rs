@@ -370,8 +370,8 @@ fn decode_char(input: &str, pos: usize) -> Option<(char, usize)> {
 /// # use tygr::*;
 /// char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 ///
-/// assert_eq!(Digit::parse::<success::Value, level::Max>("7").unwrap().into_inner(), '7');
-/// assert!(Digit::parse::<success::Value, level::Max>("x").is_err());
+/// assert_eq!(Digit::parse("7").unwrap().into_inner(), '7');
+/// assert!(Digit::parse("x").is_err());
 /// ```
 pub trait CharClass: Grammar + ByteSet + IntoInner<char> {
     /// Does `ch` belong to this class?
@@ -414,7 +414,7 @@ pub trait CharClass: Grammar + ByteSet + IntoInner<char> {
 ///     }
 /// }
 ///
-/// assert!(Letter::parse::<success::Value, level::Max>("é").is_ok() && Letter::parse::<success::Value, level::Max>("1").is_err());
+/// assert!(Letter::parse("é").is_ok() && Letter::parse("1").is_err());
 /// ```
 #[macro_export]
 macro_rules! char_class {
@@ -544,9 +544,9 @@ mod tests {
 
     #[test]
     fn literal_matches_and_prints_its_text() {
-        let bom = Bom::parse::<Value, level::Max>("\u{FEFF}").unwrap();
+        let bom = Bom::parse_with::<Value, level::Max>("\u{FEFF}").unwrap();
         assert_eq!(bom.print(), "\u{FEFF}");
-        assert!(Bom::parse::<Value, level::Max>("x").is_err());
+        assert!(Bom::parse_with::<Value, level::Max>("x").is_err());
     }
 
     #[test]

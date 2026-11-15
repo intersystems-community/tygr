@@ -23,12 +23,11 @@ pub enum Expr {
     CharClass(String),
     /// Concatenation: `A B C`.
     Sequence(Vec<Expr>),
-    /// Alternation: `A | B | C`.
+    /// Alternation: `A | B | C`; with an empty alternative, `[ A | B ]`;
+    /// empty, `∅`, it never matches.
     Alternation(Vec<Expr>),
     /// Zero or more repetitions: `{ A }`.
     Repetition(Box<Expr>),
-    /// Zero or one: `[ A ]`.
-    Optional(Box<Expr>),
     /// Negative lookahead: `!A`.
     NotFollowedBy(Box<Expr>),
     /// A side-condition beyond the shown syntax: `A ^1` (see
@@ -58,9 +57,11 @@ impl Expr {
         matches!(self, Expr::Sequence(exprs) if exprs.is_empty())
     }
 
-    /// Empty or hidden.
+    /// Empty or hidden, or an alternation of only such.
     fn is_blank(&self) -> bool {
-        self.is_empty() || *self == Expr::Hidden
+        self.is_empty()
+            || *self == Expr::Hidden
+            || matches!(self, Expr::Alternation(exprs) if !exprs.is_empty() && exprs.iter().all(Expr::is_blank))
     }
 
     /// A flattened sequence without its hidden parts (hidden if all are).
@@ -82,30 +83,22 @@ impl Expr {
     }
 
     /// A flattened alternation without its hidden alternatives (hidden if
-    /// all are); an empty alternative makes the rest optional, and none at
-    /// all (an empty enum) is footnoted `never matches`.
+    /// all are); an empty alternative stays, printing the rest as optional,
+    /// and none at all (an empty enum) is `∅`, which never matches.
     pub fn alternation(exprs: Vec<Expr>) -> Expr {
-        let (mut hidden, mut empty) = (false, false);
+        let mut hidden = false;
         let mut alternatives = Vec::new();
         for expr in exprs {
             match expr {
                 Expr::Alternation(inner) => alternatives.extend(inner),
                 Expr::Hidden => hidden = true,
-                _ if expr.is_empty() => empty = true,
                 _ => alternatives.push(expr),
             }
         }
-        let alternation = match alternatives.len() {
-            0 if empty => Expr::empty(),
+        match alternatives.len() {
             0 if hidden => Expr::Hidden,
-            0 => Expr::side_condition(Expr::empty(), "never matches"),
             1 => alternatives.pop().unwrap(),
             _ => Expr::Alternation(alternatives),
-        };
-        if empty {
-            Expr::optional(alternation)
-        } else {
-            alternation
         }
     }
 
@@ -118,28 +111,19 @@ impl Expr {
         }
     }
 
-    /// `[ expr ]`, or `expr` if it's empty or hidden.
-    pub fn optional(expr: Expr) -> Expr {
-        if expr.is_blank() {
-            expr
-        } else {
-            Expr::Optional(Box::new(expr))
-        }
-    }
-
-    /// `!expr`, or `expr` if it's hidden.
+    /// `!expr`; hidden if `expr` is.
     pub fn not_followed_by(expr: Expr) -> Expr {
         if expr == Expr::Hidden {
-            expr
+            Expr::Hidden
         } else {
             Expr::NotFollowedBy(Box::new(expr))
         }
     }
 
-    /// `expr` with a footnoted side-condition, or `expr` if it's hidden.
+    /// `expr` with a footnoted side-condition; hidden if `expr` is.
     pub fn side_condition(expr: Expr, text: &'static str) -> Expr {
         if expr == Expr::Hidden {
-            expr
+            Expr::Hidden
         } else {
             Expr::SideCondition(Box::new(expr), text)
         }
@@ -166,7 +150,7 @@ impl Expr {
                     expr.collect_side_conditions(notes);
                 }
             }
-            Expr::Repetition(inner) | Expr::Optional(inner) | Expr::NotFollowedBy(inner) => {
+            Expr::Repetition(inner) | Expr::NotFollowedBy(inner) => {
                 inner.collect_side_conditions(notes);
             }
             Expr::Token { .. } | Expr::RuleRef(_) | Expr::CharClass(_) | Expr::Hidden => {}
@@ -183,7 +167,6 @@ impl Expr {
                 }
             }
             Expr::Repetition(inner)
-            | Expr::Optional(inner)
             | Expr::NotFollowedBy(inner)
             | Expr::SideCondition(inner, _) => inner.rename(f),
             Expr::Token { .. } | Expr::CharClass(_) | Expr::Hidden => {}
@@ -192,7 +175,9 @@ impl Expr {
 
     fn prec(&self) -> Prec {
         match self {
-            Expr::Alternation(_) => Prec::Alternation,
+            Expr::Alternation(exprs) if !exprs.iter().any(Expr::is_blank) && !exprs.is_empty() => {
+                Prec::Alternation
+            }
             Expr::Sequence(exprs) if !exprs.is_empty() => Prec::Sequence,
             Expr::SideCondition(..) => Prec::SideCondition,
             _ => Prec::Atom,
@@ -226,6 +211,20 @@ impl Expr {
                 write!(f, "( )")
             }
             Expr::Sequence(exprs) => Self::format_list(exprs, " ", Prec::Sequence, f, notes),
+            Expr::Alternation(exprs) if exprs.is_empty() => write!(f, "∅"),
+            Expr::Alternation(exprs) if exprs.iter().all(Expr::is_blank) => {
+                if min_prec > Prec::Sequence {
+                    write!(f, "( )")
+                } else {
+                    Ok(())
+                }
+            }
+            // An empty alternative: the rest is optional.
+            Expr::Alternation(exprs) if exprs.iter().any(Expr::is_blank) => {
+                write!(f, "[ ")?;
+                Self::format_list(exprs, " | ", Prec::Alternation, f, notes)?;
+                write!(f, " ]")
+            }
             Expr::Alternation(exprs) => {
                 Self::format_list(exprs, " | ", Prec::Alternation, f, notes)
             }
@@ -233,11 +232,6 @@ impl Expr {
                 write!(f, "{{ ")?;
                 inner.format_internal(f, Prec::Alternation, notes)?;
                 write!(f, " }}")
-            }
-            Expr::Optional(inner) => {
-                write!(f, "[ ")?;
-                inner.format_internal(f, Prec::Alternation, notes)?;
-                write!(f, " ]")
             }
             Expr::NotFollowedBy(inner) => {
                 write!(f, "!")?;

@@ -31,7 +31,7 @@ struct Lit(StringEq!("foo"));
 
 #[test]
 fn string_eq_records_literal() {
-    let err = Lit::parse::<success::Value, level::Max>("bar").unwrap_err();
+    let err = Lit::parse("bar").unwrap_err();
     assert_error(err, vec![trace("Lit", token("foo", 0..0))], 0);
 }
 
@@ -40,7 +40,7 @@ struct LitCI(StringEqCI!("foo"));
 
 #[test]
 fn string_eq_ci_records_literal() {
-    let err = LitCI::parse::<success::Value, level::Max>("bar").unwrap_err();
+    let err = LitCI::parse("bar").unwrap_err();
     assert_error(err, vec![trace("LitCI", token("foo", 0..0))], 0);
 }
 
@@ -55,7 +55,7 @@ struct Digits(StringOf1<Digit>);
 
 #[test]
 fn char_class_records_class_name() {
-    let err = Digits::parse::<success::Value, level::Max>("abc").unwrap_err();
+    let err = Digits::parse("abc").unwrap_err();
     assert_error(
         err,
         vec![trace("Digits", Expectation::CharClass("digit"))],
@@ -68,7 +68,7 @@ struct SmallNumber(#[tygr(from_str = StringOf1<Digit>)] u8);
 
 #[test]
 fn conversion_records_requirement() {
-    let err = SmallNumber::parse::<success::Value, level::Max>("999").unwrap_err();
+    let err = SmallNumber::parse("999").unwrap_err();
     assert_error(
         err,
         vec![
@@ -96,9 +96,7 @@ enum Signed {
 #[test]
 fn distinct_requirements_at_one_position_are_both_recorded() {
     assert_eq!(
-        Signed::parse::<success::Value, level::Max>("999")
-            .unwrap_err()
-            .to_string(),
+        Signed::parse("999").unwrap_err().to_string(),
         "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to i8: number too large to fit in target type\n\t- Text at 0..3 must be convertible to u8: number too large to fit in target type"
     );
 }
@@ -119,15 +117,9 @@ struct Bytes(Byte, StringEq!(","), Byte);
 
 #[test]
 fn type_conversion_records_requirement() {
-    assert_eq!(
-        Byte::parse::<success::Value, level::Max>("255").unwrap().0,
-        255
-    );
-    let err = Byte::parse::<success::Value, level::Max>("999").unwrap_err();
-    assert_eq!(
-        Byte::parse::<success::Unit, level::Max>("999").unwrap_err(),
-        err
-    );
+    assert_eq!(Byte::parse("255").unwrap().0, 255);
+    let err = Byte::parse("999").unwrap_err();
+    assert_eq!(Byte::check("999").unwrap_err(), err);
     assert_eq!(
         err.to_string(),
         "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to Byte: number too large to fit in target type"
@@ -152,7 +144,7 @@ fn type_conversion_records_requirement() {
         3,
     );
     // Within another rule, the frame and range are the converted type's.
-    let err = Bytes::parse::<success::Value, level::Max>("1,999").unwrap_err();
+    let err = Bytes::parse("1,999").unwrap_err();
     let rejected = err
         .traces()
         .iter()
@@ -182,7 +174,7 @@ impl Validate for NonZero {
 
 #[test]
 fn validated_records_requirement() {
-    let err = NonZero::parse::<success::Value, level::Max>("007").unwrap_err();
+    let err = NonZero::parse("007").unwrap_err();
     assert_error(
         err,
         vec![
@@ -204,31 +196,31 @@ fn validated_records_requirement() {
 fn display_names_a_rule_starting_at_the_error_else_its_expectation() {
     let cases = [
         (
-            Lit::parse::<success::Value, level::Max>("bar").unwrap_err(),
+            Lit::parse("bar").unwrap_err(),
             "parse error at byte 0, expected:\n\t- Lit",
         ),
         (
-            LitCI::parse::<success::Value, level::Max>("bar").unwrap_err(),
+            LitCI::parse("bar").unwrap_err(),
             "parse error at byte 0, expected:\n\t- LitCI",
         ),
         (
-            Arrow::parse::<success::Value, level::Max>("-x").unwrap_err(),
+            Arrow::parse("-x").unwrap_err(),
             "parse error at byte 1, expected:\n\t- \"->\" at 0..1",
         ),
         (
-            Pair::parse::<success::Value, level::Max>("foo,fob").unwrap_err(),
+            Pair::parse("foo,fob").unwrap_err(),
             "parse error at byte 6, expected:\n\t- \"foo\" at 4..6",
         ),
         (
-            Digits::parse::<success::Value, level::Max>("abc").unwrap_err(),
+            Digits::parse("abc").unwrap_err(),
             "parse error at byte 0, expected:\n\t- Digits",
         ),
         (
-            SmallNumber::parse::<success::Value, level::Max>("999").unwrap_err(),
+            SmallNumber::parse("999").unwrap_err(),
             "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to u8: number too large to fit in target type",
         ),
         (
-            NonZero::parse::<success::Value, level::Max>("007").unwrap_err(),
+            NonZero::parse("007").unwrap_err(),
             "parse error at byte 3, expected:\n\t- 'digit'\n\t- NonZero at 0..3 must be non-zero",
         ),
     ];
@@ -248,7 +240,7 @@ struct Wrapper(Lit);
 
 #[test]
 fn context_records_the_rule_chain() {
-    let err = Wrapper::parse::<success::Value, level::Max>("bar").unwrap_err();
+    let err = Wrapper::parse("bar").unwrap_err();
     assert_eq!(
         format!("{err:?}"),
         "parse error at byte 0, expected:\n\t- Wrapper@0/Lit@0/\"foo\""
@@ -275,7 +267,7 @@ enum Op {
 
 #[test]
 fn enum_records_every_variant_when_first_matches_none() {
-    let err = Op::parse::<success::Value, level::Max>("x").unwrap_err();
+    let err = Op::parse("x").unwrap_err();
     assert_error(
         err,
         vec![
@@ -336,7 +328,7 @@ fn nullable_variant_traces() -> Vec<Trace> {
 
 #[test]
 fn nullable_variant_does_not_block_sibling_field_or_sibling_variant() {
-    let err = Outermost::parse::<success::Value, level::Max>("x").unwrap_err();
+    let err = Outermost::parse("x").unwrap_err();
     assert_error(err, nullable_variant_traces(), 0);
 }
 
@@ -348,20 +340,10 @@ fn leftover_input_expects_the_end() {
             expectation: Expectation::End,
         }]
     };
-    assert_error(
-        Lit::parse::<success::Value, level::Max>("foox").unwrap_err(),
-        end(),
-        3,
-    );
-    assert_error(
-        Lit::parse::<success::Unit, level::Max>("foox").unwrap_err(),
-        end(),
-        3,
-    );
+    assert_error(Lit::parse("foox").unwrap_err(), end(), 3);
+    assert_error(Lit::check("foox").unwrap_err(), end(), 3);
     assert_eq!(
-        Lit::parse::<success::Value, level::Max>("foox")
-            .unwrap_err()
-            .to_string(),
+        Lit::parse("foox").unwrap_err().to_string(),
         "parse error at byte 3, expected:\n\t- end of input"
     );
 }
@@ -389,14 +371,14 @@ enum Four {
 fn enum_dispatch_records_the_variants_it_skips() {
     // The table jumps to `D` on the first byte "é" shares with "è"; `D`
     // diverges inside that char, so at byte 0, where the others could start.
-    let err = Four::parse::<success::Value, level::Max>("è").unwrap_err();
+    let err = Four::parse("è").unwrap_err();
     assert_eq!(err.pos(), 0);
     assert_eq!(
         expectations(&err),
         [r#""a""#, r#""b""#, r#""cx""#, r#""é""#]
     );
     // `C` gets further than any variant the table skipped.
-    let err = Four::parse::<success::Value, level::Max>("cy").unwrap_err();
+    let err = Four::parse("cy").unwrap_err();
     assert_eq!(err.pos(), 1);
     assert_eq!(expectations(&err), [r#""cx" at 0..1"#]);
 }
@@ -411,7 +393,7 @@ enum EitherOrThree {
 
 #[test]
 fn enum_dispatch_records_both_sides_of_a_skipped_either_variant() {
-    let err = EitherOrThree::parse::<success::Value, level::Max>("z").unwrap_err();
+    let err = EitherOrThree::parse("z").unwrap_err();
     assert_eq!(
         expectations(&err),
         [r#""a""#, r#""b""#, r#""c""#, r#""d""#, r#""e""#]
@@ -428,7 +410,7 @@ enum ByteOrThree {
 
 #[test]
 fn enum_dispatch_records_a_skipped_converted_type_under_its_rule() {
-    let err = ByteOrThree::parse::<success::Value, level::Max>("x").unwrap_err();
+    let err = ByteOrThree::parse("x").unwrap_err();
     assert_eq!(
         format!("{err:?}"),
         "parse error at byte 0, expected:\n\t- ByteOrThree@0/Byte@0/'digit'\n\t- ByteOrThree@0/\"a\"\n\t- ByteOrThree@0/\"b\"\n\t- ByteOrThree@0/\"c\""
@@ -448,7 +430,7 @@ struct FourOrNoneThenBang(FourOrNone, StringEq!("!"));
 
 #[test]
 fn enum_dispatch_records_the_variants_it_skips_when_matching_empty() {
-    let err = FourOrNoneThenBang::parse::<success::Value, level::Max>("x").unwrap_err();
+    let err = FourOrNoneThenBang::parse("x").unwrap_err();
     assert_eq!(
         expectations(&err),
         [r#""!""#, r#""a""#, r#""b""#, r#""c""#, r#""d""#]
@@ -468,7 +450,7 @@ struct ZThenFourOrEmpty(StringEq!("z"), FourOrEmpty);
 
 #[test]
 fn enum_dispatch_records_the_variants_it_skips_when_a_unit_variant_matches_empty() {
-    let err = ZThenFourOrEmpty::parse::<success::Value, level::Max>("zx").unwrap_err();
+    let err = ZThenFourOrEmpty::parse("zx").unwrap_err();
     assert_eq!(err.pos(), 1);
     assert_eq!(
         expectations(&err),
@@ -479,10 +461,10 @@ fn enum_dispatch_records_the_variants_it_skips_when_a_unit_variant_matches_empty
 #[test]
 fn enum_dispatch_at_end_of_input() {
     assert!(matches!(
-        FourOrNone::parse::<success::Value, level::Max>("").unwrap(),
+        FourOrNone::parse("").unwrap(),
         FourOrNone::D(None)
     ));
-    let err = Four::parse::<success::Value, level::Max>("").unwrap_err();
+    let err = Four::parse("").unwrap_err();
     assert_eq!(
         expectations(&err),
         [r#""a""#, r#""b""#, r#""cx""#, r#""é""#]
@@ -504,7 +486,7 @@ struct NotSmallNumber(NotFollowedBy<InlineSmallNumber>, StringEq!("x"));
 
 #[test]
 fn negative_lookahead_records_what_it_ruled_out() {
-    let err = Div::parse::<success::Value, level::Max>("//").unwrap_err();
+    let err = Div::parse("//").unwrap_err();
     assert_eq!(
         err.to_string(),
         "parse error at byte 1, expected:\n\t- anything but \"/\" at 1..2"
@@ -522,16 +504,12 @@ fn negative_lookahead_records_what_it_ruled_out() {
     );
     // Leading, it isn't hidden behind the rule's name.
     assert_eq!(
-        NonOctal::parse::<success::Value, level::Max>("07")
-            .unwrap_err()
-            .to_string(),
+        NonOctal::parse("07").unwrap_err().to_string(),
         "parse error at byte 0, expected:\n\t- anything but \"0\" at 0..1"
     );
     // An inline grammar's side-conditions are footnoted on the line.
     assert_eq!(
-        NotSmallNumber::parse::<success::Value, level::Max>("12x")
-            .unwrap_err()
-            .to_string(),
+        NotSmallNumber::parse("12x").unwrap_err().to_string(),
         "parse error at byte 0, expected:\n\t- anything but ( 'digit' { 'digit' } ) ^1 at 0..2 (^1: be convertible to u8)"
     );
 }
@@ -545,13 +523,13 @@ struct DigitsThenX(FollowedBy<Digits>, StringEq!("x"));
 #[test]
 fn positive_lookahead_records_what_it_expected() {
     assert_error(
-        Key::parse::<success::Value, level::Max>("k").unwrap_err(),
+        Key::parse("k").unwrap_err(),
         vec![trace("Key", token(":", 1..1))],
         1,
     );
     // Matching, it records nothing: not the 'digit' `Digits` stopped at.
     assert_error(
-        DigitsThenX::parse::<success::Value, level::Max>("12").unwrap_err(),
+        DigitsThenX::parse("12").unwrap_err(),
         vec![trace("DigitsThenX", token("x", 0..0))],
         0,
     );
@@ -569,7 +547,7 @@ enum Exponential {
 #[test]
 fn repeated_traces_are_reported_once() {
     let input = format!("{}x", "a".repeat(18));
-    let err = Exponential::parse::<success::Value, level::Max>(&input).unwrap_err();
+    let err = Exponential::parse(&input).unwrap_err();
     assert_eq!(err.pos(), 18);
     assert_eq!(expectations(&err), [r#""a""#, r#""b""#, r#""c""#]);
 }

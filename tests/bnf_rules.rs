@@ -145,10 +145,7 @@ fn empty_validated_operand_stays_visible_under_its_footnote() {
 fn an_empty_enum_bnf_is_footnoted_never() {
     #[derive(Parse)]
     enum Never {}
-    assert_eq!(
-        printed(Never::bnf_rules()),
-        ["Never = ( ) ^1 .\n^1: never matches"]
-    );
+    assert_eq!(printed(Never::bnf_rules()), ["Never = ∅ ."]);
 }
 
 #[test]

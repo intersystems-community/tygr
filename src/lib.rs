@@ -44,12 +44,12 @@
 //! pub struct Ws(pub StringOf<Space>);
 //!
 //! // Parse, or only check, and print back.
-//! let e = Expr::parse::<success::Value, level::Max>("1 + 2 * 3").unwrap();
+//! let e = Expr::parse("1 + 2 * 3").unwrap();
 //! assert_eq!(e.print(), "1 + 2 * 3");
-//! assert!(Expr::parse::<success::Unit, level::Max>("(1 + 2) * 3").is_ok());
+//! assert!(Expr::check("(1 + 2) * 3").is_ok());
 //!
 //! // A failure says where, and what could have come next.
-//! let err = Expr::parse::<success::Unit, level::Max>("(1 + 2").unwrap_err();
+//! let err = Expr::check("(1 + 2").unwrap_err();
 //! assert_eq!(err.pos(), 6);
 //! assert_eq!(
 //!     err.to_string(),
@@ -82,6 +82,7 @@
 //! | a [`char_class!`] type | one char of the class |
 //! | [`StringOf<C>`] / [`StringOf1<C>`] | chars of class `C`, kept as text (`{ C }` / `C { C }`) |
 //! | [`Either<A, B>`](either::Either), from the `either` crate | inline alternation (`A \| B`) |
+//! | [`Never`] / [`Infallible`](std::convert::Infallible) | the empty alternation (`∅`): never matches, e.g. to switch an alternative off by type parameter |
 //! | [`Vec<T>`]     | repetition (`{ T }`)         |
 //! | [`Vec1<T>`]    | one-or-more repetition (`T { T }`)      |
 //! | [`Option<T>`]  | optional (`[ T ]`)           |
@@ -111,17 +112,20 @@
 //!
 //! ## Parsing
 //!
-//! `T::parse::<S, L>(input)` parses the whole `input`;
-//! [`parse_prefix`](Parse::parse_prefix) parses as much as `T` matches.
+//! `T::parse(input)` parses the whole `input` into a `T`, or an [`Error`]
+//! saying where it failed and what was expected there;
+//! [`check`](Parse::check) only checks that it would, and
+//! [`parse_prefix`](Parse::parse_prefix) parses as much as `T` matches and
+//! returns the end too. [`parse_with`](Parse::parse_with)`::<S, L>` and
+//! [`parse_prefix_with`](Parse::parse_prefix_with) choose instead:
 //!
 //! `S`, the [`Success`], is what comes back:
 //! - [`success::Value`]: the value parsed.
 //! - [`success::Unit`]: only whether it parsed.
 //!
 //! `L`, the [`Level`], is how much a failure tells:
-//! - [`level::Max`]: where it failed and what was expected there, each in the rules
-//!   enclosing it ([`Error::traces`]). The default [`Error`], as tracing
-//!   costs little until a parse fails.
+//! - [`level::Max`] (the default): where it failed and what was expected
+//!   there, each in the rules enclosing it ([`Error::traces`]).
 //! - [`level::Pos`]: only where ([`Error::pos`]).
 //! - [`level::Min`]: only that it failed.
 //!
@@ -131,17 +135,14 @@
 //!
 //! `#[tygr(...)]` on a derived type:
 //! - `name = "..."` — override the EBNF rule name (defaults to the type's
-//!   name, which a generic type's instantiations share, so mark such a type
-//!   `inline`).
+//!   name).
 //! - `hidden` — same effect as wrapping in [`Hidden<T>`], but on a whole struct/enum.
 //! - `inline` — splice this type's own definition wherever it's
 //!   referenced, instead of a rule reference (a recursive one keeps its rule).
 //! - `validated` — after a successful parse, run [`Validate::validate`] on the
 //!   value; a rejection backtracks as if the grammar hadn't matched.
 //! - `unbounded(T, …)` — the derive bounds every type parameter with
-//!   [`Parse`] (and [`Print`]); these keep only the bounds you wrote, as a
-//!   type parameter must when it's a conversion target, or only names the
-//!   grammar through an associated type.
+//!   [`Parse`] (and [`Print`]); these keep only the bounds you wrote.
 //! - `try_from = S` or another conversion below — convert the whole value
 //!   from `S`, instead of parsing the fields or variants.
 //!
@@ -151,17 +152,14 @@
 //! parses another grammar `S` and converts it to `T`, e.g. digits into a
 //! `u32`, naming how:
 //! - `try_from = S`: `S: TryInto<T>`, on the parsed value.
-//! - `try_from_infallible = S`: the same with `Error = Infallible`, as for
-//!   every `From` conversion.
+//! - `try_from_infallible = S`: the same with `Error = Infallible`.
 //! - `from_str = S`: `T: FromStr`, on the matched text.
 //! - `from_str_infallible = S`: the same with `Err = Infallible`.
 //!
 //! A failed conversion backtracks, recorded and footnoted in EBNF like a
-//! failed [`Validate`] check; an infallible one is skipped when only checking (`Unit`).
-//! Converting loses the text, so to print, the field or type needs
-//! `print_to = f`, an `fn(&T, &mut String)` of yours (for a field whose `T` is
-//! a grammar, [`Print::print_to`]): `Display` needn't invert the parse, so
-//! tygr supplies none.
+//! failed [`Validate`] check. Converting loses the text, so to print, the
+//! field or type needs `print_to = f`, an `fn(&T, &mut String)` of yours (for
+//! a field whose `T` is a grammar, [`Print::print_to`]).
 //!
 //! A unit variant is a field of type `()`, converted from `S` with:
 //! - `try_from_infallible = S`: `S` is a literal with one text (`StringEq!`,
@@ -181,8 +179,8 @@
 //!     buf.push_str(&port.to_string());
 //! }
 //!
-//! assert_eq!(Port::parse::<success::Value, level::Max>("8080").unwrap().0, 8080);
-//! assert!(Port::parse::<success::Value, level::Max>("99999").is_err());
+//! assert_eq!(Port::parse("8080").unwrap().0, 8080);
+//! assert!(Port::parse("99999").is_err());
 //! assert_eq!(Port(443).print(), "443");
 //! ```
 //!
@@ -220,9 +218,9 @@
 //!     buf.push_str(if *answer == Answer::Yes { "yes" } else { "no" });
 //! }
 //!
-//! assert_eq!(Answer::parse::<success::Value, level::Max>("y").unwrap(), Answer::Yes);
+//! assert_eq!(Answer::parse("y").unwrap(), Answer::Yes);
 //! assert_eq!(
-//!     Answer::parse::<success::Value, level::Max>("maybe").unwrap_err().to_string(),
+//!     Answer::parse("maybe").unwrap_err().to_string(),
 //!     "parse error at byte 5, expected:\n\t- 'letter'\n\t- Text at 0..5 must be convertible to Answer: neither yes nor no"
 //! );
 //! assert_eq!(Answer::No.print(), "no");

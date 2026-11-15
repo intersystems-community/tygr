@@ -3,6 +3,7 @@
 
 use crate::bnf::{self, Expr, Rule, Rules};
 use crate::first::First;
+use crate::level::Max;
 use crate::{Error, Level, State};
 use success::{Unit, Value};
 
@@ -24,8 +25,7 @@ use success::{Unit, Value};
 pub trait Parse: Sized + 'static {
     /// The bytes this grammar can start with, and whether it can match empty
     /// input. A dispatch table skips the alternatives whose `First` rules the
-    /// next byte out, and `Vec<T>` and `Vec1<T>` require a `T` that can't
-    /// match empty. A byte left out, or empty input denied, skips a match;
+    /// next byte out. A byte left out, or empty input denied, skips a match;
     /// extra bytes only cost attempts.
     ///
     /// A hand-written grammar builds it from its parts', as the derive does:
@@ -70,15 +70,36 @@ pub trait Parse: Sized + 'static {
     /// ```
     type First: First;
 
-    /// Parse the whole `input` as `Self`, yielding what `S` says ([`success::Value`] or
-    /// [`success::Unit`]) and, on failure, an [`Error`] as traced at level `L`.
-    fn parse<S: Success, L: Level>(input: &str) -> Result<S::Output<Self>, Error<L>> {
+    /// Parse the whole `input` as `Self`, with the full [`Error`]:
+    /// [`parse_with`](Self::parse_with) at [`success::Value`] and
+    /// [`level::Max`](crate::level::Max).
+    fn parse(input: &str) -> Result<Self, Error> {
+        Self::parse_with::<Value, Max>(input)
+    }
+
+    /// Check that the whole `input` parses as `Self`, with the full
+    /// [`Error`]: [`parse_with`](Self::parse_with) at [`success::Unit`] and
+    /// [`level::Max`](crate::level::Max).
+    fn check(input: &str) -> Result<(), Error> {
+        Self::parse_with::<Unit, Max>(input)
+    }
+
+    /// Parse the whole `input` as `Self`, yielding what `S` says
+    /// ([`success::Value`] or [`success::Unit`]) and, on failure, an
+    /// [`Error`] as traced at level `L`.
+    fn parse_with<S: Success, L: Level>(input: &str) -> Result<S::Output<Self>, Error<L>> {
         L::run::<Self, S>(input, true).map(|(value, _)| value)
     }
 
     /// Like [`parse`](Self::parse), but may stop early; returns the end
     /// position too.
-    fn parse_prefix<S: Success, L: Level>(
+    fn parse_prefix(input: &str) -> Result<(Self, usize), Error> {
+        Self::parse_prefix_with::<Value, Max>(input)
+    }
+
+    /// Like [`parse_with`](Self::parse_with), but may stop early; returns
+    /// the end position too.
+    fn parse_prefix_with<S: Success, L: Level>(
         input: &str,
     ) -> Result<(S::Output<Self>, usize), Error<L>> {
         L::run::<Self, S>(input, false)
@@ -198,7 +219,7 @@ impl<T: Parse + Print> Grammar for T {}
 ///     }
 /// }
 ///
-/// assert_eq!(Paren::<char>::parse::<success::Value, level::Max>("(x)").unwrap().0, 'x');
+/// assert_eq!(Paren::<char>::parse("(x)").unwrap().0, 'x');
 /// assert_eq!(Paren::<char>::bnf_rules()[0].to_string(), r#"Paren = "(" 'any' ")" ."#);
 /// ```
 pub trait Success: 'static + private::Sealed {
@@ -218,7 +239,7 @@ pub trait Success: 'static + private::Sealed {
 }
 
 /// What a parse yields: the [`success::Value`] or only [`success::Unit`]. With `use tygr::*`, a
-/// call reads `parse::<success::Value, level::Max>`.
+/// call reads `parse_with::<success::Value, level::Max>`.
 pub mod success {
     /// The [`Success`](crate::Success) yielding the value parsed.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

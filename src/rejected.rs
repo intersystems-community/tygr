@@ -113,19 +113,3 @@ fn union() {}
 /// struct Port(u16);
 /// ```
 fn field_that_is_no_grammar() {}
-
-/// ```compile_fail
-/// use tygr::*;
-/// #[derive(Parse)]
-/// struct S(Vec<Option<StringEq!("a")>>);
-/// S::parse::<success::Value, level::Max>("a");
-/// ```
-fn repeated_nullable() {}
-
-/// ```compile_fail
-/// use tygr::*;
-/// #[derive(Parse)]
-/// struct S(Vec1<Option<StringEq!("a")>>);
-/// S::parse::<success::Value, level::Max>("a");
-/// ```
-fn repeated_nullable_once_or_more() {}

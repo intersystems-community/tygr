@@ -9,6 +9,7 @@ use crate::grammar::{Parse, Print, Success};
 use crate::state::{Level, probe};
 use crate::success::Unit;
 use either::Either::{self, Left, Right};
+use std::convert::Infallible;
 use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -36,6 +37,42 @@ impl Parse for () {
 
 impl Print for () {
     fn print_to(&self, _buf: &mut String) {}
+}
+
+/// The grammar that never matches: the empty alternation, `∅`, expecting
+/// nothing, as no value exists to parse. Switches an alternative off by type
+/// parameter: `Either<Never, T>` is `T`, and `Vec<Never>` is empty.
+/// [`Infallible`] parses the same.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Grammar)]
+#[tygr(inline)]
+pub enum Never {}
+
+/// Parses as [`Never`].
+impl Parse for Infallible {
+    type First = <Never as Parse>::First;
+
+    #[inline]
+    fn parse_at<S: Success, L: Level>(
+        _input: &str,
+        _pos: usize,
+        _state: State<L>,
+    ) -> Option<(S::Output<Self>, usize)> {
+        None
+    }
+
+    fn to_bnf() -> Expr {
+        Never::to_bnf()
+    }
+
+    fn visit_rules(rules: &mut Rules) {
+        Never::visit_rules(rules);
+    }
+}
+
+impl Print for Infallible {
+    fn print_to(&self, _buf: &mut String) {
+        match *self {}
+    }
 }
 
 macro_rules! seq_first {
@@ -281,7 +318,7 @@ impl<T: Parse> Parse for Option<T> {
     }
 
     fn to_bnf() -> Expr {
-        Expr::optional(T::to_bnf())
+        Expr::alternation(vec![T::to_bnf(), Expr::empty()])
     }
 
     fn visit_rules(rules: &mut Rules) {
@@ -306,16 +343,8 @@ impl<T: Parse> Parse for Vec<T> {
         mut pos: usize,
         mut state: State<L>,
     ) -> Option<(S::Output<Self>, usize)> {
-        const {
-            assert!(
-                !<T::First as First>::NULLABLE,
-                "a repeated grammar must not match empty"
-            )
-        };
         let mut items = S::output(Vec::new);
-        while let Some((item, end)) = T::parse_at::<S, L>(input, pos, state.reborrow())
-            && end != pos
-        {
+        while let Some((item, end)) = T::parse_at::<S, L>(input, pos, state.reborrow()) {
             items = S::and_then(items, |mut items| {
                 S::and_then(item, |item| {
                     items.push(item);
@@ -344,8 +373,8 @@ impl<T: Print> Print for Vec<T> {
     }
 }
 
-/// Like `Vec<T>`, but one or more items: `T { T }`. Neither accepts a `T`
-/// that can match empty, as repeating it would never progress.
+/// Like `Vec<T>`, but one or more items: `T { T }`. Neither ends at an item
+/// that matches empty: repeating one loops, as a `while` would.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Vec1<T>(Vec<T>);
 
@@ -411,8 +440,8 @@ impl<T: Print> Print for Vec1<T> {
 /// // "/" that is not the start of a "//" line comment.
 /// #[derive(Grammar)]
 /// struct Div(StringEq!("/"), NotFollowedBy<StringEq!("/")>);
-/// assert!(Div::parse::<success::Value, level::Max>("/").is_ok());
-/// assert!(Div::parse::<success::Value, level::Max>("//").is_err());
+/// assert!(Div::parse("/").is_ok());
+/// assert!(Div::parse("//").is_err());
 /// ```
 pub struct NotFollowedBy<G>(PhantomData<G>);
 
@@ -451,8 +480,8 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
 /// // A key that must be followed by ":", without consuming the ":".
 /// #[derive(Grammar)]
 /// struct Key(StringEq!("k"), FollowedBy<StringEq!(":")>);
-/// assert!(Key::parse::<success::Value, level::Max>("k").is_err());
-/// assert_eq!(Key::parse_prefix::<success::Value, level::Max>("k:").unwrap().1, 1);
+/// assert!(Key::parse("k").is_err());
+/// assert_eq!(Key::parse_prefix("k:").unwrap().1, 1);
 /// ```
 pub struct FollowedBy<G>(PhantomData<G>);
 
