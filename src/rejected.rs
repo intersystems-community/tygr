@@ -30,9 +30,10 @@ fn two_conversions() {}
 fn unit_variant_from_str() {}
 
 /// ```compile_fail
+/// fn show(_: &(), _: &mut String) {}
 /// #[derive(tygr::Grammar)]
 /// enum E {
-///     #[tygr(print_to = tygr::print_display)]
+///     #[tygr(print_to = show)]
 ///     Unit,
 /// }
 /// ```
@@ -71,8 +72,9 @@ fn field_attribute_on_converted_type() {}
 fn variant_attribute_on_converted_enum() {}
 
 /// ```compile_fail
+/// fn show(_: &S, _: &mut String) {}
 /// #[derive(tygr::Grammar)]
-/// #[tygr(print_to = tygr::print_display)]
+/// #[tygr(print_to = show)]
 /// struct S(());
 /// ```
 fn type_print_to_without_source() {}

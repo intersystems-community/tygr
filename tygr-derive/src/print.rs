@@ -14,12 +14,12 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let message = match model.shape {
         Shape::Converted(_) => {
-            "a converted type needs `print_to = f` to print (`f: fn(&Self, &mut String)`, e.g. \
-             `print_to = tygr::print_display`), or derive only `Parse`"
+            "a converted type needs `print_to = f` to print (`f: fn(&Self, &mut String)`), or \
+             derive only `Parse`"
         }
         _ => {
-            "a converted field needs `print_to = f` to print (`f: fn(&T, &mut String)`, e.g. \
-             `print_to = tygr::print_display`; `&()` for a unit variant), or derive only `Parse`"
+            "a converted field needs `print_to = f` to print (`f: fn(&T, &mut String)`; `&()` for \
+             a unit variant), or derive only `Parse`"
         }
     };
     let mut unprintable = model

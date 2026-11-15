@@ -42,6 +42,8 @@ three, and a parse can trace nothing at all.
   other wrappers.
 - `CharClass::name()` is the const `CharClass::NAME`, like
   `Validate::REQUIREMENT`.
+- `print_display` is gone: `print_to` takes a function of yours, as `Display`
+  needn't invert the parse.
 
 ### Non-breaking Changes
 

@@ -159,8 +159,9 @@
 //! A failed conversion backtracks, recorded and footnoted in EBNF like a
 //! failed [`Validate`] check; an infallible one is skipped when only checking (`Unit`).
 //! Converting loses the text, so to print, the field or type needs
-//! `print_to = f`, an `fn(&T, &mut String)` such as [`print_display`] (or,
-//! for a field whose `T` is a grammar, [`Print::print_to`]).
+//! `print_to = f`, an `fn(&T, &mut String)` of yours (for a field whose `T` is
+//! a grammar, [`Print::print_to`]): `Display` needn't invert the parse, so
+//! tygr supplies none.
 //!
 //! A unit variant is a field of type `()`, converted from `S` with:
 //! - `try_from_infallible = S`: `S` is a literal with one text (`StringEq!`,
@@ -174,7 +175,12 @@
 //! # use tygr::*;
 //! # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 //! #[derive(Grammar)]
-//! struct Port(#[tygr(from_str = StringOf1<Digit>, print_to = print_display)] u16);
+//! struct Port(#[tygr(from_str = StringOf1<Digit>, print_to = print_port)] u16);
+//!
+//! fn print_port(port: &u16, buf: &mut String) {
+//!     buf.push_str(&port.to_string());
+//! }
+//!
 //! assert_eq!(Port::parse::<Value, Max>("8080").unwrap().0, 8080);
 //! assert!(Port::parse::<Value, Max>("99999").is_err());
 //! assert_eq!(Port(443).print(), "443");
@@ -188,12 +194,12 @@
 //!
 //! ```
 //! # use tygr::*;
-//! # use std::{fmt, str::FromStr};
+//! # use std::str::FromStr;
 //! # char_class!(Letter, "letter", |ch| ch.is_ascii_lowercase());
 //! # #[derive(Grammar)]
 //! # struct Word(StringOf1<Letter>);
 //! #[derive(Grammar, Debug, PartialEq)]
-//! #[tygr(from_str = Word, print_to = print_display)]
+//! #[tygr(from_str = Word, print_to = print_answer)]
 //! enum Answer {
 //!     Yes,
 //!     No,
@@ -210,10 +216,8 @@
 //!     }
 //! }
 //!
-//! impl fmt::Display for Answer {
-//!     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//!         f.write_str(if *self == Answer::Yes { "yes" } else { "no" })
-//!     }
+//! fn print_answer(answer: &Answer, buf: &mut String) {
+//!     buf.push_str(if *answer == Answer::Yes { "yes" } else { "no" });
 //! }
 //!
 //! assert_eq!(Answer::parse::<Value, Max>("y").unwrap(), Answer::Yes);
@@ -285,9 +289,9 @@ pub use tygr_derive::Parse;
 /// Derive [`Print`](trait@Print) for a `struct` or `enum`, printing its
 /// fields, or the variant's, in turn. A field or type converted with
 /// `#[tygr(try_from = S)]` or another conversion has no grammar to print with,
-/// so it needs `#[tygr(print_to = f)]`, an `fn(&T, &mut String)` such as
-/// [`print_display`]; `#[tygr(unbounded(T))]` keeps only the bounds you wrote
-/// (see the [crate docs](crate)).
+/// so it needs `#[tygr(print_to = f)]`, an `fn(&T, &mut String)`;
+/// `#[tygr(unbounded(T))]` keeps only the bounds you wrote (see the
+/// [crate docs](crate)).
 pub use tygr_derive::Print;
 
 /// A literal-string grammar: `StringEq!("->")` matches exactly `->`, and is

@@ -6,6 +6,10 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use tygr::*;
 
+fn print_display<T: fmt::Display>(value: &T, buf: &mut String) {
+    buf.push_str(&value.to_string());
+}
+
 /// `G`'s own rule, as printed.
 fn rule<G: Parse>() -> String {
     G::bnf_rules()[0].to_string()
