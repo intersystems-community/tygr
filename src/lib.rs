@@ -256,7 +256,25 @@ pub mod __private {
 // Lets derived code inside this crate use `::tygr::` paths.
 extern crate self as tygr;
 
-pub use tygr_derive::{Grammar, Parse, Print};
+/// Derive [`Parse`](trait@Parse) and [`Print`](trait@Print) together, reading
+/// the `#[tygr(...)]` attributes of both.
+pub use tygr_derive::Grammar;
+
+/// Derive [`Parse`](trait@Parse) for a `struct`, a sequence of its fields, or
+/// an `enum`, an alternation of its variants; or, with `#[tygr(try_from = S)]`
+/// or another conversion on the type, parse `S` and convert it into the whole
+/// value. Optional on the type: `#[tygr(name = "…", hidden, inline, validated,
+/// unbounded(T))]`; on a field: `#[tygr(try_from = S)]`, `try_from_infallible`,
+/// `from_str` or `from_str_infallible` (see the [crate docs](crate)).
+pub use tygr_derive::Parse;
+
+/// Derive [`Print`](trait@Print) for a `struct` or `enum`, printing its
+/// fields, or the variant's, in turn. A field or type converted with
+/// `#[tygr(try_from = S)]` or another conversion has no grammar to print with,
+/// so it needs `#[tygr(print_to = f)]`, an `fn(&T, &mut String)` such as
+/// [`print_display`]; `#[tygr(unbounded(T))]` keeps only the bounds you wrote
+/// (see the [crate docs](crate)).
+pub use tygr_derive::Print;
 
 /// A literal-string grammar: `StringEq!("->")` matches exactly `->`, and is
 /// `Default`, to build one by hand (e.g. to print).

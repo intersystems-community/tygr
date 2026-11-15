@@ -9,8 +9,9 @@ use std::fmt::{self, Write};
 /// Parse and describe (as EBNF) a grammar.
 ///
 /// Implement this by hand only for leaf/wrapper types; for `struct`s and
-/// `enum`s, `#[derive(Parse)]` or `#[derive(Grammar)]` generates it (see
-/// the crate-level docs).
+/// `enum`s, [`#[derive(Parse)]`](derive@crate::Parse) or
+/// [`#[derive(Grammar)]`](derive@crate::Grammar) generates it (see the
+/// crate-level docs).
 ///
 /// [`parse_at`](Self::parse_at) gets a char-boundary `pos` and must return a
 /// char-boundary end, passing other grammars the same `input`, never a slice.
@@ -125,8 +126,9 @@ pub trait Parse: Sized + 'static {
 /// Print a grammar back as text.
 ///
 /// Implemented for tygr's own grammars; for `struct`s and `enum`s,
-/// `#[derive(Print)]` or `#[derive(Grammar)]` generates it. A converted field
-/// or type prints with `#[tygr(print_to = f)]` instead, such as
+/// [`#[derive(Print)]`](derive@crate::Print) or
+/// [`#[derive(Grammar)]`](derive@crate::Grammar) generates it. A converted
+/// field or type prints with `#[tygr(print_to = f)]` instead, such as
 /// [`print_display`].
 #[diagnostic::on_unimplemented(
     message = "`{Self}` doesn't print as a grammar",
@@ -157,7 +159,8 @@ pub fn print_display<T: fmt::Display>(value: &T, buf: &mut String) {
     write!(buf, "{value}").expect("a Display implementation returned an error");
 }
 
-/// A grammar that both parses and prints, as `#[derive(Grammar)]` makes.
+/// A grammar that both parses and prints, as
+/// [`#[derive(Grammar)]`](derive@crate::Grammar) makes.
 pub trait Grammar: Parse + Print {}
 
 impl<T: Parse + Print> Grammar for T {}

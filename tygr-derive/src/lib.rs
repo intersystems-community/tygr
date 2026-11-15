@@ -11,8 +11,8 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 
-/// Derive `Parse` and `Print` together, reading the `#[tygr(...)]`
-/// attributes of both.
+// `Parse` and `Print` together. Not doc comments, these three: `tygr`'s
+// re-exports have their own, and rustdoc would show both.
 #[proc_macro_derive(Grammar, attributes(tygr))]
 pub fn derive_grammar(input: TokenStream) -> TokenStream {
     derive(input, |model| {
@@ -21,13 +21,7 @@ pub fn derive_grammar(input: TokenStream) -> TokenStream {
     })
 }
 
-/// Derive `Parse` for a `struct`, a sequence of its fields, or an `enum`, an
-/// alternation of its variants; or, with `#[tygr(try_from = S)]` or another
-/// conversion on the type, parse `S` and convert it into the whole value.
-/// Optional on the type: `#[tygr(name = "…", hidden, inline, validated,
-/// unbounded(T))]`; on a field: `#[tygr(try_from = S)]`,
-/// `try_from_infallible`, `from_str` or `from_str_infallible` (see `tygr`'s
-/// crate docs).
+// `Parse` alone.
 #[proc_macro_derive(Parse, attributes(tygr))]
 pub fn derive_parse(input: TokenStream) -> TokenStream {
     derive(input, |model| {
@@ -36,11 +30,7 @@ pub fn derive_parse(input: TokenStream) -> TokenStream {
     })
 }
 
-/// Derive `Print` for a `struct` or `enum`, printing its fields, or the
-/// variant's, in turn. A field or type converted with `#[tygr(try_from = S)]`
-/// or another conversion has no grammar to print with, so it needs
-/// `#[tygr(print_to = f)]`, an `fn(&T, &mut String)`; `#[tygr(unbounded(T))]`
-/// keeps only the bounds you wrote (see `tygr`'s crate docs).
+// `Print` alone.
 #[proc_macro_derive(Print, attributes(tygr))]
 pub fn derive_print(input: TokenStream) -> TokenStream {
     derive(input, print::expand)
