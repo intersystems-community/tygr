@@ -42,7 +42,7 @@ three, and a parse can trace nothing at all.
 
 - The JSON benchmark and its 2.2 MB of data left the repository for a
   standalone benchmark against other Rust JSON parsers; the `json` example
-  is `examples/json/`, a `main.rs` and the grammar, with no shared code.
+  is the single file `examples/json.rs`.
 
 ## [0.8.0] - 2026-11-13
 

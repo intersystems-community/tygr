@@ -8,8 +8,8 @@ Start with the crate documentation on [docs.rs](https://docs.rs/tygr): the API
 and grammar concepts, plus a complete arithmetic grammar with parsing,
 printing, and EBNF generation.
 
-For a runnable example, see [`json`](examples/json/main.rs), a small CLI around a
-[full JSON grammar](examples/json/grammar.rs) following json.org:
+For a runnable example, see [`examples/json.rs`](examples/json.rs): the full
+JSON grammar of json.org, with a small CLI around it:
 
 ```sh
 cargo run --example json -- bnf              # print the grammar as EBNF
