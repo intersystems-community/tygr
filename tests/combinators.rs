@@ -1,6 +1,7 @@
 //! `Either`, `Prefix`, `Suffix` and `Hidden`, parsed, printed and rendered.
 
 use either::Either;
+use tygr::bnf::Expr;
 use tygr::*;
 
 /// `G`'s own rule, as printed.
@@ -80,4 +81,27 @@ fn never_never_matches() {
     assert_eq!(rule::<DigitOrNothing>(), "DigitOrNothing = 'digit' .");
     assert!(DigitThenNothing::parse::<success::Unit, level::Max>("7").is_err());
     assert_eq!(rule::<DigitThenNothing>(), "DigitThenNothing = 'digit' ∅ .");
+}
+
+#[derive(Grammar, Debug)]
+struct OptOpt(Option<Option<Digit>>, Digit);
+
+#[derive(Grammar, Debug)]
+enum DigitOrNot {
+    Digit(Digit),
+    Not,
+}
+
+#[test]
+fn an_optional_is_an_alternation_with_an_empty_alternative() {
+    assert_eq!(rule::<OptOpt>(), "OptOpt = [ 'digit' ] 'digit' .");
+    assert_eq!(rule::<DigitOrNot>(), "DigitOrNot = [ 'digit' ] .");
+    assert_eq!(
+        Expr::alternation(vec![Expr::empty(), Expr::empty()]),
+        Expr::Alternation(vec![Expr::empty(), Expr::empty()])
+    );
+    assert_eq!(
+        Expr::sequence(vec![Expr::alternation(vec![Expr::empty(), Expr::empty()])]).to_string(),
+        ""
+    );
 }

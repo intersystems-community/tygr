@@ -318,7 +318,7 @@ impl<T: Parse> Parse for Option<T> {
     }
 
     fn to_bnf() -> Expr {
-        Expr::optional(T::to_bnf())
+        Expr::alternation(vec![T::to_bnf(), Expr::empty()])
     }
 
     fn visit_rules(rules: &mut Rules) {

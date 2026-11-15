@@ -48,6 +48,9 @@ three, and a parse can trace nothing at all.
   `Validate::REQUIREMENT`.
 - `print_display` is gone: `print_to` takes a function of yours, as `Display`
   needn't invert the parse.
+- `bnf::Expr::Optional` and `Expr::optional` are gone: an optional is an
+  alternation with an empty alternative, which prints as `[ A | B ]`, so
+  `Option<Option<T>>` flattens to `[ T ]`.
 
 ### Non-breaking Changes
 
