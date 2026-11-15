@@ -84,7 +84,7 @@ fn a_hand_written_leaf_reports_itself_when_skipped() {
 }
 
 /// A digit below five, rejected with a message built from the digit, only
-/// in the pass that records it.
+/// at `Max`.
 #[derive(Debug)]
 struct Small(u8);
 
@@ -103,7 +103,7 @@ impl Parse for Small {
         match ch.to_digit(10) {
             Some(digit) if digit < 5 => Some((S::output(|| Small(digit as u8)), end)),
             _ => {
-                let requirement = if L::RECORD {
+                let requirement = if L::IS_MAX {
                     BUILT.fetch_add(1, Relaxed);
                     format!("be a digit below 5, not {ch:?}")
                 } else {
@@ -142,6 +142,6 @@ fn a_rejection_carries_a_message_built_while_parsing() {
         "parse error at byte 1, expected:\n\t- Small at 0..1 must be a digit below 5, not '7'"
     );
     assert_eq!(err.traces().len(), 1);
-    // Once per variant, in the recording pass alone.
+    // Once per variant, at `Max` alone.
     assert_eq!(BUILT.load(Relaxed), 2);
 }

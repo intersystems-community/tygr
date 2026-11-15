@@ -28,8 +28,7 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static ALLOCATOR: Counting = Counting;
 
-/// Rejects every char with a message built from it, only in the pass that
-/// records it.
+/// Rejects every char with a message built from it, only at `Max`.
 #[derive(Debug)]
 struct Never;
 
@@ -43,7 +42,7 @@ impl Parse for Never {
     ) -> Option<(S::Output<Self>, usize)> {
         let mut state = state.node("Never", pos);
         let (ch, end) = char::parse_at::<Value, L>(input, pos, state.reborrow())?;
-        let requirement = if L::RECORD {
+        let requirement = if L::IS_MAX {
             format!("not be {ch:?}")
         } else {
             String::new()

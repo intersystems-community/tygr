@@ -45,8 +45,8 @@ impl<'a, L: Level> State<'a, L> {
         });
     }
 
-    /// Note that `pos` was reached, and, when recording, what was expected
-    /// there: built only then, so that the parse keeps nothing for it. A
+    /// Note that `pos` was reached, and, at [`Max`], what was expected there:
+    /// built only then, so that the parse keeps nothing for it. A
     /// hand-written grammar calls this where it fails on its own.
     #[inline(always)]
     pub fn expect(&mut self, pos: usize, expectation: impl FnOnce() -> Expectation) {
@@ -79,9 +79,9 @@ pub(crate) fn probe<R>(f: impl FnOnce(State<'_, Min>) -> R) -> R {
 /// How much a parse traces, and so what its [`Error`] reports: [`Min`],
 /// [`Pos`] or [`Max`]. Orthogonal to [`Success`], which says what it builds.
 pub trait Level: Sized + 'static + private::Sealed {
-    /// Whether what was expected is recorded: only at [`Max`], in the second
-    /// pass of a parse that failed.
-    const RECORD: bool;
+    /// Whether this is [`Max`]: then every alternative is tried, so that each
+    /// says what it expected, rather than skipped when it can't match.
+    const IS_MAX: bool;
 
     #[doc(hidden)]
     type Store<'a>;
@@ -120,13 +120,12 @@ pub struct Min;
 pub struct Pos;
 
 /// Reports where the parse failed and what was expected there, in the chain
-/// of rules entered: the default [`Error`]. A failure costs a second parse,
-/// which records.
+/// of rules entered: the default [`Error`]. A failure costs a second parse.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Max;
 
 impl Level for Min {
-    const RECORD: bool = false;
+    const IS_MAX: bool = false;
     type Store<'a> = ();
     type Pos = ();
     type Traces = ();
@@ -152,7 +151,7 @@ impl Level for Min {
 }
 
 impl Level for Pos {
-    const RECORD: bool = false;
+    const IS_MAX: bool = false;
     type Store<'a> = &'a mut usize;
     type Pos = usize;
     type Traces = ();
@@ -192,7 +191,7 @@ pub struct Recorder<'a> {
 }
 
 impl Level for Max {
-    const RECORD: bool = true;
+    const IS_MAX: bool = true;
     type Store<'a> = Recorder<'a>;
     type Pos = usize;
     type Traces = Vec<Trace>;

@@ -10,8 +10,8 @@ const THRESHOLD: usize = 4;
 
 /// The `parse_at` body trying `arms` (one per variant) in order, and the
 /// inherent items it needs. With enough variants, a table on the next byte
-/// skips to the first variant that can start there, except when recording:
-/// then every variant is tried, so that each records what it expected.
+/// skips to the first variant that can start there, except at `Max`: then
+/// every variant is tried, so that each says what it expected.
 pub(crate) fn dispatch(arms: &[TokenStream], firsts: &[TokenStream]) -> (TokenStream, TokenStream) {
     let n = arms.len();
     let in_order = quote! {
@@ -59,15 +59,15 @@ pub(crate) fn dispatch(arms: &[TokenStream], firsts: &[TokenStream]) -> (TokenSt
         // Nothing matched: the variants skipped would have failed here.
         #[inline]
         fn __parse_miss<__Success: ::tygr::Success, __Level: ::tygr::Level>(_input: &str, pos: usize, mut state: ::tygr::State<__Level>) -> #output {
-            state.expect(pos, || ::core::unreachable!("the recording pass doesn't dispatch"));
+            state.expect(pos, || ::core::unreachable!("`Max` doesn't dispatch"));
             ::core::option::Option::None
         }
     };
     let fn_ty = quote! { fn(&str, usize, ::tygr::State<'_, __Level>) -> #output };
     let body = quote! {
-        // Recording, every variant is tried, so that each records what it
+        // At `Max`, every variant is tried, so that each says what it
         // expected; otherwise the table skips those that can't start here.
-        if <__Level as ::tygr::Level>::RECORD {
+        if <__Level as ::tygr::Level>::IS_MAX {
             #in_order
         } else {
             // One table per mode and level.

@@ -21,10 +21,9 @@ three, and a parse can trace nothing at all.
   `parse_at<S: Success, L: Level>(input, pos, state: State<L>)`. `Min`
   traces nothing (the state is zero-sized), `Pos` tracks the furthest
   position, `Max` records what was expected there too, in a second pass.
-  `Level::RECORD` replaces `Mode::RECORD`.
-- `Parse::fail_at` is gone: a dispatch table skips variants only when not
-  recording, and the recording pass tries every variant, so each records
-  what it expected by parsing. A hand-written grammar implements `parse_at`,
+  `Level::IS_MAX` replaces `Mode::RECORD`.
+- `Parse::fail_at` is gone: a dispatch table skips variants except at `Max`,
+  where every variant is tried, so each says what it expected by parsing. A hand-written grammar implements `parse_at`,
   `to_bnf` and `visit_rules`, and `State::expect` is public for it to say
   what it expected where it fails on its own.
 - The entry points take both parameters: `parse::<S, L>(input)` returns
