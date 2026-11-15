@@ -5,8 +5,9 @@ use crate::IntoInner;
 use crate::State;
 use crate::bnf::{Expr, Rules};
 use crate::first::{First, Optional, byte_set};
-use crate::grammar::{Parse, Print, Success, Unit};
+use crate::grammar::{Parse, Print, Success};
 use crate::state::{Level, probe};
+use crate::success::Unit;
 use either::Either::{self, Left, Right};
 use std::fmt;
 use std::marker::PhantomData;
@@ -410,8 +411,8 @@ impl<T: Print> Print for Vec1<T> {
 /// // "/" that is not the start of a "//" line comment.
 /// #[derive(Grammar)]
 /// struct Div(StringEq!("/"), NotFollowedBy<StringEq!("/")>);
-/// assert!(Div::parse::<Value, level::Max>("/").is_ok());
-/// assert!(Div::parse::<Value, level::Max>("//").is_err());
+/// assert!(Div::parse::<success::Value, level::Max>("/").is_ok());
+/// assert!(Div::parse::<success::Value, level::Max>("//").is_err());
 /// ```
 pub struct NotFollowedBy<G>(PhantomData<G>);
 
@@ -450,8 +451,8 @@ impl<G: Parse> Parse for NotFollowedBy<G> {
 /// // A key that must be followed by ":", without consuming the ":".
 /// #[derive(Grammar)]
 /// struct Key(StringEq!("k"), FollowedBy<StringEq!(":")>);
-/// assert!(Key::parse::<Value, level::Max>("k").is_err());
-/// assert_eq!(Key::parse_prefix::<Value, level::Max>("k:").unwrap().1, 1);
+/// assert!(Key::parse::<success::Value, level::Max>("k").is_err());
+/// assert_eq!(Key::parse_prefix::<success::Value, level::Max>("k:").unwrap().1, 1);
 /// ```
 pub struct FollowedBy<G>(PhantomData<G>);
 

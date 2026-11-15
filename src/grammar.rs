@@ -4,6 +4,7 @@
 use crate::bnf::{self, Expr, Rule, Rules};
 use crate::first::First;
 use crate::{Error, Level, State};
+use success::{Unit, Value};
 
 /// Parse and describe (as EBNF) a grammar.
 ///
@@ -69,8 +70,8 @@ pub trait Parse: Sized + 'static {
     /// ```
     type First: First;
 
-    /// Parse the whole `input` as `Self`, yielding what `S` says ([`Value`] or
-    /// [`Unit`]) and, on failure, an [`Error`] as traced at level `L`.
+    /// Parse the whole `input` as `Self`, yielding what `S` says ([`success::Value`] or
+    /// [`success::Unit`]) and, on failure, an [`Error`] as traced at level `L`.
     fn parse<S: Success, L: Level>(input: &str) -> Result<S::Output<Self>, Error<L>> {
         L::run::<Self, S>(input, true).map(|(value, _)| value)
     }
@@ -105,7 +106,7 @@ pub trait Parse: Sized + 'static {
     /// Parse `Self` at byte offset `pos`, returning what `S` yields (the value,
     /// or `()`) and the end offset, a char boundary (see [`Parse`]); `state`
     /// traces as its [`Level`] does. A part whose value is needed whatever `S`,
-    /// e.g. to convert it, is parsed with `parse_at::<Value, L>`; one whose
+    /// e.g. to convert it, is parsed with `parse_at::<success::Value, L>`; one whose
     /// value isn't, with `Unit`.
     fn parse_at<S: Success, L: Level>(
         input: &str,
@@ -152,7 +153,7 @@ pub trait Grammar: Parse + Print {}
 
 impl<T: Parse + Print> Grammar for T {}
 
-/// What [`Parse::parse_at`] yields: the [`Value`] parsed, or a [`Unit`] saying
+/// What [`Parse::parse_at`] yields: the [`success::Value`] parsed, or a [`success::Unit`] saying
 /// it parsed, so one function does both. What the parse traces is the
 /// [`State`]'s [`Level`], not its concern.
 ///
@@ -173,9 +174,9 @@ impl<T: Parse + Print> Grammar for T {}
 ///         mut state: State<L>,
 ///     ) -> Option<(S::Output<Self>, usize)> {
 ///         let mut state = state.node("Paren", pos);
-///         let ((), pos) = <StringEq!("(")>::parse_at::<Unit, L>(input, pos, state.reborrow())?;
+///         let ((), pos) = <StringEq!("(")>::parse_at::<success::Unit, L>(input, pos, state.reborrow())?;
 ///         let (inner, pos) = T::parse_at::<S, L>(input, pos, state.reborrow())?;
-///         let ((), pos) = <StringEq!(")")>::parse_at::<Unit, L>(input, pos, state)?;
+///         let ((), pos) = <StringEq!(")")>::parse_at::<success::Unit, L>(input, pos, state)?;
 ///         Some((S::and_then(inner, |inner| S::output(|| Paren(inner))), pos))
 ///     }
 ///
@@ -197,18 +198,18 @@ impl<T: Parse + Print> Grammar for T {}
 ///     }
 /// }
 ///
-/// assert_eq!(Paren::<char>::parse::<Value, level::Max>("(x)").unwrap().0, 'x');
+/// assert_eq!(Paren::<char>::parse::<success::Value, level::Max>("(x)").unwrap().0, 'x');
 /// assert_eq!(Paren::<char>::bnf_rules()[0].to_string(), r#"Paren = "(" 'any' ")" ."#);
 /// ```
 pub trait Success: 'static + private::Sealed {
     /// What parsing a `T` gives: the `T`, or `()`.
     type Output<T>;
 
-    /// The output of `f`'s value, which only [`Value`] calls for: what it
-    /// builds (a `String`, a conversion) costs nothing with [`Unit`].
+    /// The output of `f`'s value, which only [`success::Value`] calls for: what it
+    /// builds (a `String`, a conversion) costs nothing with [`success::Unit`].
     fn output<T>(f: impl FnOnce() -> T) -> Self::Output<T>;
 
-    /// The output `f` makes of `output`'s value, which only [`Value`] has:
+    /// The output `f` makes of `output`'s value, which only [`success::Value`] has:
     /// to combine outputs, as a sequence does.
     fn and_then<T, U>(
         output: Self::Output<T>,
@@ -216,13 +217,18 @@ pub trait Success: 'static + private::Sealed {
     ) -> Self::Output<U>;
 }
 
-/// The [`Success`] yielding the value parsed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Value;
+/// What a parse yields: the [`success::Value`] or only [`success::Unit`]. With `use tygr::*`, a
+/// call reads `parse::<success::Value, level::Max>`.
+pub mod success {
+    /// The [`Success`](crate::Success) yielding the value parsed.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Value;
 
-/// The [`Success`] yielding nothing but that it parsed: `()`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Unit;
+    /// The [`Success`](crate::Success) yielding nothing but that it parsed:
+    /// `()`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Unit;
+}
 
 impl Success for Value {
     type Output<T> = T;
@@ -249,10 +255,10 @@ impl Success for Unit {
 }
 
 mod private {
-    /// Only [`Value`](super::Value) and [`Unit`](super::Unit) are successes.
+    /// Only [`success::Value`](super::success::Value) and [`success::Unit`](super::success::Unit) are successes.
     pub trait Sealed {}
-    impl Sealed for super::Value {}
-    impl Sealed for super::Unit {}
+    impl Sealed for super::success::Value {}
+    impl Sealed for super::success::Unit {}
 }
 
 /// Post-parse validation for `#[tygr(validated)]` types.

@@ -370,8 +370,8 @@ fn decode_char(input: &str, pos: usize) -> Option<(char, usize)> {
 /// # use tygr::*;
 /// char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 ///
-/// assert_eq!(Digit::parse::<Value, level::Max>("7").unwrap().into_inner(), '7');
-/// assert!(Digit::parse::<Value, level::Max>("x").is_err());
+/// assert_eq!(Digit::parse::<success::Value, level::Max>("7").unwrap().into_inner(), '7');
+/// assert!(Digit::parse::<success::Value, level::Max>("x").is_err());
 /// ```
 pub trait CharClass: Grammar + ByteSet + IntoInner<char> {
     /// Does `ch` belong to this class?
@@ -414,7 +414,7 @@ pub trait CharClass: Grammar + ByteSet + IntoInner<char> {
 ///     }
 /// }
 ///
-/// assert!(Letter::parse::<Value, level::Max>("é").is_ok() && Letter::parse::<Value, level::Max>("1").is_err());
+/// assert!(Letter::parse::<success::Value, level::Max>("é").is_ok() && Letter::parse::<success::Value, level::Max>("1").is_err());
 /// ```
 #[macro_export]
 macro_rules! char_class {
@@ -536,8 +536,9 @@ pub type StringOf1<C> = Raw<Vec1<C>>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::level;
+    use crate::success::{Unit, Value};
     use crate::{StringEq, StringEqCI};
-    use crate::{Unit, Value, level};
 
     type Bom = Token<(ByteEq<0xEF>, (ByteEq<0xBB>, ByteEq<0xBF>))>;
 

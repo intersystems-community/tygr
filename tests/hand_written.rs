@@ -16,7 +16,7 @@ impl Parse for Letter {
         mut state: State<L>,
     ) -> Option<(S::Output<Self>, usize)> {
         let mut state = state.node("Letter", pos);
-        let (ch, end) = char::parse_at::<Value, L>(input, pos, state.reborrow())?;
+        let (ch, end) = char::parse_at::<success::Value, L>(input, pos, state.reborrow())?;
         if !ch.is_alphabetic() {
             state.reject("Letter", pos..end, "be a letter");
             return None;
@@ -60,12 +60,19 @@ enum Item {
 #[test]
 fn a_hand_written_leaf_parses_checks_traces_and_prints() {
     assert_eq!(
-        Word::parse::<Value, level::Max>("héllo").unwrap().print(),
+        Word::parse::<success::Value, level::Max>("héllo")
+            .unwrap()
+            .print(),
         "héllo"
     );
-    assert_eq!(Word::parse_prefix::<Unit, level::Max>("ab1").unwrap().1, 2);
     assert_eq!(
-        Word::parse::<Value, level::Max>("a1")
+        Word::parse_prefix::<success::Unit, level::Max>("ab1")
+            .unwrap()
+            .1,
+        2
+    );
+    assert_eq!(
+        Word::parse::<success::Value, level::Max>("a1")
             .unwrap_err()
             .to_string(),
         "parse error at byte 2, expected:\n\t- Letter at 1..2 must be a letter"
@@ -83,7 +90,7 @@ fn a_hand_written_leaf_parses_checks_traces_and_prints() {
 #[test]
 fn a_hand_written_leaf_reports_itself_when_skipped() {
     assert_eq!(
-        Item::parse::<Value, level::Max>("")
+        Item::parse::<success::Value, level::Max>("")
             .unwrap_err()
             .to_string(),
         "parse error at byte 0, expected:\n\t- Item\n\t- Letter"
@@ -106,7 +113,7 @@ impl Parse for Small {
         mut state: State<L>,
     ) -> Option<(S::Output<Self>, usize)> {
         let mut state = state.node("Small", pos);
-        let (ch, end) = char::parse_at::<Value, L>(input, pos, state.reborrow())?;
+        let (ch, end) = char::parse_at::<success::Value, L>(input, pos, state.reborrow())?;
         match ch.to_digit(10) {
             Some(digit) if digit < 5 => Some((S::output(|| Small(digit as u8)), end)),
             _ => {
@@ -142,8 +149,11 @@ enum Twice {
 
 #[test]
 fn a_rejection_carries_a_message_built_while_parsing() {
-    assert_eq!(Small::parse::<Value, level::Max>("3").unwrap().0, 3);
-    let err = Twice::parse::<Value, level::Max>("7").unwrap_err();
+    assert_eq!(
+        Small::parse::<success::Value, level::Max>("3").unwrap().0,
+        3
+    );
+    let err = Twice::parse::<success::Value, level::Max>("7").unwrap_err();
     assert_eq!(
         err.to_string(),
         "parse error at byte 1, expected:\n\t- Small at 0..1 must be a digit below 5, not '7'"

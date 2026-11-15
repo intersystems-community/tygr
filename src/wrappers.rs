@@ -1,7 +1,8 @@
 //! Wrappers that keep the match but change the value or the EBNF.
 
 use crate::bnf::{Expr, Rules};
-use crate::grammar::{Parse, Print, Success, Unit};
+use crate::grammar::{Parse, Print, Success};
+use crate::success::Unit;
 use crate::{Level, State};
 use std::convert::Infallible;
 use std::fmt;
@@ -63,7 +64,7 @@ impl<T> IntoInner<T> for Hidden<T> {
 /// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 /// #[derive(Grammar)]
 /// struct Integer(Raw<(Option<StringEq!("-")>, StringOf1<Digit>)>);
-/// assert_eq!(Integer::parse::<Value, level::Max>("-42").unwrap().0.as_str(), "-42");
+/// assert_eq!(Integer::parse::<success::Value, level::Max>("-42").unwrap().0.as_str(), "-42");
 /// ```
 #[derive(Parse)]
 #[tygr(inline, from_str_infallible = PhantomData<T>)]
@@ -174,7 +175,7 @@ impl<T> From<String> for Raw<T> {
 /// # char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 /// #[derive(Grammar)]
 /// struct Assign(StringEq!("x="), Ranged<StringOf1<Digit>>);
-/// let v = Assign::parse::<Value, level::Max>("x=42").unwrap();
+/// let v = Assign::parse::<success::Value, level::Max>("x=42").unwrap();
 /// assert_eq!((v.1.range(), v.1.as_str()), (2..4, "42"));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

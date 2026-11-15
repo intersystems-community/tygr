@@ -154,9 +154,10 @@ fn main() -> ExitCode {
             }
             ExitCode::SUCCESS
         }
-        Some("parse") => {
-            report(Json::parse::<Value, level::Max>(&read_stdin()).map(|json| format!("{json:#?}")))
-        }
+        Some("parse") => report(
+            Json::parse::<success::Value, level::Max>(&read_stdin())
+                .map(|json| format!("{json:#?}")),
+        ),
         _ => usage(),
     }
 }

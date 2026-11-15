@@ -1,7 +1,8 @@
 //! Conversions: `#[tygr(try_from = S)]` and friends parse `S`, then convert
 //! it to the field's type, or to the type they're on.
 
-use crate::grammar::{Parse, Success, Unit, Value};
+use crate::grammar::{Parse, Success};
+use crate::success::{Unit, Value};
 use crate::wrappers::text;
 use crate::{Expectation, Level, State};
 use std::convert::Infallible;

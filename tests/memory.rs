@@ -41,7 +41,7 @@ impl Parse for Never {
         mut state: State<L>,
     ) -> Option<(S::Output<Self>, usize)> {
         let mut state = state.node("Never", pos);
-        let (ch, end) = char::parse_at::<Value, L>(input, pos, state.reborrow())?;
+        let (ch, end) = char::parse_at::<success::Value, L>(input, pos, state.reborrow())?;
         let requirement = if L::IS_MAX {
             format!("not be {ch:?}")
         } else {
@@ -74,7 +74,7 @@ fn a_repeated_owned_requirement_is_kept_once() {
     let input = format!("{}7", "a".repeat(16));
     let before = LIVE.load(Relaxed);
     PEAK.store(before, Relaxed);
-    let err = Exponential::parse::<Value, level::Max>(&input).unwrap_err();
+    let err = Exponential::parse::<success::Value, level::Max>(&input).unwrap_err();
     let peak = PEAK.load(Relaxed) - before;
     assert_eq!(
         err.to_string(),

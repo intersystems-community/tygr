@@ -131,7 +131,7 @@ fn first(variant: &Variant) -> TokenStream {
 /// whatever the mode and check it.
 fn parse(model: &Model, variant: &Variant) -> TokenStream {
     let mode = if model.validated {
-        quote! { ::tygr::Value }
+        quote! { ::tygr::success::Value }
     } else {
         quote! { __Success }
     };

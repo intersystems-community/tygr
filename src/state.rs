@@ -1,7 +1,8 @@
 //! The state threaded through parsing, and the [`Error`] it builds.
 
 use crate::bnf::{Expr, Lazy, escape};
-use crate::grammar::{Parse, Success, Unit};
+use crate::grammar::{Parse, Success};
+use crate::success::Unit;
 use std::borrow::Cow;
 use std::fmt;
 use std::ops::Range;
@@ -112,7 +113,7 @@ pub trait Level: Sized + 'static + private::Sealed {
 }
 
 /// The tracing levels, least to most: [`Min`], [`Pos`], [`Max`]. With
-/// `use tygr::*`, a call reads `parse::<Value, level::Max>`.
+/// `use tygr::*`, a call reads `parse::<success::Value, level::Max>`.
 pub mod level {
     /// The [`Level`](crate::Level) tracing nothing: the fastest parse, whose
     /// [`Error`](crate::Error) says only that it failed.
