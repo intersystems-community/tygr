@@ -20,8 +20,9 @@ echo '{"a": 1}'         | cargo run --example json -- test    # check well-forme
 
 ## See Also
 
-[Related work](RELATED_WORK.md): how tygr compares with other tools that derive
-routines from a grammar, and with other Rust parser libraries.
+[RELATED_WORK.md](RELATED_WORK.md) places tygr among the tools that derive several
+routines from one grammar, and among Rust parser libraries by how their grammars
+are written.
 
 ## Contributing
 
