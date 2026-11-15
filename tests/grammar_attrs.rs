@@ -53,7 +53,7 @@ struct UsesHidden(Digits, Semi);
 #[test]
 fn hidden_field_vanishes_from_the_outer_rule_but_still_parses_and_prints() {
     assert_eq!(rule::<UsesHidden>(), "UsesHidden = Digits .");
-    let v = UsesHidden::parse::<Value, Max>("1;").unwrap();
+    let v = UsesHidden::parse::<Value, level::Max>("1;").unwrap();
     assert_eq!(v.print(), "1;");
 }
 
@@ -91,9 +91,9 @@ fn hidden_alternative_or_lookahead_vanishes() {
         rule::<UsesHiddenAlternative>(),
         "UsesHiddenAlternative = Digits custom_name ."
     );
-    assert!(UsesHiddenAlternative::parse::<Value, Max>(";x").is_ok());
+    assert!(UsesHiddenAlternative::parse::<Value, level::Max>(";x").is_ok());
     assert_eq!(
-        UsesHiddenAlternative::parse::<Value, Max>("1x;")
+        UsesHiddenAlternative::parse::<Value, level::Max>("1x;")
             .unwrap_err()
             .to_string(),
         "parse error at byte 2, expected:\n\t- anything but the text at 2..3"
@@ -172,12 +172,15 @@ impl Validate for NonZero {
 
 #[test]
 fn validated_accepts_values_that_pass_validation() {
-    assert_eq!(NonZero::parse::<Value, Max>("123").unwrap().print(), "123");
+    assert_eq!(
+        NonZero::parse::<Value, level::Max>("123").unwrap().print(),
+        "123"
+    );
 }
 
 #[test]
 fn validated_rejects_values_that_fail_validation() {
-    assert!(NonZero::parse::<Value, Max>("007").is_err());
+    assert!(NonZero::parse::<Value, level::Max>("007").is_err());
 }
 
 #[test]
@@ -288,18 +291,20 @@ enum Converted {
 #[test]
 fn conversions_parse_and_print_and_only_fallible_ones_get_a_footnote() {
     let Converted::Fields(n, _, text, _, digit, flag) =
-        Converted::parse::<Value, Max>("42,07;51").unwrap()
+        Converted::parse::<Value, level::Max>("42,07;51").unwrap()
     else {
         panic!()
     };
     assert_eq!((n, text.as_str(), digit, flag), (42, "07", 5, true));
     assert_eq!(
-        Converted::parse::<Value, Max>("null").unwrap(),
+        Converted::parse::<Value, level::Max>("null").unwrap(),
         Converted::Null
     );
     assert_eq!(Converted::Null.print(), "null");
     assert_eq!(
-        Converted::parse::<Value, Max>("42,07;51").unwrap().print(),
+        Converted::parse::<Value, level::Max>("42,07;51")
+            .unwrap()
+            .print(),
         "42,07;51"
     );
     assert_eq!(
@@ -308,8 +313,8 @@ fn conversions_parse_and_print_and_only_fallible_ones_get_a_footnote() {
     );
     for bad in ["42,07;52", "99999999999,07;51", "nul"] {
         assert!(
-            Converted::parse::<Value, Max>(bad).is_err()
-                && Converted::parse::<Unit, Max>(bad).is_err()
+            Converted::parse::<Value, level::Max>(bad).is_err()
+                && Converted::parse::<Unit, level::Max>(bad).is_err()
         );
     }
 }
@@ -331,8 +336,8 @@ fn validated_fallible_conversion_bnf_shows_both_side_conditions() {
         rule::<EvenNumber>(),
         "EvenNumber = ( 'digit' { 'digit' } ) ^1 ^2 .\n^1: be convertible to u32\n^2: be even"
     );
-    assert!(EvenNumber::parse::<Value, Max>("4").is_ok());
-    assert!(EvenNumber::parse::<Value, Max>("3").is_err());
+    assert!(EvenNumber::parse::<Value, level::Max>("4").is_ok());
+    assert!(EvenNumber::parse::<Value, level::Max>("3").is_err());
 }
 
 #[derive(Debug)]
@@ -358,7 +363,7 @@ fn a_conversion_requires_its_field_type_as_written() {
         rule::<Converts>(),
         "Converts = Digits ^1 \",\" Digits ^2 .\n^1: be convertible to Small<u8>\n^2: be convertible to std::num::NonZeroU8"
     );
-    assert!(Converts::parse::<Value, Max>("7,300").is_err());
+    assert!(Converts::parse::<Value, level::Max>("7,300").is_err());
 }
 
 #[derive(Debug, Parse)]
@@ -382,9 +387,9 @@ fn validated_infallible_conversion_bnf_shows_only_the_validation() {
 
 #[test]
 fn validated_conversion_rejects_when_checking_too() {
-    assert!(NonZeroDigit::parse::<Value, Max>("5").is_ok());
-    assert!(NonZeroDigit::parse::<Value, Max>("0").is_err());
-    assert!(NonZeroDigit::parse::<Unit, Max>("0").is_err());
+    assert!(NonZeroDigit::parse::<Value, level::Max>("5").is_ok());
+    assert!(NonZeroDigit::parse::<Value, level::Max>("0").is_err());
+    assert!(NonZeroDigit::parse::<Unit, level::Max>("0").is_err());
 }
 
 static CONVERSIONS: AtomicUsize = AtomicUsize::new(0);
@@ -409,16 +414,16 @@ struct UsesCounted(#[tygr(from_str_infallible = StringOf1<Digit>)] Counted);
 fn infallible_conversion_is_skipped_when_checking() {
     let before = CONVERSIONS.load(Relaxed);
     assert!(
-        UsesCounted::parse::<Unit, Max>("123").is_ok()
-            && Counted::parse::<Unit, Max>("123").is_ok()
+        UsesCounted::parse::<Unit, level::Max>("123").is_ok()
+            && Counted::parse::<Unit, level::Max>("123").is_ok()
     );
     assert_eq!(CONVERSIONS.load(Relaxed), before);
     assert_eq!(
-        UsesCounted::parse::<Value, Max>("123").unwrap().0,
+        UsesCounted::parse::<Value, level::Max>("123").unwrap().0,
         Counted("123".into())
     );
     assert_eq!(
-        Counted::parse::<Value, Max>("123").unwrap(),
+        Counted::parse::<Value, level::Max>("123").unwrap(),
         Counted("123".into())
     );
     assert_eq!(CONVERSIONS.load(Relaxed), before + 2);
@@ -434,7 +439,7 @@ struct PrintedOnly(StringEq!("#"), Digits);
 
 #[test]
 fn parse_and_print_derive_separately() {
-    assert_eq!(ParsedOnly::parse::<Value, Max>("42").unwrap().0, 42);
+    assert_eq!(ParsedOnly::parse::<Value, level::Max>("42").unwrap().0, 42);
     let printed = PrintedOnly(Default::default(), Digits(Raw::new("42")));
     assert_eq!(printed.print(), "#42");
 }
@@ -462,7 +467,7 @@ struct Hashable(
 
 #[test]
 fn a_grammar_of_combinators_derives_hash() {
-    let parse = || Hashable::parse::<Value, Max>("(1)#23,4;56").unwrap();
+    let parse = || Hashable::parse::<Value, level::Max>("(1)#23,4;56").unwrap();
     assert_eq!(std::collections::HashSet::from([parse(), parse()]).len(), 1);
 }
 
@@ -497,10 +502,10 @@ enum Units {
 #[test]
 fn a_unit_variant_converts_its_source_into_unit() {
     for (text, unit) in [("a", Units::A), ("1", Units::One), ("kw", Units::Kw)] {
-        assert_eq!(Units::parse::<Value, Max>(text).unwrap(), unit);
+        assert_eq!(Units::parse::<Value, level::Max>(text).unwrap(), unit);
         assert_eq!(unit.print(), text);
     }
-    assert_eq!(Units::parse::<Value, Max>("KW").unwrap(), Units::Kw);
+    assert_eq!(Units::parse::<Value, level::Max>("KW").unwrap(), Units::Kw);
     assert_eq!(
         rule::<Units>(),
         "Units = \"a\" ^1 | \"1\" | Keyword .\n^1: be convertible to ()"
@@ -526,7 +531,10 @@ struct Pair(
 
 #[test]
 fn phantom_data_prints_only_with_print_to() {
-    assert_eq!(Pair::parse::<Value, Max>("1,  2").unwrap().print(), "1,2");
+    assert_eq!(
+        Pair::parse::<Value, level::Max>("1,  2").unwrap().print(),
+        "1,2"
+    );
 }
 
 #[derive(Grammar)]
@@ -534,8 +542,12 @@ enum Never {}
 
 #[test]
 fn an_empty_enum_never_parses() {
-    assert!(Never::parse::<Value, Max>("").is_err());
-    assert!(<Option<Never>>::parse::<Value, Max>("").unwrap().is_none());
+    assert!(Never::parse::<Value, level::Max>("").is_err());
+    assert!(
+        <Option<Never>>::parse::<Value, level::Max>("")
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[derive(Grammar)]
@@ -546,8 +558,11 @@ struct Num<T: FromStr<Err: std::fmt::Display> + std::fmt::Display>(
 
 #[test]
 fn a_converted_field_can_be_generic() {
-    assert_eq!(Num::<u32>::parse::<Value, Max>("42").unwrap().0, 42);
-    assert_eq!(Num::<i8>::parse::<Value, Max>("42").unwrap().print(), "42");
+    assert_eq!(Num::<u32>::parse::<Value, level::Max>("42").unwrap().0, 42);
+    assert_eq!(
+        Num::<i8>::parse::<Value, level::Max>("42").unwrap().print(),
+        "42"
+    );
 }
 
 trait Dialect {
@@ -566,10 +581,12 @@ struct Stmt<D: Dialect>(D::Kw, Digits);
 #[test]
 fn an_unbounded_parameter_keeps_only_its_own_bounds() {
     assert_eq!(
-        Stmt::<En>::parse::<Value, Max>("if1").unwrap().print(),
+        Stmt::<En>::parse::<Value, level::Max>("if1")
+            .unwrap()
+            .print(),
         "if1"
     );
-    assert!(Stmt::<En>::parse::<Value, Max>("if").is_err());
+    assert!(Stmt::<En>::parse::<Value, level::Max>("if").is_err());
 }
 
 // Conversions on the type: `#[tygr(<kind> = S)]` on a struct or enum
@@ -610,10 +627,14 @@ fn print_color(color: &Color, buf: &mut String) {
 
 #[test]
 fn an_enum_converts_its_source_into_the_whole_value() {
-    assert_eq!(Color::parse::<Value, Max>("red").unwrap(), Color::Red);
+    assert_eq!(
+        Color::parse::<Value, level::Max>("red").unwrap(),
+        Color::Red
+    );
     assert_eq!(Color::Blue.print(), "blue");
     assert!(
-        Color::parse::<Value, Max>("pink").is_err() && Color::parse::<Unit, Max>("pink").is_err()
+        Color::parse::<Value, level::Max>("pink").is_err()
+            && Color::parse::<Unit, level::Max>("pink").is_err()
     );
     assert_eq!(
         rule::<Color>(),
@@ -662,15 +683,18 @@ fn print_point(point: &Point, buf: &mut String) {
 
 #[test]
 fn a_struct_converts_from_its_source_or_its_text() {
-    assert_eq!(Port::parse::<Value, Max>("8080").unwrap(), Port(8080));
-    assert!(Port::parse::<Value, Max>("99999").is_err());
+    assert_eq!(
+        Port::parse::<Value, level::Max>("8080").unwrap(),
+        Port(8080)
+    );
+    assert!(Port::parse::<Value, level::Max>("99999").is_err());
     assert_eq!(Port(443).print(), "443");
     assert_eq!(
         rule::<Port>(),
         "Port = Digits ^1 .\n^1: be convertible to Port"
     );
     assert_eq!(
-        Point::parse::<Value, Max>("1,2").unwrap(),
+        Point::parse::<Value, level::Max>("1,2").unwrap(),
         Point { x: 1, y: 2 }
     );
     assert_eq!(Point { x: 3, y: 4 }.print(), "3,4");
@@ -684,10 +708,12 @@ struct Colors(Color, StringEq!(","), Color);
 #[test]
 fn a_converted_type_is_a_rule_other_rules_refer_to() {
     assert_eq!(
-        Colors::parse::<Value, Max>("red,blue").unwrap().print(),
+        Colors::parse::<Value, level::Max>("red,blue")
+            .unwrap()
+            .print(),
         "red,blue"
     );
-    assert!(Colors::parse::<Value, Max>("red,pink").is_err());
+    assert!(Colors::parse::<Value, level::Max>("red,pink").is_err());
     let rules: Vec<String> = Colors::bnf_rules()
         .iter()
         .map(ToString::to_string)
@@ -727,8 +753,11 @@ fn a_converted_type_is_validated_after_converting() {
         rule::<Even>(),
         "even = ( 'digit' { 'digit' } ) ^1 ^2 .\n^1: be convertible to Even\n^2: be even"
     );
-    assert_eq!(Even::parse::<Value, Max>("4").unwrap().0, 4);
-    assert!(Even::parse::<Value, Max>("3").is_err() && Even::parse::<Unit, Max>("3").is_err());
+    assert_eq!(Even::parse::<Value, level::Max>("4").unwrap().0, 4);
+    assert!(
+        Even::parse::<Value, level::Max>("3").is_err()
+            && Even::parse::<Unit, level::Max>("3").is_err()
+    );
 }
 
 /// A converted type's generic parameter is no grammar either.
@@ -752,10 +781,12 @@ impl<T: FromStr<Err: fmt::Display> + fmt::Display> fmt::Display for Parsed<T> {
 #[test]
 fn a_converted_type_can_be_generic() {
     assert_eq!(
-        Parsed::<u8>::parse::<Value, Max>("42").unwrap().print(),
+        Parsed::<u8>::parse::<Value, level::Max>("42")
+            .unwrap()
+            .print(),
         "42"
     );
-    assert!(Parsed::<u8>::parse::<Value, Max>("300").is_err());
+    assert!(Parsed::<u8>::parse::<Value, level::Max>("300").is_err());
     assert_eq!(
         rule::<Parsed<i8>>(),
         "Parsed = ( 'digit' { 'digit' } ) ^1 .\n^1: be convertible to Parsed<T>"
@@ -788,7 +819,7 @@ struct UsesConvertedTypes(InlineColor, StringEq!(":"), HiddenWord);
 
 #[test]
 fn a_converted_type_can_be_inline_or_hidden() {
-    let value = UsesConvertedTypes::parse::<Value, Max>("red:x").unwrap();
+    let value = UsesConvertedTypes::parse::<Value, level::Max>("red:x").unwrap();
     assert_eq!((value.0.0, value.2.0.as_str()), (Color::Red, "x"));
     assert_eq!(
         rule::<UsesConvertedTypes>(),
@@ -818,7 +849,10 @@ fn print_null_struct(_: &NullStruct, buf: &mut String) {
 
 #[test]
 fn a_unit_struct_converts_from_a_literal() {
-    assert_eq!(NullStruct::parse::<Value, Max>("null").unwrap(), NullStruct);
+    assert_eq!(
+        NullStruct::parse::<Value, level::Max>("null").unwrap(),
+        NullStruct
+    );
     assert_eq!(NullStruct.print(), "null");
     assert_eq!(rule::<NullStruct>(), "NullStruct = \"null\" .");
 }

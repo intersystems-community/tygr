@@ -6,6 +6,8 @@ use std::borrow::Cow;
 use std::fmt;
 use std::ops::Range;
 
+use level::{Max, Min, Pos};
+
 /// Parse state threaded through [`Parse::parse_at`](crate::Parse::parse_at),
 /// tracing at level `L`. A hand-written grammar enters its rule with
 /// [`node`](Self::node), passes a [`reborrow`](Self::reborrow) to each
@@ -109,21 +111,25 @@ pub trait Level: Sized + 'static + private::Sealed {
     ) -> Result<(S::Output<T>, usize), Error<Self>>;
 }
 
-/// The [`Level`] tracing nothing: the fastest parse, whose [`Error`] says
-/// only that it failed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Min;
+/// The tracing levels, least to most: [`Min`], [`Pos`], [`Max`]. With
+/// `use tygr::*`, a call reads `parse::<Value, level::Max>`.
+pub mod level {
+    /// The [`Level`](crate::Level) tracing nothing: the fastest parse, whose
+    /// [`Error`](crate::Error) says only that it failed.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Min;
 
-/// The [`Level`] tracking the furthest position reached, which its
-/// [`Error`] reports.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Pos;
+    /// The [`Level`](crate::Level) tracking the furthest position reached,
+    /// which its [`Error`](crate::Error) reports.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Pos;
 
-/// The [`Level`] reporting where the parse failed and what was expected
-/// there, in the chain of rules entered: the default [`Error`]. A failure
-/// costs a second parse.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Max;
+    /// The [`Level`](crate::Level) reporting where the parse failed and what
+    /// was expected there, in the chain of rules entered: the default
+    /// [`Error`](crate::Error). A failure costs a second parse.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Max;
+}
 
 impl Level for Min {
     const IS_MAX: bool = false;
@@ -254,12 +260,12 @@ fn pass<T: Parse, S: Success, L: Level>(
 }
 
 mod private {
-    /// Only [`Min`](super::Min), [`Pos`](super::Pos) and [`Max`](super::Max)
+    /// Only [`Min`](super::level::Min), [`Pos`](super::level::Pos) and [`Max`](super::level::Max)
     /// are levels.
     pub trait Sealed {}
-    impl Sealed for super::Min {}
-    impl Sealed for super::Pos {}
-    impl Sealed for super::Max {}
+    impl Sealed for super::level::Min {}
+    impl Sealed for super::level::Pos {}
+    impl Sealed for super::level::Max {}
 }
 
 /// A parse failure, traced at level `L`: that it failed ([`Min`]), where

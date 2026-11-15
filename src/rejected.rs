@@ -118,7 +118,7 @@ fn field_that_is_no_grammar() {}
 /// use tygr::*;
 /// #[derive(Parse)]
 /// struct S(Vec<Option<StringEq!("a")>>);
-/// S::parse::<Value, Max>("a");
+/// S::parse::<Value, level::Max>("a");
 /// ```
 fn repeated_nullable() {}
 
@@ -126,6 +126,6 @@ fn repeated_nullable() {}
 /// use tygr::*;
 /// #[derive(Parse)]
 /// struct S(Vec1<Option<StringEq!("a")>>);
-/// S::parse::<Value, Max>("a");
+/// S::parse::<Value, level::Max>("a");
 /// ```
 fn repeated_nullable_once_or_more() {}

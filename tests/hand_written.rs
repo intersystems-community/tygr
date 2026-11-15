@@ -59,10 +59,15 @@ enum Item {
 
 #[test]
 fn a_hand_written_leaf_parses_checks_traces_and_prints() {
-    assert_eq!(Word::parse::<Value, Max>("héllo").unwrap().print(), "héllo");
-    assert_eq!(Word::parse_prefix::<Unit, Max>("ab1").unwrap().1, 2);
     assert_eq!(
-        Word::parse::<Value, Max>("a1").unwrap_err().to_string(),
+        Word::parse::<Value, level::Max>("héllo").unwrap().print(),
+        "héllo"
+    );
+    assert_eq!(Word::parse_prefix::<Unit, level::Max>("ab1").unwrap().1, 2);
+    assert_eq!(
+        Word::parse::<Value, level::Max>("a1")
+            .unwrap_err()
+            .to_string(),
         "parse error at byte 2, expected:\n\t- Letter at 1..2 must be a letter"
     );
     let rules: Vec<String> = Word::bnf_rules().iter().map(ToString::to_string).collect();
@@ -78,7 +83,9 @@ fn a_hand_written_leaf_parses_checks_traces_and_prints() {
 #[test]
 fn a_hand_written_leaf_reports_itself_when_skipped() {
     assert_eq!(
-        Item::parse::<Value, Max>("").unwrap_err().to_string(),
+        Item::parse::<Value, level::Max>("")
+            .unwrap_err()
+            .to_string(),
         "parse error at byte 0, expected:\n\t- Item\n\t- Letter"
     );
 }
@@ -135,8 +142,8 @@ enum Twice {
 
 #[test]
 fn a_rejection_carries_a_message_built_while_parsing() {
-    assert_eq!(Small::parse::<Value, Max>("3").unwrap().0, 3);
-    let err = Twice::parse::<Value, Max>("7").unwrap_err();
+    assert_eq!(Small::parse::<Value, level::Max>("3").unwrap().0, 3);
+    let err = Twice::parse::<Value, level::Max>("7").unwrap_err();
     assert_eq!(
         err.to_string(),
         "parse error at byte 1, expected:\n\t- Small at 0..1 must be a digit below 5, not '7'"

@@ -197,7 +197,7 @@ impl<T: Parse + Print> Grammar for T {}
 ///     }
 /// }
 ///
-/// assert_eq!(Paren::<char>::parse::<Value, Max>("(x)").unwrap().0, 'x');
+/// assert_eq!(Paren::<char>::parse::<Value, level::Max>("(x)").unwrap().0, 'x');
 /// assert_eq!(Paren::<char>::bnf_rules()[0].to_string(), r#"Paren = "(" 'any' ")" ."#);
 /// ```
 pub trait Success: 'static + private::Sealed {
