@@ -111,19 +111,19 @@ impl Expr {
         }
     }
 
-    /// `!expr`, or `expr` if it's hidden.
+    /// `!expr`; hidden if `expr` is.
     pub fn not_followed_by(expr: Expr) -> Expr {
         if expr == Expr::Hidden {
-            expr
+            Expr::Hidden
         } else {
             Expr::NotFollowedBy(Box::new(expr))
         }
     }
 
-    /// `expr` with a footnoted side-condition, or `expr` if it's hidden.
+    /// `expr` with a footnoted side-condition; hidden if `expr` is.
     pub fn side_condition(expr: Expr, text: &'static str) -> Expr {
         if expr == Expr::Hidden {
-            expr
+            Expr::Hidden
         } else {
             Expr::SideCondition(Box::new(expr), text)
         }
