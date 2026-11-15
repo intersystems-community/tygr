@@ -24,8 +24,7 @@ use success::{Unit, Value};
 pub trait Parse: Sized + 'static {
     /// The bytes this grammar can start with, and whether it can match empty
     /// input. A dispatch table skips the alternatives whose `First` rules the
-    /// next byte out, and `Vec<T>` and `Vec1<T>` require a `T` that can't
-    /// match empty. A byte left out, or empty input denied, skips a match;
+    /// next byte out. A byte left out, or empty input denied, skips a match;
     /// extra bytes only cost attempts.
     ///
     /// A hand-written grammar builds it from its parts', as the derive does:

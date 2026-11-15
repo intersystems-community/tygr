@@ -36,9 +36,9 @@ three, and a parse can trace nothing at all.
   and `parse_prefix::<success::Unit, L>`. `Error<L>`, `Error<Max>` by
   default, has `pos()` at `Pos` and `Max`, `traces()` at `Max`, and each
   level prints what it knows.
-- `Vec<T>` and `Vec1<T>` reject, at compile time, a `T` that can match
-  empty, as repeating it would never progress; they used to stop at the
-  first item that matched empty.
+- `Vec<T>` and `Vec1<T>` no longer end at an item that matches empty:
+  repeating one never progresses, a bug in the grammar, which now loops as
+  a `while` would rather than being papered over.
 - `Success` and `Level` are sealed.
 - `Wrap`'s fields are `prefix`, `wrapped` and `suffix` (were `before` and
   `after`), as `Prefix` and `Suffix` name theirs.
