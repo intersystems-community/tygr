@@ -11,7 +11,7 @@ use std::ops::Range;
 /// [`node`](Self::node), passes a [`reborrow`](Self::reborrow) to each
 /// grammar it delegates to, and says what it [`expect`](Self::expect)ed
 /// where it fails on its own.
-pub struct State<'a, L: Level>(L::Store<'a>);
+pub struct State<'a, L: Level>(L::State<'a>);
 
 impl<'a, L: Level> State<'a, L> {
     /// Reborrow for a nested call.
@@ -83,23 +83,22 @@ pub trait Level: Sized + 'static + private::Sealed {
     /// says what it expected, rather than skipped when it can't match.
     const IS_MAX: bool;
 
+    /// What a [`State`] at this level carries.
     #[doc(hidden)]
-    type Store<'a>;
+    type State<'a>;
+
+    /// What an [`Error`] at this level carries.
+    #[doc(hidden)]
+    type Error: Clone + fmt::Debug + fmt::Display + PartialEq + Eq;
 
     #[doc(hidden)]
-    type Pos: Copy + fmt::Debug + PartialEq + Eq;
+    fn reborrow<'s, 'a: 's>(state: &'s mut Self::State<'a>) -> Self::State<'s>;
 
     #[doc(hidden)]
-    type Traces: Clone + fmt::Debug + PartialEq + Eq;
+    fn enter<'s, 'a: 's>(state: &'s mut Self::State<'a>, frame: Frame) -> Self::State<'s>;
 
     #[doc(hidden)]
-    fn reborrow<'s, 'a: 's>(store: &'s mut Self::Store<'a>) -> Self::Store<'s>;
-
-    #[doc(hidden)]
-    fn enter<'s, 'a: 's>(store: &'s mut Self::Store<'a>, frame: Frame) -> Self::Store<'s>;
-
-    #[doc(hidden)]
-    fn expect(store: &mut Self::Store<'_>, pos: usize, expectation: impl FnOnce() -> Expectation);
+    fn expect(state: &mut Self::State<'_>, pos: usize, expectation: impl FnOnce() -> Expectation);
 
     /// Parse `T` at the start of `input`, to its end if `whole`: what the
     /// entry points do.
@@ -126,50 +125,45 @@ pub struct Max;
 
 impl Level for Min {
     const IS_MAX: bool = false;
-    type Store<'a> = ();
-    type Pos = ();
-    type Traces = ();
+    type State<'a> = ();
+    type Error = Failed;
 
     #[inline(always)]
-    fn reborrow<'s, 'a: 's>(_store: &'s mut ()) {}
+    fn reborrow<'s, 'a: 's>(_state: &'s mut ()) {}
 
     #[inline(always)]
-    fn enter<'s, 'a: 's>(_store: &'s mut (), _frame: Frame) {}
+    fn enter<'s, 'a: 's>(_state: &'s mut (), _frame: Frame) {}
 
     #[inline(always)]
-    fn expect(_store: &mut (), _pos: usize, _expectation: impl FnOnce() -> Expectation) {}
+    fn expect(_state: &mut (), _pos: usize, _expectation: impl FnOnce() -> Expectation) {}
 
     fn run<T: Parse, S: Success>(
         input: &str,
         whole: bool,
     ) -> Result<(S::Output<T>, usize), Error<Min>> {
-        pass::<T, S, Min>(input, whole, State(())).ok_or(Error {
-            pos: (),
-            traces: (),
-        })
+        pass::<T, S, Min>(input, whole, State(())).ok_or(Error(Failed))
     }
 }
 
 impl Level for Pos {
     const IS_MAX: bool = false;
-    type Store<'a> = &'a mut usize;
-    type Pos = usize;
-    type Traces = ();
+    type State<'a> = &'a mut usize;
+    type Error = FailedAt;
 
     #[inline(always)]
-    fn reborrow<'s, 'a: 's>(store: &'s mut &'a mut usize) -> &'s mut usize {
-        store
+    fn reborrow<'s, 'a: 's>(state: &'s mut &'a mut usize) -> &'s mut usize {
+        state
     }
 
     #[inline(always)]
-    fn enter<'s, 'a: 's>(store: &'s mut &'a mut usize, _frame: Frame) -> &'s mut usize {
-        store
+    fn enter<'s, 'a: 's>(state: &'s mut &'a mut usize, _frame: Frame) -> &'s mut usize {
+        state
     }
 
     #[inline(always)]
-    fn expect(store: &mut &mut usize, pos: usize, _expectation: impl FnOnce() -> Expectation) {
-        if pos > **store {
-            **store = pos;
+    fn expect(state: &mut &mut usize, pos: usize, _expectation: impl FnOnce() -> Expectation) {
+        if pos > **state {
+            **state = pos;
         }
     }
 
@@ -178,52 +172,51 @@ impl Level for Pos {
         whole: bool,
     ) -> Result<(S::Output<T>, usize), Error<Pos>> {
         let mut pos = 0;
-        pass::<T, S, Pos>(input, whole, State(&mut pos)).ok_or(Error { pos, traces: () })
+        pass::<T, S, Pos>(input, whole, State(&mut pos)).ok_or(Error(FailedAt(pos)))
     }
 }
 
-/// [`Max`]'s store: the error being built and the rules entered so far, a
+/// [`Max`]'s state: the error being built and the rules entered so far, a
 /// list through the stack.
 #[doc(hidden)]
 pub struct Recorder<'a> {
-    error: &'a mut Error,
+    error: &'a mut Traced,
     frames: Option<Frames<'a>>,
 }
 
 impl Level for Max {
     const IS_MAX: bool = true;
-    type Store<'a> = Recorder<'a>;
-    type Pos = usize;
-    type Traces = Vec<Trace>;
+    type State<'a> = Recorder<'a>;
+    type Error = Traced;
 
     #[inline(always)]
-    fn reborrow<'s, 'a: 's>(store: &'s mut Recorder<'a>) -> Recorder<'s> {
+    fn reborrow<'s, 'a: 's>(state: &'s mut Recorder<'a>) -> Recorder<'s> {
         Recorder {
-            error: store.error,
-            frames: store.frames,
+            error: state.error,
+            frames: state.frames,
         }
     }
 
     #[inline(always)]
-    fn enter<'s, 'a: 's>(store: &'s mut Recorder<'a>, frame: Frame) -> Recorder<'s> {
+    fn enter<'s, 'a: 's>(state: &'s mut Recorder<'a>, frame: Frame) -> Recorder<'s> {
         Recorder {
-            error: store.error,
+            error: state.error,
             frames: Some(Frames {
                 frame,
-                parent: store.frames.as_ref(),
+                parent: state.frames.as_ref(),
             }),
         }
     }
 
     #[inline(always)]
-    fn expect(store: &mut Recorder<'_>, pos: usize, expectation: impl FnOnce() -> Expectation) {
-        if pos == store.error.pos {
-            record(store, expectation);
+    fn expect(state: &mut Recorder<'_>, pos: usize, expectation: impl FnOnce() -> Expectation) {
+        if pos == state.error.pos {
+            record(state, expectation);
         }
     }
 
     fn run<T: Parse, S: Success>(input: &str, whole: bool) -> Result<(S::Output<T>, usize), Error> {
-        let mut error = Error {
+        let mut error = Traced {
             pos: 0,
             traces: Vec::new(),
         };
@@ -235,17 +228,17 @@ impl Level for Max {
             frames: None,
         };
         pass::<T, Unit, Max>(input, whole, State(recorder));
-        Err(error)
+        Err(Error(error))
     }
 }
 
 /// Record `expectation` at the furthest position, in the rules entered.
 #[cold]
 #[inline(never)]
-fn record(store: &mut Recorder<'_>, expectation: impl FnOnce() -> Expectation) {
-    let frames = std::iter::successors(store.frames.as_ref(), |frames| frames.parent)
+fn record(state: &mut Recorder<'_>, expectation: impl FnOnce() -> Expectation) {
+    let frames = std::iter::successors(state.frames.as_ref(), |frames| frames.parent)
         .map(|frames| frames.frame);
-    store.error.record(frames, expectation());
+    state.error.record(frames, expectation());
 }
 
 /// One pass: `T` at the start of `input` and, if `whole`, its end.
@@ -269,27 +262,101 @@ mod private {
 
 /// A parse failure, traced at level `L`: that it failed ([`Min`]), where
 /// ([`Pos`]), or where and what was expected there ([`Max`], the default).
-pub struct Error<L: Level = Max> {
-    pos: L::Pos,
-    traces: L::Traces,
-}
+pub struct Error<L: Level = Max>(L::Error);
 
-impl<L: Level<Pos = usize>> Error<L> {
+impl Error<Pos> {
     /// The furthest byte offset reached; [`OLC`](crate::OLC) maps it to a
     /// `(line, character)`.
     pub fn pos(&self) -> usize {
-        self.pos
-    }
-}
-
-impl<L: Level<Traces = Vec<Trace>>> Error<L> {
-    /// What was expected at [`pos`](Self::pos), without repeats.
-    pub fn traces(&self) -> &[Trace] {
-        &self.traces
+        self.0.0
     }
 }
 
 impl Error {
+    /// The furthest byte offset reached; [`OLC`](crate::OLC) maps it to a
+    /// `(line, character)`.
+    pub fn pos(&self) -> usize {
+        self.0.pos
+    }
+
+    /// What was expected at [`pos`](Self::pos), without repeats.
+    pub fn traces(&self) -> &[Trace] {
+        &self.0.traces
+    }
+}
+
+impl<L: Level> Clone for Error<L> {
+    fn clone(&self) -> Self {
+        Error(self.0.clone())
+    }
+}
+
+impl<L: Level> PartialEq for Error<L> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<L: Level> Eq for Error<L> {}
+
+impl<L: Level> fmt::Display for Error<L> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl<L: Level> fmt::Debug for Error<L> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+impl<L: Level> std::error::Error for Error<L> {}
+
+/// [`Min`]'s error: only that the parse failed.
+#[doc(hidden)]
+#[derive(Clone, PartialEq, Eq)]
+pub struct Failed;
+
+impl fmt::Display for Failed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("parse error")
+    }
+}
+
+impl fmt::Debug for Failed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
+/// [`Pos`]'s error: the furthest byte offset reached.
+#[doc(hidden)]
+#[derive(Clone, PartialEq, Eq)]
+pub struct FailedAt(usize);
+
+impl fmt::Display for FailedAt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "parse error at byte {}", self.0)
+    }
+}
+
+impl fmt::Debug for FailedAt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
+/// [`Max`]'s error: the furthest byte offset reached, and what was expected
+/// there.
+#[doc(hidden)]
+#[derive(Clone, PartialEq, Eq)]
+pub struct Traced {
+    pos: usize,
+    traces: Vec<Trace>,
+}
+
+impl Traced {
     /// Record `expectation` in `frames` (innermost first), unless it's
     /// recorded there already: a backtracking grammar can expect the same few
     /// things exponentially often.
@@ -309,50 +376,7 @@ impl Error {
     }
 }
 
-impl<L: Level> Clone for Error<L> {
-    fn clone(&self) -> Self {
-        Error {
-            pos: self.pos,
-            traces: self.traces.clone(),
-        }
-    }
-}
-
-impl<L: Level> PartialEq for Error<L> {
-    fn eq(&self, other: &Self) -> bool {
-        self.pos == other.pos && self.traces == other.traces
-    }
-}
-
-impl<L: Level> Eq for Error<L> {}
-
-impl<L: Level> std::error::Error for Error<L> where Self: fmt::Debug + fmt::Display {}
-
-impl fmt::Display for Error<Min> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("parse error")
-    }
-}
-
-impl fmt::Debug for Error<Min> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
-    }
-}
-
-impl fmt::Display for Error<Pos> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "parse error at byte {}", self.pos)
-    }
-}
-
-impl fmt::Debug for Error<Pos> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
-    }
-}
-
-impl fmt::Display for Error {
+impl fmt::Display for Traced {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "parse error at byte {}", self.pos)?;
         let mut lines: Vec<String> = self
@@ -380,7 +404,7 @@ impl fmt::Display for Error {
     }
 }
 
-impl fmt::Debug for Error {
+impl fmt::Debug for Traced {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "parse error at byte {}", self.pos)?;
         if !self.traces.is_empty() {
@@ -398,7 +422,7 @@ impl fmt::Debug for Error {
 }
 
 /// The rules entered so far, innermost first: a list through the stack, as
-/// [`Max`]'s store.
+/// [`Max`]'s state.
 #[doc(hidden)]
 #[derive(Clone, Copy)]
 pub struct Frames<'a> {
