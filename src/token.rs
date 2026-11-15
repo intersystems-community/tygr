@@ -9,7 +9,7 @@ use crate::bnf::{Expr, Rules};
 use crate::first::{ByteSet, Required, byte_set};
 use crate::grammar::{Grammar, Parse, Print, Success};
 use crate::state::{Expectation, Level, State};
-use crate::{Raw, Vec1};
+use crate::{IntoInner, Raw, Vec1};
 
 /// Matches one literal byte.
 #[doc(hidden)]
@@ -370,10 +370,10 @@ fn decode_char(input: &str, pos: usize) -> Option<(char, usize)> {
 /// # use tygr::*;
 /// char_class!(Digit, "digit", |ch| ch.is_ascii_digit());
 ///
-/// assert_eq!(Digit::parse::<Value, Max>("7").unwrap().value(), '7');
+/// assert_eq!(Digit::parse::<Value, Max>("7").unwrap().into_inner(), '7');
 /// assert!(Digit::parse::<Value, Max>("x").is_err());
 /// ```
-pub trait CharClass: Grammar + ByteSet {
+pub trait CharClass: Grammar + ByteSet + IntoInner<char> {
     /// Does `ch` belong to this class?
     fn matches(ch: char) -> bool;
 
@@ -382,9 +382,6 @@ pub trait CharClass: Grammar + ByteSet {
 
     /// Wrap `ch`, unchecked.
     fn new(ch: char) -> Self;
-
-    /// The matched char.
-    fn value(&self) -> char;
 }
 
 /// Define a [`CharClass`] from a `const` predicate, so its first bytes are
@@ -439,7 +436,10 @@ macro_rules! char_class {
             fn matches($ch: char) -> bool { $pred }
             fn name() -> &'static str { $name }
             fn new(ch: char) -> Self { $class(ch) }
-            fn value(&self) -> char { self.0 }
+        }
+
+        impl $crate::IntoInner<char> for $class {
+            fn into_inner(self) -> char { self.0 }
         }
 
         // First bytes: the ASCII ones that match, and every UTF-8 lead byte.

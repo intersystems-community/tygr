@@ -39,6 +39,8 @@ three, and a parse can trace nothing at all.
 - `Success` and `Level` are sealed.
 - `Wrap`'s fields are `prefix`, `wrapped` and `suffix` (were `before` and
   `after`), as `Prefix` and `Suffix` name theirs.
+- `CharClass::value` is gone: a class implements `IntoInner<char>`, like the
+  other wrappers.
 
 ### Non-breaking Changes
 
