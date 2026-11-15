@@ -82,6 +82,7 @@
 //! | a [`char_class!`] type | one char of the class |
 //! | [`StringOf<C>`] / [`StringOf1<C>`] | chars of class `C`, kept as text (`{ C }` / `C { C }`) |
 //! | [`Either<A, B>`](either::Either), from the `either` crate | inline alternation (`A \| B`) |
+//! | [`Infallible`](std::convert::Infallible) | the empty alternation: never matches, e.g. to switch an alternative off by type parameter |
 //! | [`Vec<T>`]     | repetition (`{ T }`)         |
 //! | [`Vec1<T>`]    | one-or-more repetition (`T { T }`)      |
 //! | [`Option<T>`]  | optional (`[ T ]`)           |

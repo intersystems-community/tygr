@@ -42,3 +42,39 @@ fn either_prefix_suffix_and_hidden_parse_print_and_render() {
         r#"Shorthands = ( "a" | Digits ) "-" Digits "!" ."#
     );
 }
+
+type Quote = StringEq!("\"");
+
+#[derive(Grammar, Debug)]
+struct Quoted<T>(Quote, Vec<T>, Quote);
+
+#[derive(Grammar, Debug)]
+struct DigitOrNothing(Either<std::convert::Infallible, Digit>);
+
+#[test]
+fn infallible_never_matches() {
+    assert!(std::convert::Infallible::parse::<success::Unit, level::Max>("").is_err());
+    assert_eq!(
+        Quoted::<std::convert::Infallible>::parse::<success::Unit, level::Max>("\"\""),
+        Ok(())
+    );
+    let err = Quoted::<std::convert::Infallible>::parse::<success::Unit, level::Max>("\"a\"")
+        .unwrap_err();
+    assert_eq!((err.pos(), err.traces().len()), (1, 1));
+    assert_eq!(
+        rule::<Quoted<Digit>>(),
+        r#"Quoted = "\"" { 'digit' } "\"" ."#
+    );
+    assert_eq!(
+        rule::<Quoted<std::convert::Infallible>>(),
+        "Quoted = \"\\\"\" { ( ) ^1 } \"\\\"\" .\n^1: never matches"
+    );
+    assert_eq!(
+        DigitOrNothing::parse::<success::Unit, level::Max>("7"),
+        Ok(())
+    );
+    assert_eq!(
+        rule::<DigitOrNothing>(),
+        "DigitOrNothing = ( ) ^1 | 'digit' .\n^1: never matches"
+    );
+}
