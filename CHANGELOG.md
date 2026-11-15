@@ -11,12 +11,13 @@ three, and a parse can trace nothing at all.
 ### Breaking Changes
 
 - `Mode` is `Success`, with two methods: `output(|| value)`, a lazy pure,
-  and `and_then`, a bind; `Build` and `Check` are `success::Value` and `success::Unit`.
-  `build`, `building`, `get`, `get_mut`, `map`, `RECORD`, `Built`,
-  `Checked`, `value` and `Record<M>` are gone. A part whose value is needed
-  whatever the success is parsed with `parse_at::<success::Value, L>`, one whose
-  value isn't with `parse_at::<success::Unit, L>`; `build_at`, `check_at`,
-  `State::built` and `State::checked` are gone.
+  and `and_then`, a bind; `Build` and `Check` are `success::Value` and
+  `success::Unit`. `build`, `building`, `get`, `get_mut`, `map`, `RECORD`,
+  `Built`, `Checked`, `value` and `Record<M>` are gone. A part whose value
+  is needed whatever the success is parsed with
+  `parse_at::<success::Value, L>`, one whose value isn't with
+  `parse_at::<success::Unit, L>`; `build_at`, `check_at`, `State::built` and
+  `State::checked` are gone.
 - Tracing is the state's `Level`, orthogonal to the success:
   `parse_at<S: Success, L: Level>(input, pos, state: State<L>)`. `Min`
   traces nothing (the state is zero-sized), `Pos` tracks the furthest
@@ -25,15 +26,16 @@ three, and a parse can trace nothing at all.
   `tygr::level` and the successes in `tygr::success`, so a call reads
   `parse::<success::Value, level::Max>`.
 - `Parse::fail_at` is gone: a dispatch table skips variants except at `Max`,
-  where every variant is tried, so each says what it expected by parsing. A hand-written grammar implements `parse_at`,
-  `to_bnf` and `visit_rules`, and `State::expect` is public for it to say
-  what it expected where it fails on its own.
+  where every variant is tried, so each says what it expected by parsing. A
+  hand-written grammar implements `parse_at`, `to_bnf` and `visit_rules`,
+  and `State::expect` is public for it to say what it expected where it
+  fails on its own.
 - The entry points take both parameters: `parse::<S, L>(input)` returns
   `Result<S::Output<Self>, Error<L>>`, and `parse_prefix::<S, L>` the end
-  position too; `check` and `check_prefix` are `parse::<success::Unit, L>` and
-  `parse_prefix::<success::Unit, L>`. `Error<L>`, `Error<Max>` by default, has `pos()`
-  at `Pos` and `Max`, `traces()` at `Max`, and each level prints what it
-  knows.
+  position too; `check` and `check_prefix` are `parse::<success::Unit, L>`
+  and `parse_prefix::<success::Unit, L>`. `Error<L>`, `Error<Max>` by
+  default, has `pos()` at `Pos` and `Max`, `traces()` at `Max`, and each
+  level prints what it knows.
 - `Vec<T>` and `Vec1<T>` reject, at compile time, a `T` that can match
   empty, as repeating it would never progress; they used to stop at the
   first item that matched empty.
