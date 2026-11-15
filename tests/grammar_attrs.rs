@@ -298,10 +298,7 @@ fn conversions_parse_and_print_and_only_fallible_ones_get_a_footnote() {
         "Converted = \"null\" | ( 'digit' { 'digit' } ) ^1 \",\" 'digit' { 'digit' } \";\" 'digit' 'digit' ^2 .\n^1: be convertible to u32\n^2: be convertible to bool"
     );
     for bad in ["42,07;52", "99999999999,07;51", "nul"] {
-        assert!(
-            Converted::parse(bad).is_err()
-                && Converted::parse_with::<success::Unit, level::Max>(bad).is_err()
-        );
+        assert!(Converted::parse(bad).is_err() && Converted::check(bad).is_err());
     }
 }
 
@@ -375,7 +372,7 @@ fn validated_infallible_conversion_bnf_shows_only_the_validation() {
 fn validated_conversion_rejects_when_checking_too() {
     assert!(NonZeroDigit::parse("5").is_ok());
     assert!(NonZeroDigit::parse("0").is_err());
-    assert!(NonZeroDigit::parse_with::<success::Unit, level::Max>("0").is_err());
+    assert!(NonZeroDigit::check("0").is_err());
 }
 
 static CONVERSIONS: AtomicUsize = AtomicUsize::new(0);
@@ -399,10 +396,7 @@ struct UsesCounted(#[tygr(from_str_infallible = StringOf1<Digit>)] Counted);
 #[test]
 fn infallible_conversion_is_skipped_when_checking() {
     let before = CONVERSIONS.load(Relaxed);
-    assert!(
-        UsesCounted::parse_with::<success::Unit, level::Max>("123").is_ok()
-            && Counted::parse_with::<success::Unit, level::Max>("123").is_ok()
-    );
+    assert!(UsesCounted::check("123").is_ok() && Counted::check("123").is_ok());
     assert_eq!(CONVERSIONS.load(Relaxed), before);
     assert_eq!(UsesCounted::parse("123").unwrap().0, Counted("123".into()));
     assert_eq!(Counted::parse("123").unwrap(), Counted("123".into()));
@@ -594,10 +588,7 @@ fn print_color(color: &Color, buf: &mut String) {
 fn an_enum_converts_its_source_into_the_whole_value() {
     assert_eq!(Color::parse("red").unwrap(), Color::Red);
     assert_eq!(Color::Blue.print(), "blue");
-    assert!(
-        Color::parse("pink").is_err()
-            && Color::parse_with::<success::Unit, level::Max>("pink").is_err()
-    );
+    assert!(Color::parse("pink").is_err() && Color::check("pink").is_err());
     assert_eq!(
         rule::<Color>(),
         "Color = Word ^1 .\n^1: be convertible to Color"
@@ -705,9 +696,7 @@ fn a_converted_type_is_validated_after_converting() {
         "even = ( 'digit' { 'digit' } ) ^1 ^2 .\n^1: be convertible to Even\n^2: be even"
     );
     assert_eq!(Even::parse("4").unwrap().0, 4);
-    assert!(
-        Even::parse("3").is_err() && Even::parse_with::<success::Unit, level::Max>("3").is_err()
-    );
+    assert!(Even::parse("3").is_err() && Even::check("3").is_err());
 }
 
 /// A converted type's generic parameter is no grammar either.

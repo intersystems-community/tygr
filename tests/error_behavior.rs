@@ -119,10 +119,7 @@ struct Bytes(Byte, StringEq!(","), Byte);
 fn type_conversion_records_requirement() {
     assert_eq!(Byte::parse("255").unwrap().0, 255);
     let err = Byte::parse("999").unwrap_err();
-    assert_eq!(
-        Byte::parse_with::<success::Unit, level::Max>("999").unwrap_err(),
-        err
-    );
+    assert_eq!(Byte::check("999").unwrap_err(), err);
     assert_eq!(
         err.to_string(),
         "parse error at byte 3, expected:\n\t- 'digit'\n\t- Text at 0..3 must be convertible to Byte: number too large to fit in target type"
@@ -344,11 +341,7 @@ fn leftover_input_expects_the_end() {
         }]
     };
     assert_error(Lit::parse("foox").unwrap_err(), end(), 3);
-    assert_error(
-        Lit::parse_with::<success::Unit, level::Max>("foox").unwrap_err(),
-        end(),
-        3,
-    );
+    assert_error(Lit::check("foox").unwrap_err(), end(), 3);
     assert_eq!(
         Lit::parse("foox").unwrap_err().to_string(),
         "parse error at byte 3, expected:\n\t- end of input"

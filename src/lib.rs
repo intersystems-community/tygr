@@ -46,10 +46,10 @@
 //! // Parse, or only check, and print back.
 //! let e = Expr::parse("1 + 2 * 3").unwrap();
 //! assert_eq!(e.print(), "1 + 2 * 3");
-//! assert!(Expr::parse_with::<success::Unit, level::Max>("(1 + 2) * 3").is_ok());
+//! assert!(Expr::check("(1 + 2) * 3").is_ok());
 //!
 //! // A failure says where, and what could have come next.
-//! let err = Expr::parse_with::<success::Unit, level::Max>("(1 + 2").unwrap_err();
+//! let err = Expr::check("(1 + 2").unwrap_err();
 //! assert_eq!(err.pos(), 6);
 //! assert_eq!(
 //!     err.to_string(),
@@ -114,6 +114,7 @@
 //!
 //! `T::parse(input)` parses the whole `input` into a `T`, or an [`Error`]
 //! saying where it failed and what was expected there;
+//! [`check`](Parse::check) only checks that it would, and
 //! [`parse_prefix`](Parse::parse_prefix) parses as much as `T` matches and
 //! returns the end too. [`parse_with`](Parse::parse_with)`::<S, L>` and
 //! [`parse_prefix_with`](Parse::parse_prefix_with) choose instead:

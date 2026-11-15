@@ -77,6 +77,13 @@ pub trait Parse: Sized + 'static {
         Self::parse_with::<Value, Max>(input)
     }
 
+    /// Check that the whole `input` parses as `Self`, with the full
+    /// [`Error`]: [`parse_with`](Self::parse_with) at [`success::Unit`] and
+    /// [`level::Max`](crate::level::Max).
+    fn check(input: &str) -> Result<(), Error> {
+        Self::parse_with::<Unit, Max>(input)
+    }
+
     /// Parse the whole `input` as `Self`, yielding what `S` says
     /// ([`success::Value`] or [`success::Unit`]) and, on failure, an
     /// [`Error`] as traced at level `L`.

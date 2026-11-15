@@ -57,13 +57,10 @@ struct DigitThenNothing(Digit, Never);
 
 #[test]
 fn never_never_matches() {
-    assert!(Never::parse_with::<success::Unit, level::Max>("").is_err());
-    assert!(std::convert::Infallible::parse_with::<success::Unit, level::Max>("").is_err());
-    assert_eq!(
-        Quoted::<Never>::parse_with::<success::Unit, level::Max>("\"\""),
-        Ok(())
-    );
-    let err = Quoted::<Never>::parse_with::<success::Unit, level::Max>("\"a\"").unwrap_err();
+    assert!(Never::check("").is_err());
+    assert!(std::convert::Infallible::check("").is_err());
+    assert_eq!(Quoted::<Never>::check("\"\""), Ok(()));
+    let err = Quoted::<Never>::check("\"a\"").unwrap_err();
     assert_eq!((err.pos(), err.traces().len()), (1, 1));
     assert_eq!(
         rule::<Quoted<Digit>>(),
@@ -74,12 +71,9 @@ fn never_never_matches() {
         rule::<Quoted<std::convert::Infallible>>(),
         rule::<Quoted<Never>>()
     );
-    assert_eq!(
-        DigitOrNothing::parse_with::<success::Unit, level::Max>("7"),
-        Ok(())
-    );
+    assert_eq!(DigitOrNothing::check("7"), Ok(()));
     assert_eq!(rule::<DigitOrNothing>(), "DigitOrNothing = 'digit' .");
-    assert!(DigitThenNothing::parse_with::<success::Unit, level::Max>("7").is_err());
+    assert!(DigitThenNothing::check("7").is_err());
     assert_eq!(rule::<DigitThenNothing>(), "DigitThenNothing = 'digit' ∅ .");
 }
 

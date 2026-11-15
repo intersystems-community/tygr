@@ -31,10 +31,9 @@ three, and a parse can trace nothing at all.
   and `State::expect` is public for it to say what it expected where it
   fails on its own.
 - `parse(input)` and `parse_prefix(input)` build the value and trace at
-  `Max`; `parse_with::<S, L>(input)` returns
+  `Max`, and `check(input)` only checks; `parse_with::<S, L>(input)` returns
   `Result<S::Output<Self>, Error<L>>`, and `parse_prefix_with::<S, L>` the
-  end position too; `check` and `check_prefix` are
-  `parse_with::<success::Unit, L>` and `parse_prefix_with::<success::Unit, L>`.
+  end position too; `check_prefix` is `parse_prefix_with::<success::Unit, L>`.
   `Error<L>`, `Error<Max>` by default, has `pos()` at `Pos` and `Max`,
   `traces()` at `Max`, and each level prints what it knows.
 - `Vec<T>` and `Vec1<T>` no longer end at an item that matches empty:
