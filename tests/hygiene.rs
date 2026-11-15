@@ -145,7 +145,7 @@ fn derives_work_without_a_prelude() {
         "80"
     );
     assert!(bare::Port::parse::<tygr::Value, tygr::Max>("65536").is_err());
-    assert_eq!(bare::Digit::name(), "Digit");
+    assert_eq!(<bare::Digit as tygr::CharClass>::NAME, "Digit");
 }
 
 #[test]

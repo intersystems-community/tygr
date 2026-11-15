@@ -378,7 +378,7 @@ pub trait CharClass: Grammar + ByteSet + IntoInner<char> {
     fn matches(ch: char) -> bool;
 
     /// Its name in errors and EBNF.
-    fn name() -> &'static str;
+    const NAME: &'static str;
 
     /// Wrap `ch`, unchecked.
     fn new(ch: char) -> Self;
@@ -434,7 +434,7 @@ macro_rules! char_class {
 
         impl $crate::CharClass for $class {
             fn matches($ch: char) -> bool { $pred }
-            fn name() -> &'static str { $name }
+            const NAME: &'static str = $name;
             fn new(ch: char) -> Self { $class(ch) }
         }
 
@@ -502,7 +502,7 @@ pub fn class_parse_at<C: CharClass, S: Success, L: Level>(
     match matched {
         Some((ch, end)) => Some((S::output(|| C::new(ch)), end)),
         None => {
-            state.expect(pos, || Expectation::CharClass(C::name()));
+            state.expect(pos, || Expectation::CharClass(C::NAME));
             None
         }
     }
@@ -511,7 +511,7 @@ pub fn class_parse_at<C: CharClass, S: Success, L: Level>(
 /// `Parse::to_bnf` for a `char_class!` type.
 #[doc(hidden)]
 pub fn class_to_bnf<C: CharClass>() -> Expr {
-    Expr::CharClass(C::name().to_string())
+    Expr::CharClass(C::NAME.to_string())
 }
 
 /// Zero or more chars of class `C`, kept as text.

@@ -41,6 +41,8 @@ three, and a parse can trace nothing at all.
   `after`), as `Prefix` and `Suffix` name theirs.
 - `CharClass::value` is gone: a class implements `IntoInner<char>`, like the
   other wrappers.
+- `CharClass::name()` is the const `CharClass::NAME`, like
+  `Validate::REQUIREMENT`.
 
 ### Non-breaking Changes
 
