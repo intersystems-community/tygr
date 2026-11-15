@@ -59,7 +59,7 @@ pub(crate) fn dispatch(arms: &[TokenStream], firsts: &[TokenStream]) -> (TokenSt
         // Nothing matched: the variants skipped would have failed here.
         #[inline]
         fn __parse_miss<__Success: ::tygr::Success, __Level: ::tygr::Level>(_input: &str, pos: usize, mut state: ::tygr::State<__Level>) -> #output {
-            ::tygr::__private::miss(&mut state, pos);
+            state.expect(pos, || ::core::unreachable!("the recording pass doesn't dispatch"));
             ::core::option::Option::None
         }
     };

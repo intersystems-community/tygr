@@ -8,8 +8,9 @@ use std::ops::Range;
 
 /// Parse state threaded through [`Parse::parse_at`](crate::Parse::parse_at),
 /// tracing at level `L`. A hand-written grammar enters its rule with
-/// [`node`](Self::node) and passes a [`reborrow`](Self::reborrow) to each
-/// grammar it delegates to.
+/// [`node`](Self::node), passes a [`reborrow`](Self::reborrow) to each
+/// grammar it delegates to, and says what it [`expect`](Self::expect)ed
+/// where it fails on its own.
 pub struct State<'a, L: Level>(L::Store<'a>);
 
 impl<'a, L: Level> State<'a, L> {
@@ -45,9 +46,10 @@ impl<'a, L: Level> State<'a, L> {
     }
 
     /// Note that `pos` was reached, and, when recording, what was expected
-    /// there: built only then, so that the parse keeps nothing for it.
+    /// there: built only then, so that the parse keeps nothing for it. A
+    /// hand-written grammar calls this where it fails on its own.
     #[inline(always)]
-    pub(crate) fn expect(&mut self, pos: usize, expectation: impl FnOnce() -> Expectation) {
+    pub fn expect(&mut self, pos: usize, expectation: impl FnOnce() -> Expectation) {
         L::expect(&mut self.0, pos, expectation);
     }
 
@@ -67,14 +69,6 @@ impl<'a, L: Level> State<'a, L> {
             requirement: requirement.into(),
         });
     }
-}
-
-/// Note that a dispatch table found no variant starting at `pos`, where the
-/// skipped ones would have failed; the recording pass tries them instead.
-#[doc(hidden)]
-#[inline(always)]
-pub fn miss<L: Level>(state: &mut State<L>, pos: usize) {
-    state.expect(pos, || unreachable!("the recording pass doesn't dispatch"));
 }
 
 /// Run `f` tracing nothing: a lookahead's failure isn't the parse's.

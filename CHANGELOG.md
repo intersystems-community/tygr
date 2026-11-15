@@ -25,7 +25,8 @@ three, and a parse can trace nothing at all.
 - `Parse::fail_at` is gone: a dispatch table skips variants only when not
   recording, and the recording pass tries every variant, so each records
   what it expected by parsing. A hand-written grammar implements `parse_at`,
-  `to_bnf` and `visit_rules`.
+  `to_bnf` and `visit_rules`, and `State::expect` is public for it to say
+  what it expected where it fails on its own.
 - The entry points take both parameters: `parse::<S, L>(input)` returns
   `Result<S::Output<Self>, Error<L>>`, and `parse_prefix::<S, L>` the end
   position too; `check` and `check_prefix` are `parse::<Unit, L>` and
