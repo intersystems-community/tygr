@@ -3,7 +3,6 @@
 //!
 //!   echo '{"a": [1, true]}' | cargo run --example json -- parse
 //!   cargo run --example json -- bnf
-| cargo run --example json -- parse
 //!   echo '{"a": [1, true, null]}' | cargo run --example json -- print
 //!   echo '{"a": 1}' | cargo run --example json -- test
 
