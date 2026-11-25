@@ -11,6 +11,22 @@ pub enum Memo<T> {
 }
 
 impl<T> Memo<T> {
+    /// Where the field ends, `parse`-ing it only if no earlier variant did;
+    /// `None` if it failed, for them or now.
+    #[inline(always)]
+    pub fn end(&mut self, parse: impl FnOnce() -> Option<(T, usize)>) -> Option<usize> {
+        if let Memo::Untried = self {
+            *self = match parse() {
+                Some((value, end)) => Memo::Parsed(value, end),
+                None => Memo::Failed,
+            };
+        }
+        match self {
+            Memo::Parsed(_, end) => Some(*end),
+            _ => None,
+        }
+    }
+
     /// The parsed value, for the variant that succeeds.
     #[inline(always)]
     pub fn take(&mut self) -> T {
