@@ -131,7 +131,7 @@ impl Parse for Small {
     }
 }
 
-// Both variants reject "7" with the same built message.
+// Both variants start with `Small`, which rejects "7": once, for both.
 #[derive(Parse, Debug)]
 enum Twice {
     A(Small, StringEq!("a")),
@@ -147,6 +147,6 @@ fn a_rejection_carries_a_message_built_while_parsing() {
         "parse error at byte 1, expected:\n\t- Small at 0..1 must be a digit below 5, not '7'"
     );
     assert_eq!(err.traces().len(), 1);
-    // Once per variant, at `Max` alone.
-    assert_eq!(BUILT.load(Relaxed), 2);
+    // Once, at `Max` alone: `B` fails where `A`'s `Small` did, without parsing.
+    assert_eq!(BUILT.load(Relaxed), 1);
 }
