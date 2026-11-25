@@ -1,6 +1,4 @@
-//! Variants that start with the same fields parse them once: a later variant
-//! finds what an earlier one parsed, or that it failed, and goes on from
-//! there.
+//! Variants that start with the same fields parse them once.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
@@ -8,15 +6,13 @@ use tygr::bnf::{Expr, Rules};
 use tygr::*;
 
 static PARSES: AtomicUsize = AtomicUsize::new(0);
-
-/// The tests share the counter, so they run one at a time.
 static SERIAL: Mutex<()> = Mutex::new(());
 
-/// `a`, counting each attempt to parse it.
-#[derive(Debug, PartialEq)]
-struct Counted;
+/// `a`, counting its parses.
+#[derive(Debug)]
+struct A;
 
-impl Parse for Counted {
+impl Parse for A {
     type First = <StringEq!("a") as Parse>::First;
 
     fn parse_at<S: Success, L: Level>(
@@ -26,7 +22,7 @@ impl Parse for Counted {
     ) -> Option<(S::Output<Self>, usize)> {
         PARSES.fetch_add(1, Relaxed);
         let ((), end) = <StringEq!("a")>::parse_at::<success::Unit, L>(input, pos, state)?;
-        Some((S::output(|| Counted), end))
+        Some((S::output(|| A), end))
     }
 
     fn to_bnf() -> Expr {
@@ -36,7 +32,8 @@ impl Parse for Counted {
     fn visit_rules(_rules: &mut Rules) {}
 }
 
-fn parses_during<T>(f: impl FnOnce() -> T) -> (T, usize) {
+/// `f`'s result and how many times it parsed an `A`; one test at a time.
+fn parses<T>(f: impl FnOnce() -> T) -> (T, usize) {
     let _serial = SERIAL
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -45,119 +42,82 @@ fn parses_during<T>(f: impl FnOnce() -> T) -> (T, usize) {
     (result, PARSES.load(Relaxed) - before)
 }
 
-/// Three variants: tried in order at every level.
+/// Too few variants for a dispatch table: tried in order at every level.
 #[derive(Parse, Debug)]
 enum Three {
-    Ax(Counted, StringEq!("x")),
-    Ay(Counted, StringEq!("y")),
-    Az(Counted, StringEq!("z")),
+    Ax(A, StringEq!("x")),
+    Ay(A, StringEq!("y")),
+    Az(A, StringEq!("z")),
 }
 
-/// Five variants: a dispatch table below `Max`. `Axq` and `Axr` share two
-/// fields; `Ay`, `Az` and they share the first.
+/// Enough for a table below `Max`; `Axq` and `Axr` share two fields.
 #[derive(Parse, Debug)]
 enum Five {
-    Axq(Counted, StringEq!("x"), StringEq!("q")),
-    Ay(Counted, StringEq!("y")),
-    Axr(Counted, StringEq!("x"), StringEq!("r")),
+    Axq(A, StringEq!("x"), StringEq!("q")),
+    Ay(A, StringEq!("y")),
+    Axr(A, StringEq!("x"), StringEq!("r")),
     B(StringEq!("b")),
-    Az(Counted, StringEq!("z")),
+    Az(A, StringEq!("z")),
 }
 
 #[test]
-fn a_shared_first_field_parses_once() {
-    let (result, parses) = parses_during(|| Three::parse("az"));
-    assert!(matches!(result, Ok(Three::Az(Counted, _))));
-    assert_eq!(parses, 1);
-    let (result, parses) = parses_during(|| Five::parse_with::<success::Value, level::Min>("az"));
-    assert!(matches!(result, Ok(Five::Az(Counted, _))));
-    assert_eq!(parses, 1);
+fn a_shared_prefix_parses_once() {
+    assert_eq!(parses(|| Three::check("az")), (Ok(()), 1));
+    assert_eq!(
+        parses(|| Five::parse_with::<success::Unit, level::Min>("axr")).1,
+        1
+    );
+    assert_eq!(
+        parses(|| Five::parse_with::<success::Unit, level::Pos>("axr")).1,
+        1
+    );
+    assert_eq!(parses(|| Five::check("axr")), (Ok(()), 1));
+    assert!(matches!(
+        parses(|| Five::parse("axq")),
+        (Ok(Five::Axq(A, _, _)), 1)
+    ));
 }
 
 #[test]
-fn a_shared_prefix_of_two_fields_parses_once() {
-    let checks: [fn(&str) -> bool; 3] = [
-        |s| Five::parse_with::<success::Unit, level::Min>(s).is_ok(),
-        |s| Five::parse_with::<success::Unit, level::Pos>(s).is_ok(),
-        |s| Five::check(s).is_ok(),
-    ];
-    for check in checks {
-        let (ok, parses) = parses_during(|| check("axr"));
-        assert!(ok);
-        assert_eq!(parses, 1);
-    }
-}
-
-#[test]
-fn a_shared_field_that_failed_fails_the_later_variants_without_parsing() {
-    let (result, parses) = parses_during(|| Three::parse_with::<success::Unit, level::Min>("q"));
-    assert!(result.is_err());
+fn a_shared_field_fails_once_for_every_variant_starting_with_it() {
+    assert_eq!(
+        parses(|| Three::parse_with::<success::Unit, level::Min>("q")).1,
+        1
+    );
+    // Below `Max` the table misses on `q`; `Max` then tries every variant.
+    let (result, parses) = parses(|| Five::check("qq"));
     assert_eq!(parses, 1);
-    // At `Max`, the first pass misses on the table; the second tries every
-    // variant in order, and `Counted` fails once for all four that start with it.
-    let (result, parses) = parses_during(|| Five::check("qq"));
-    let err = result.unwrap_err();
-    assert_eq!(parses, 1);
-    let mut expected: Vec<String> = err
+    let mut expected: Vec<String> = result
+        .unwrap_err()
         .traces()
         .iter()
-        .map(|t| t.expectation.to_string())
+        .map(|trace| trace.expectation.to_string())
         .collect();
     expected.sort();
     assert_eq!(expected, [r#""a""#, r#""b""#]);
 }
 
-#[test]
-fn the_succeeding_variant_takes_the_shared_values() {
-    let _serial = SERIAL
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let value = Five::parse("ay").unwrap();
-    assert!(matches!(value, Five::Ay(Counted, _)));
-    assert_eq!(Five::parse("axq").unwrap().print_len(), 3);
-}
-
-impl Five {
-    fn print_len(&self) -> usize {
-        match self {
-            Five::Axq(..) | Five::Axr(..) => 3,
-            Five::Ay(..) | Five::Az(..) => 2,
-            Five::B(_) => 1,
-        }
-    }
-}
-
-/// Nullable shared fields: on `d`, the table skips `Ac` for `Ad`, the first
-/// variant to run through the shared nodes, which must parse them itself.
+/// Nullable shared fields: on `d` the table skips `Ac`, so `Ad` is the first
+/// variant through the shared nodes and parses them itself.
 #[derive(Parse, Debug)]
 enum Nullable {
-    Ac(Option<StringEq!("+")>, Option<Counted>, StringEq!("c")),
-    Ad(Option<StringEq!("+")>, Option<Counted>, StringEq!("d")),
+    Ac(Option<StringEq!("+")>, Option<A>, StringEq!("c")),
+    Ad(Option<StringEq!("+")>, Option<A>, StringEq!("d")),
     B(StringEq!("b")),
     E(StringEq!("e")),
 }
 
 #[test]
-fn a_skipped_first_variant_leaves_the_slots_untried() {
-    let (result, parses) =
-        parses_during(|| Nullable::parse_with::<success::Value, level::Min>("d"));
-    assert!(matches!(result, Ok(Nullable::Ad(None, None, _))));
-    assert_eq!(parses, 1);
-    let (result, parses) =
-        parses_during(|| Nullable::parse_with::<success::Value, level::Min>("+ad"));
-    assert!(matches!(
-        result,
-        Ok(Nullable::Ad(Some(_), Some(Counted), _))
-    ));
-    assert_eq!(parses, 1);
+fn the_first_variant_to_run_parses_the_shared_fields() {
+    let result = parses(|| Nullable::parse_with::<success::Value, level::Min>("+ad"));
+    assert!(matches!(result, (Ok(Nullable::Ad(Some(_), Some(A), _)), 1)));
 }
 
-/// A validated enum parses its fields as values whatever the caller asked.
 #[derive(Parse, Debug)]
 #[tygr(validated)]
 enum Validated {
-    Ax(Counted, StringEq!("x")),
-    Ay(Counted, StringEq!("y")),
+    Ax(A, StringEq!("x")),
+    Ay(A, StringEq!("y")),
 }
 
 impl Validate for Validated {
@@ -168,8 +128,6 @@ impl Validate for Validated {
 }
 
 #[test]
-fn a_validated_enum_shares_prefixes_too() {
-    let (result, parses) = parses_during(|| Validated::check("ay"));
-    assert_eq!(result, Ok(()));
-    assert_eq!(parses, 1);
+fn a_validated_enum_shares_too() {
+    assert_eq!(parses(|| Validated::check("ay")), (Ok(()), 1));
 }

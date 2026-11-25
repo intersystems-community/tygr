@@ -1,8 +1,8 @@
 //! What a derived enum remembers of a field it parsed for one variant, for
 //! the later variants that start with the same fields.
 
-/// A field's outcome at the position every variant sharing it parses it at:
-/// not yet tried, failed, or parsed to an end.
+/// A field's outcome at the one position every variant sharing it parses
+/// it at.
 #[doc(hidden)]
 pub enum Memo<T> {
     Untried,
@@ -12,7 +12,7 @@ pub enum Memo<T> {
 
 impl<T> Memo<T> {
     /// Where the field ends, `parse`-ing it only if no earlier variant did;
-    /// `None` if it failed, for them or now.
+    /// `None` if it failed, then or now.
     #[inline(always)]
     pub fn end(&mut self, parse: impl FnOnce() -> Option<(T, usize)>) -> Option<usize> {
         if let Memo::Untried = self {

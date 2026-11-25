@@ -142,62 +142,49 @@ fn mode(model: &Model) -> TokenStream {
     }
 }
 
-/// For each variant, the memo slot of each field that another variant parses
-/// the same way after the same fields, and the slots' types: one per node of
-/// the variants' field trie that two or more pass through, where a later
-/// variant finds what an earlier one parsed, or that it failed, at the one
-/// position they share.
+/// For each variant's fields, the memo slot of each that another variant
+/// parses after the same fields, and the slots' types: one per node of the
+/// variants' field trie that two or more pass through.
 fn memo_slots(
     variants: &[Variant],
     mode: &TokenStream,
 ) -> (Vec<Vec<Option<usize>>>, Vec<TokenStream>) {
-    let paths: Vec<Vec<(String, TokenStream)>> = variants
+    let mut slots: Vec<Vec<Option<usize>>> = variants
         .iter()
-        .map(|variant| {
-            let mut prefix = String::new();
-            variant
-                .fields
-                .iter()
-                .map(|field| {
-                    prefix += &format!("{}\n", parse_call(field, mode).1);
+        .map(|variant| vec![None; variant.fields.len()])
+        .collect();
+    let mut types = Vec::new();
+    // Each prefix's first user, until a second one gives it a slot.
+    let mut seen: HashMap<String, Result<usize, (usize, usize)>> = HashMap::new();
+    for (v, variant) in variants.iter().enumerate() {
+        let mut prefix = String::new();
+        for (f, field) in variant.fields.iter().enumerate() {
+            prefix += &format!("{}\n", parse_call(field, mode).1);
+            let slot = match seen.get(&prefix).copied() {
+                None => Err((v, f)),
+                Some(Err((v0, f0))) => {
                     let ty = match field {
                         Field::Kept { ty, .. } => quote! { #ty },
                         Field::Dropped { .. } => quote! { () },
                     };
-                    let slot =
-                        quote! { ::tygr::__private::Memo<<#mode as ::tygr::Success>::Output<#ty>> };
-                    (prefix.clone(), slot)
-                })
-                .collect()
-        })
-        .collect();
-    let mut users = HashMap::new();
-    for (prefix, _) in paths.iter().flatten() {
-        *users.entry(prefix).or_insert(0) += 1;
+                    types.push(
+                        quote! { ::tygr::__private::Memo<<#mode as ::tygr::Success>::Output<#ty>> },
+                    );
+                    slots[v0][f0] = Some(types.len() - 1);
+                    Ok(types.len() - 1)
+                }
+                Some(Ok(slot)) => Ok(slot),
+            };
+            slots[v][f] = slot.ok();
+            seen.insert(prefix.clone(), slot);
+        }
     }
-    let (mut slots, mut types) = (HashMap::new(), Vec::new());
-    let per_field = paths
-        .iter()
-        .map(|path| {
-            path.iter()
-                .map(|(prefix, ty)| {
-                    (users[prefix] >= 2).then(|| {
-                        *slots.entry(prefix).or_insert_with(|| {
-                            types.push(ty.clone());
-                            types.len() - 1
-                        })
-                    })
-                })
-                .collect()
-        })
-        .collect();
-    (per_field, types)
+    (slots, types)
 }
 
 /// Parse each field, then build the value; or, if `validated`, build it
-/// whatever the mode and check it. A field with a memo slot (`slots`, by
-/// field) is parsed once for every variant sharing it, and its value waits in
-/// the slot for the variant that succeeds.
+/// whatever the mode and check it. A field with a memo slot is parsed once
+/// for the variants sharing it; its value waits there for the one that succeeds.
 fn parse(model: &Model, variant: &Variant, slots: &[Option<usize>]) -> TokenStream {
     let mode = mode(model);
     let name = &model.name;
@@ -239,9 +226,8 @@ fn parse(model: &Model, variant: &Variant, slots: &[Option<usize>]) -> TokenStre
     }
 }
 
-/// Parse `field` in `mode`, binding it; or, in memo slot `slot`, reach the
-/// position an earlier variant parsed it to, or fail as it did, parsing only
-/// if none did (its value then waits in the slot).
+/// Parse `field` in `mode`, binding it; through memo slot `slot`, if it has
+/// one.
 fn parse_field(field: &Field, mode: &TokenStream, slot: Option<usize>) -> TokenStream {
     let (binding, parse) = parse_call(field, mode);
     match slot.map(Index::from) {

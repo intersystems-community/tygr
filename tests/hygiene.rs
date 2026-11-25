@@ -93,7 +93,7 @@ mod bare {
         Div(::tygr::StringEq!("/")),
     }
 
-    // Variants sharing their first field, enough of them for a table.
+    // Shared first fields, with enough variants for a table.
     #[derive(::tygr::Grammar)]
     pub(super) enum Shared {
         Plus(::tygr::StringEq!("+"), Digit),
