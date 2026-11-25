@@ -24,28 +24,35 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
         param.bounds.push(syn::parse_quote!('static));
     }
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let (first, parse_at, def) = match shape {
+    let (first, parse_at, def, inherent) = match shape {
         Shape::Struct(variant) | Shape::Converted(variant) => (
             first(variant),
             parse(model, variant, &[]),
             sequence(variant),
+            None,
         ),
         Shape::Enum(variants) => {
             let firsts: Vec<_> = variants.iter().map(first).collect();
-            let (slots, memo) = memo_slots(variants);
+            let (slots, memo) = memo_slots(variants, &mode(model));
             let arms: Vec<_> = variants
                 .iter()
                 .zip(&slots)
                 .map(|(variant, slots)| parse(model, variant, slots))
                 .collect();
             let sequences = variants.iter().map(sequence);
+            let (parse_at, items) =
+                dispatch(&arms, &firsts, (!memo.is_empty()).then_some(&memo[..]));
+            let inherent = (!items.is_empty()).then(
+                || quote! { impl #impl_generics #ident #ty_generics #where_clause { #items } },
+            );
             (
                 firsts.iter().fold(
                     quote! { ::tygr::first::Required<::tygr::first::byte_set::Empty> },
                     |first, variant| quote! { <#first as ::tygr::first::First>::Alt<#variant> },
                 ),
-                dispatch(&arms, &firsts, memo),
+                parse_at,
                 quote! { ::tygr::bnf::Expr::alternation(::std::vec![#(#sequences),*]) },
+                inherent,
             )
         }
     };
@@ -84,6 +91,8 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     // parameter of the user's (short of one so named, names the derive
     // reserves).
     quote! {
+        #inherent
+
         impl #impl_generics ::tygr::Parse for #ident #ty_generics #where_clause {
             type First = #first;
 
@@ -123,13 +132,26 @@ fn first(variant: &Variant) -> TokenStream {
     )
 }
 
+/// The success a variant's fields parse in: the value whatever the caller
+/// asked for, if the type is validated.
+fn mode(model: &Model) -> TokenStream {
+    if model.validated {
+        quote! { ::tygr::success::Value }
+    } else {
+        quote! { __Success }
+    }
+}
+
 /// For each variant, the memo slot of each field that another variant parses
-/// the same way after the same fields, and how many slots there are: one per
-/// node of the variants' field trie that two or more pass through, where a
-/// later variant finds what an earlier one parsed, or that it failed, at the
-/// one position they share.
-fn memo_slots(variants: &[Variant]) -> (Vec<Vec<Option<usize>>>, usize) {
-    let paths: Vec<Vec<String>> = variants
+/// the same way after the same fields, and the slots' types: one per node of
+/// the variants' field trie that two or more pass through, where a later
+/// variant finds what an earlier one parsed, or that it failed, at the one
+/// position they share.
+fn memo_slots(
+    variants: &[Variant],
+    mode: &TokenStream,
+) -> (Vec<Vec<Option<usize>>>, Vec<TokenStream>) {
+    let paths: Vec<Vec<(String, TokenStream)>> = variants
         .iter()
         .map(|variant| {
             let mut prefix = String::new();
@@ -137,29 +159,39 @@ fn memo_slots(variants: &[Variant]) -> (Vec<Vec<Option<usize>>>, usize) {
                 .fields
                 .iter()
                 .map(|field| {
-                    prefix += &format!("{}\n", parse_call(field, &TokenStream::new()).1);
-                    prefix.clone()
+                    prefix += &format!("{}\n", parse_call(field, mode).1);
+                    let ty = match field {
+                        Field::Kept { ty, .. } => quote! { #ty },
+                        Field::Dropped { .. } => quote! { () },
+                    };
+                    let slot =
+                        quote! { ::tygr::__private::Memo<<#mode as ::tygr::Success>::Output<#ty>> };
+                    (prefix.clone(), slot)
                 })
                 .collect()
         })
         .collect();
     let mut users = HashMap::new();
-    for prefix in paths.iter().flatten() {
+    for (prefix, _) in paths.iter().flatten() {
         *users.entry(prefix).or_insert(0) += 1;
     }
-    let mut slots = HashMap::new();
+    let (mut slots, mut types) = (HashMap::new(), Vec::new());
     let per_field = paths
         .iter()
         .map(|path| {
             path.iter()
-                .map(|prefix| {
-                    let n = slots.len();
-                    (users[prefix] >= 2).then(|| *slots.entry(prefix).or_insert(n))
+                .map(|(prefix, ty)| {
+                    (users[prefix] >= 2).then(|| {
+                        *slots.entry(prefix).or_insert_with(|| {
+                            types.push(ty.clone());
+                            types.len() - 1
+                        })
+                    })
                 })
                 .collect()
         })
         .collect();
-    (per_field, slots.len())
+    (per_field, types)
 }
 
 /// Parse each field, then build the value; or, if `validated`, build it
@@ -167,11 +199,7 @@ fn memo_slots(variants: &[Variant]) -> (Vec<Vec<Option<usize>>>, usize) {
 /// field) is parsed once for every variant sharing it, and its value waits in
 /// the slot for the variant that succeeds.
 fn parse(model: &Model, variant: &Variant, slots: &[Option<usize>]) -> TokenStream {
-    let mode = if model.validated {
-        quote! { ::tygr::success::Value }
-    } else {
-        quote! { __Success }
-    };
+    let mode = mode(model);
     let name = &model.name;
     let slot = |i: usize| slots.get(i).copied().flatten();
     let steps = variant
