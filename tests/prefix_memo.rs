@@ -112,22 +112,3 @@ fn the_first_variant_to_run_parses_the_shared_fields() {
     let result = parses(|| Nullable::parse_with::<success::Value, level::Min>("+ad"));
     assert!(matches!(result, (Ok(Nullable::Ad(Some(_), Some(A), _)), 1)));
 }
-
-#[derive(Parse, Debug)]
-#[tygr(validated)]
-enum Validated {
-    Ax(A, StringEq!("x")),
-    Ay(A, StringEq!("y")),
-}
-
-impl Validate for Validated {
-    const REQUIREMENT: &'static str = "be anything";
-    fn validate(&self) -> bool {
-        true
-    }
-}
-
-#[test]
-fn a_validated_enum_shares_too() {
-    assert_eq!(parses(|| Validated::check("ay")), (Ok(()), 1));
-}

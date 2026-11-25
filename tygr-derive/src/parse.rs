@@ -33,11 +33,17 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
         ),
         Shape::Enum(variants) => {
             let firsts: Vec<_> = variants.iter().map(first).collect();
-            let (slots, memo) = memo_slots(variants, &mode(model));
+            // A validated variant takes its shared fields to build the value
+            // it checks, which a rejected one couldn't give back.
+            let (slots, memo) = if *validated {
+                Default::default()
+            } else {
+                memo_slots(variants)
+            };
             let arms: Vec<_> = variants
                 .iter()
-                .zip(&slots)
-                .map(|(variant, slots)| parse(model, variant, slots))
+                .enumerate()
+                .map(|(i, variant)| parse(model, variant, slots.get(i).map_or(&[], Vec::as_slice)))
                 .collect();
             let sequences = variants.iter().map(sequence);
             let (parse_at, items) =
@@ -132,23 +138,11 @@ fn first(variant: &Variant) -> TokenStream {
     )
 }
 
-/// The success a variant's fields parse in: the value whatever the caller
-/// asked for, if the type is validated.
-fn mode(model: &Model) -> TokenStream {
-    if model.validated {
-        quote! { ::tygr::success::Value }
-    } else {
-        quote! { __Success }
-    }
-}
-
 /// For each variant's fields, the memo slot of each that another variant
 /// parses after the same fields, and the slots' types: one per node of the
 /// variants' field trie that two or more pass through.
-fn memo_slots(
-    variants: &[Variant],
-    mode: &TokenStream,
-) -> (Vec<Vec<Option<usize>>>, Vec<TokenStream>) {
+fn memo_slots(variants: &[Variant]) -> (Vec<Vec<Option<usize>>>, Vec<TokenStream>) {
+    let mode = quote! { __Success };
     let mut slots: Vec<Vec<Option<usize>>> = variants
         .iter()
         .map(|variant| vec![None; variant.fields.len()])
@@ -159,7 +153,7 @@ fn memo_slots(
     for (v, variant) in variants.iter().enumerate() {
         let mut prefix = String::new();
         for (f, field) in variant.fields.iter().enumerate() {
-            prefix += &format!("{}\n", parse_call(field, mode).1);
+            prefix += &format!("{}\n", parse_call(field, &mode).1);
             let slot = match seen.get(&prefix).copied() {
                 None => Err((v, f)),
                 Some(Err((v0, f0))) => {
@@ -186,7 +180,11 @@ fn memo_slots(
 /// whatever the mode and check it. A field with a memo slot is parsed once
 /// for the variants sharing it; its value waits there for the one that succeeds.
 fn parse(model: &Model, variant: &Variant, slots: &[Option<usize>]) -> TokenStream {
-    let mode = mode(model);
+    let mode = if model.validated {
+        quote! { ::tygr::success::Value }
+    } else {
+        quote! { __Success }
+    };
     let name = &model.name;
     let slot = |i: usize| slots.get(i).copied().flatten();
     let steps = variant
@@ -196,7 +194,7 @@ fn parse(model: &Model, variant: &Variant, slots: &[Option<usize>]) -> TokenStre
         .map(|(i, field)| parse_field(field, &mode, slot(i)));
     let takes = variant.fields.iter().enumerate().filter_map(|(i, field)| {
         let (binding, slot) = (field.binding()?, Index::from(slot(i)?));
-        Some(quote! { let #binding = memo.#slot.take(); })
+        Some(quote! { let #binding = ::tygr::__private::Memo::take(&mut memo.#slot); })
     });
     let constructor = &variant.constructor;
     let bindings: Vec<_> = variant.fields.iter().filter_map(Field::binding).collect();
@@ -231,7 +229,9 @@ fn parse(model: &Model, variant: &Variant, slots: &[Option<usize>]) -> TokenStre
 fn parse_field(field: &Field, mode: &TokenStream, slot: Option<usize>) -> TokenStream {
     let (binding, parse) = parse_call(field, mode);
     match slot.map(Index::from) {
-        Some(slot) => quote! { let pos = memo.#slot.end(|| #parse)?; },
+        Some(slot) => {
+            quote! { let pos = ::tygr::__private::Memo::end(&mut memo.#slot, || #parse)?; }
+        }
         None => quote! { let (#binding, pos) = #parse?; },
     }
 }

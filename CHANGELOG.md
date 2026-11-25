@@ -10,7 +10,7 @@ All notable changes to `tygr` and `tygr-derive` are documented here.
   a later variant takes up what an earlier one parsed of their shared
   prefix, or fails at once where it failed, so `A B C | A B D` no longer
   parses `A B` twice. Nothing changes for an enum whose variants share no
-  leading field.
+  leading field, or that is `validated`.
 
 ## [0.9.0] - 2026-11-15
 
