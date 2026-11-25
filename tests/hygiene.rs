@@ -93,6 +93,15 @@ mod bare {
         Div(::tygr::StringEq!("/")),
     }
 
+    // Shared first fields, with enough variants for a table.
+    #[derive(::tygr::Grammar)]
+    pub(super) enum Shared {
+        Plus(::tygr::StringEq!("+"), Digit),
+        PlusPlus(::tygr::StringEq!("+"), ::tygr::StringEq!("+")),
+        Minus(::tygr::StringEq!("-"), Digit),
+        MinusMinus(::tygr::StringEq!("-"), ::tygr::StringEq!("-")),
+    }
+
     #[derive(::tygr::Grammar)]
     #[tygr(validated)]
     pub(super) struct NonZero(
@@ -146,6 +155,11 @@ fn derives_work_without_a_prelude() {
     );
     assert!(bare::Port::parse_with::<tygr::success::Value, tygr::level::Max>("65536").is_err());
     assert_eq!(bare::Digit::NAME, "Digit");
+    assert!(
+        bare::Shared::parse_with::<tygr::success::Value, tygr::level::Min>("++").is_ok()
+            && bare::Shared::parse_with::<tygr::success::Value, tygr::level::Max>("-7").is_ok()
+            && bare::Shared::parse_with::<tygr::success::Value, tygr::level::Max>("+-").is_err()
+    );
 }
 
 #[test]

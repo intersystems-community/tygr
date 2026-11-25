@@ -2,6 +2,16 @@
 
 All notable changes to `tygr` and `tygr-derive` are documented here.
 
+## [Unreleased]
+
+### Non-breaking Changes
+
+- A derived enum parses the fields that several variants start with once:
+  a later variant takes up what an earlier one parsed of their shared
+  prefix, or fails at once where it failed, so `A B C | A B D` no longer
+  parses `A B` twice. Nothing changes for an enum whose variants share no
+  leading field, or that is `validated`.
+
 ## [0.9.0] - 2026-11-15
 
 What a parse yields and what it traces are two type parameters, chosen at

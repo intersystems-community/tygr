@@ -61,11 +61,17 @@ impl Parse for Never {
 }
 
 /// `S = "a" S "b" | "a" S "c" | Never`: on `a…a7`, `Never` rejects the `7`
-/// once per path through the recursion, 2^n times for n `a`s.
+/// once per path through the recursion, 2^n times for n `a`s. `C` starts
+/// with the same text as `B` through another type, so the two share no memo
+/// slot.
+#[derive(Parse, Debug)]
+#[tygr(inline)]
+struct AnotherA(StringEq!("a"));
+
 #[derive(Parse, Debug)]
 enum Exponential {
     B(StringEq!("a"), Box<Exponential>, StringEq!("b")),
-    C(StringEq!("a"), Box<Exponential>, StringEq!("c")),
+    C(AnotherA, Box<Exponential>, StringEq!("c")),
     Last(Never),
 }
 

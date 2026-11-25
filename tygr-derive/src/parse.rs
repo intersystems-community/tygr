@@ -4,6 +4,8 @@ use crate::dispatch::dispatch;
 use crate::model::{Conversion, Field, Model, Shape, Variant};
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
+use std::collections::HashMap;
+use syn::Index;
 
 /// The `Parse` impl.
 pub(crate) fn expand(model: &Model) -> TokenStream {
@@ -25,18 +27,27 @@ pub(crate) fn expand(model: &Model) -> TokenStream {
     let (first, parse_at, def, inherent) = match shape {
         Shape::Struct(variant) | Shape::Converted(variant) => (
             first(variant),
-            parse(model, variant),
+            parse(model, variant, &[]),
             sequence(variant),
             None,
         ),
         Shape::Enum(variants) => {
             let firsts: Vec<_> = variants.iter().map(first).collect();
+            // A validated variant takes its shared fields to build the value
+            // it checks, which a rejected one couldn't give back.
+            let (slots, memo) = if *validated {
+                Default::default()
+            } else {
+                memo_slots(variants)
+            };
             let arms: Vec<_> = variants
                 .iter()
-                .map(|variant| parse(model, variant))
+                .enumerate()
+                .map(|(i, variant)| parse(model, variant, slots.get(i).map_or(&[], Vec::as_slice)))
                 .collect();
             let sequences = variants.iter().map(sequence);
-            let (parse_at, items) = dispatch(&arms, &firsts);
+            let (parse_at, items) =
+                dispatch(&arms, &firsts, (!memo.is_empty()).then_some(&memo[..]));
             let inherent = (!items.is_empty()).then(
                 || quote! { impl #impl_generics #ident #ty_generics #where_clause { #items } },
             );
@@ -127,22 +138,71 @@ fn first(variant: &Variant) -> TokenStream {
     )
 }
 
+/// For each variant's fields, the memo slot of each that another variant
+/// parses after the same fields, and the slots' types: one per node of the
+/// variants' field trie that two or more pass through.
+fn memo_slots(variants: &[Variant]) -> (Vec<Vec<Option<usize>>>, Vec<TokenStream>) {
+    let mode = quote! { __Success };
+    let mut slots: Vec<Vec<Option<usize>>> = variants
+        .iter()
+        .map(|variant| vec![None; variant.fields.len()])
+        .collect();
+    let mut types = Vec::new();
+    // Each prefix's first user, until a second one gives it a slot.
+    let mut seen: HashMap<String, Result<usize, (usize, usize)>> = HashMap::new();
+    for (v, variant) in variants.iter().enumerate() {
+        let mut prefix = String::new();
+        for (f, field) in variant.fields.iter().enumerate() {
+            prefix += &format!("{}\n", parse_call(field, &mode).1);
+            let slot = match seen.get(&prefix).copied() {
+                None => Err((v, f)),
+                Some(Err((v0, f0))) => {
+                    let ty = match field {
+                        Field::Kept { ty, .. } => quote! { #ty },
+                        Field::Dropped { .. } => quote! { () },
+                    };
+                    types.push(
+                        quote! { ::tygr::__private::Memo<<#mode as ::tygr::Success>::Output<#ty>> },
+                    );
+                    slots[v0][f0] = Some(types.len() - 1);
+                    Ok(types.len() - 1)
+                }
+                Some(Ok(slot)) => Ok(slot),
+            };
+            slots[v][f] = slot.ok();
+            seen.insert(prefix.clone(), slot);
+        }
+    }
+    (slots, types)
+}
+
 /// Parse each field, then build the value; or, if `validated`, build it
-/// whatever the mode and check it.
-fn parse(model: &Model, variant: &Variant) -> TokenStream {
+/// whatever the mode and check it. A field with a memo slot is parsed once
+/// for the variants sharing it; its value waits there for the one that succeeds.
+fn parse(model: &Model, variant: &Variant, slots: &[Option<usize>]) -> TokenStream {
     let mode = if model.validated {
         quote! { ::tygr::success::Value }
     } else {
         quote! { __Success }
     };
     let name = &model.name;
-    let steps = variant.fields.iter().map(|field| parse_field(field, &mode));
+    let slot = |i: usize| slots.get(i).copied().flatten();
+    let steps = variant
+        .fields
+        .iter()
+        .enumerate()
+        .map(|(i, field)| parse_field(field, &mode, slot(i)));
+    let takes = variant.fields.iter().enumerate().filter_map(|(i, field)| {
+        let (binding, slot) = (field.binding()?, Index::from(slot(i)?));
+        Some(quote! { let #binding = ::tygr::__private::Memo::take(&mut memo.#slot); })
+    });
     let constructor = &variant.constructor;
     let bindings: Vec<_> = variant.fields.iter().filter_map(Field::binding).collect();
     if model.validated {
         return quote! {
             let start = pos;
             #(#steps)*
+            #(#takes)*
             let value = #constructor;
             if !::tygr::Validate::validate(&value) {
                 state.reject(#name, start..pos, <Self as ::tygr::Validate>::REQUIREMENT);
@@ -159,12 +219,26 @@ fn parse(model: &Model, variant: &Variant) -> TokenStream {
     );
     quote! {
         #(#steps)*
+        #(#takes)*
         ::core::option::Option::Some((#output, pos))
     }
 }
 
-/// Parse `field` in `mode`, binding it; a dropped one is converted to `()`.
-fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
+/// Parse `field` in `mode`, binding it; through memo slot `slot`, if it has
+/// one.
+fn parse_field(field: &Field, mode: &TokenStream, slot: Option<usize>) -> TokenStream {
+    let (binding, parse) = parse_call(field, mode);
+    match slot.map(Index::from) {
+        Some(slot) => {
+            quote! { let pos = ::tygr::__private::Memo::end(&mut memo.#slot, || #parse)?; }
+        }
+        None => quote! { let (#binding, pos) = #parse?; },
+    }
+}
+
+/// `field`'s binding, and the call parsing it in `mode`: as its type, or
+/// converted; a dropped one is converted to `()`.
+fn parse_call(field: &Field, mode: &TokenStream) -> (TokenStream, TokenStream) {
     let (binding, ty, kind) = match field {
         Field::Kept {
             binding,
@@ -172,9 +246,10 @@ fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
             conversion: None,
             ..
         } => {
-            return quote! {
-                let (#binding, pos) = <#ty as ::tygr::Parse>::parse_at::<#mode, __Level>(input, pos, state.reborrow())?;
-            };
+            return (
+                quote! { #binding },
+                quote! { <#ty as ::tygr::Parse>::parse_at::<#mode, __Level>(input, pos, state.reborrow()) },
+            );
         }
         Field::Kept {
             binding,
@@ -185,9 +260,10 @@ fn parse_field(field: &Field, mode: &TokenStream) -> TokenStream {
         Field::Dropped { kind, .. } => (quote! { _ }, quote! { () }, kind),
     };
     let (source, helper, target) = (field.source(), kind.helper(), field.target());
-    quote! {
-        let (#binding, pos) = ::tygr::__private::#helper::<#source, #ty, #mode, __Level>(input, pos, state.reborrow(), #target)?;
-    }
+    (
+        binding,
+        quote! { ::tygr::__private::#helper::<#source, #ty, #mode, __Level>(input, pos, state.reborrow(), #target) },
+    )
 }
 
 /// `variant`'s fields as an EBNF sequence; a fallible conversion is footnoted.

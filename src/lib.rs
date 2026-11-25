@@ -244,6 +244,7 @@ mod combinators;
 mod convert;
 pub mod first;
 mod grammar;
+mod memo;
 mod olc;
 #[cfg(doctest)]
 mod rejected;
@@ -263,6 +264,7 @@ pub use wrappers::*;
 pub mod __private {
     pub use crate::bnf::{inline_bnf, visit_inline};
     pub use crate::convert::{from_str, from_str_infallible, try_from, try_from_infallible};
+    pub use crate::memo::Memo;
     pub use crate::token::{ByteEq, NonAsciiStart, Token, class_parse_at, class_to_bnf};
     pub use either::Either;
 }

@@ -536,11 +536,16 @@ fn positive_lookahead_records_what_it_expected() {
 }
 
 // `S = "a" S "b" | "a" S "c" | ()` backtracks exponentially, expecting the
-// same few things at the same position each time.
+// same few things at the same position each time: `C` starts with the same
+// text as `B` through another type, so the two share no memo slot.
+#[derive(Grammar, Debug)]
+#[tygr(inline)]
+struct AnotherA(StringEq!("a"));
+
 #[derive(Grammar, Debug)]
 enum Exponential {
     B(StringEq!("a"), Box<Exponential>, StringEq!("b")),
-    C(StringEq!("a"), Box<Exponential>, StringEq!("c")),
+    C(AnotherA, Box<Exponential>, StringEq!("c")),
     Empty,
 }
 
